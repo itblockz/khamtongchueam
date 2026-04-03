@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { advanceTurn, createGameState } from './game'
 
 describe('advanceTurn', () => {
-  it('skips eliminated players and increments the round after wrapping', () => {
+  it('pauses the next turn after an elimination and increments the round after wrapping', () => {
     const initialState = createGameState(
       [
         { id: 'a', name: 'เอ' },
@@ -29,10 +29,14 @@ describe('advanceTurn', () => {
 
     expect(afterFirstSubmit.activePlayerId).toBe('b')
     expect(afterFirstSubmit.round).toBe(1)
+    expect(afterFirstSubmit.turnStartedAt).toBe(100)
     expect(afterTimeout.activePlayerId).toBe('c')
     expect(afterTimeout.round).toBe(1)
+    expect(afterTimeout.turnStartedAt).toBeNull()
+    expect(afterTimeout.turnDeadlineAt).toBeNull()
     expect(afterWrap.activePlayerId).toBe('a')
     expect(afterWrap.round).toBe(2)
+    expect(afterWrap.turnStartedAt).toBe(300)
   })
 
   it('marks the final active player as the winner', () => {

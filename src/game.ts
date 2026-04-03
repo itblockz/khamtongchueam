@@ -56,6 +56,16 @@ function buildTurnState(now: number, durationMs: number) {
   }
 }
 
+function buildPausedTurnState(durationMs: number) {
+  return {
+    currentInput: '',
+    turnStartedAt: null,
+    turnDeadlineAt: null,
+    timeLeftMs: durationMs,
+    isSafeToFinish: false,
+  }
+}
+
 function findNextActiveIndex(players: Player[], currentIndex: number) {
   for (let offset = 1; offset <= players.length; offset += 1) {
     const nextIndex = (currentIndex + offset) % players.length
@@ -193,6 +203,7 @@ export function advanceTurn(
   }
 
   let nextPlayers = state.players
+  let shouldPauseNextTurn = false
 
   if (action.type === 'submit') {
     const answer = action.answer.trim()
@@ -206,6 +217,7 @@ export function advanceTurn(
     }
 
     if (lateSubmit) {
+      shouldPauseNextTurn = true
       nextPlayers = state.players.map((player, index) =>
         index === currentIndex
           ? {
@@ -226,6 +238,7 @@ export function advanceTurn(
       )
     }
   } else {
+    shouldPauseNextTurn = true
     nextPlayers = state.players.map((player, index) =>
       index === currentIndex
         ? {
@@ -268,6 +281,8 @@ export function advanceTurn(
     activePlayerId: nextPlayers[nextIndex].id,
     round: nextIndex <= currentIndex ? state.round + 1 : state.round,
     winnerId: null,
-    ...buildTurnState(now, durationMs),
+    ...(shouldPauseNextTurn
+      ? buildPausedTurnState(durationMs)
+      : buildTurnState(now, durationMs)),
   }
 }

@@ -208,6 +208,48 @@ describe('คำต้องเชื่อม', () => {
     ).toBeInTheDocument()
   })
 
+  it('pauses the timer for the next player after someone is eliminated', () => {
+    render(<App />)
+    fillSetupNames(['เอ', 'บี', 'ซี'])
+    fireEvent.click(screen.getByRole('button', { name: 'เริ่มเกม' }))
+
+    fireEvent.change(screen.getByLabelText('คำตอบของ เอ'), {
+      target: { value: 'คำแรก' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'ถัดไป' }))
+
+    expect(
+      screen.getByRole('heading', { name: 'ถึงตา บี' }),
+    ).toBeInTheDocument()
+
+    act(() => {
+      vi.advanceTimersByTime(3100)
+    })
+
+    expect(
+      screen.getByRole('heading', { name: 'ถึงตา ซี' }),
+    ).toBeInTheDocument()
+    expect(screen.getByText('ยังไม่เริ่มจับเวลา')).toBeInTheDocument()
+
+    act(() => {
+      vi.advanceTimersByTime(5000)
+    })
+
+    expect(
+      screen.getByRole('heading', { name: 'ถึงตา ซี' }),
+    ).toBeInTheDocument()
+    expect(screen.getByText('ยังไม่เริ่มจับเวลา')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('คำตอบของ ซี'), {
+      target: { value: 'คำต่อไป' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'ถัดไป' }))
+
+    expect(
+      screen.getByRole('heading', { name: 'ถึงตา เอ' }),
+    ).toBeInTheDocument()
+  })
+
   it('supports replaying with the same roster and resetting everything', () => {
     startTwoPlayerGame('ต้น', 'แพรว')
 

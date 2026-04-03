@@ -141,6 +141,11 @@ function App() {
     (sum, player) => sum + player.answers.length,
     0,
   )
+  const isPausedTurn =
+    gameState.phase === 'playing' &&
+    gameState.activePlayerId !== null &&
+    gameState.turnStartedAt === null &&
+    !gameState.isSafeToFinish
   const canSubmitCurrentTurn =
     gameState.phase === 'playing' &&
     gameState.currentInput.trim().length > 0 &&
@@ -151,9 +156,12 @@ function App() {
     active: gameState.phase === 'playing' && gameState.activePlayerId !== null,
     safeToFinish: gameState.phase === 'playing' && gameState.isSafeToFinish,
     startedAt: gameState.phase === 'playing' ? gameState.turnStartedAt : null,
-    onTick: (timeLeftMs) => {
+    onTick: (timeLeftMs, startedAt) => {
       setGameState((current) => {
-        if (current.phase !== 'playing') {
+        if (
+          current.phase !== 'playing' ||
+          current.turnStartedAt !== startedAt
+        ) {
           return current
         }
 
@@ -163,9 +171,13 @@ function App() {
         }
       })
     },
-    onExpire: () => {
+    onExpire: (startedAt) => {
       setGameState((current) => {
-        if (current.phase !== 'playing' || current.isSafeToFinish) {
+        if (
+          current.phase !== 'playing' ||
+          current.isSafeToFinish ||
+          current.turnStartedAt !== startedAt
+        ) {
           return current
         }
 
@@ -583,7 +595,9 @@ function App() {
 
             <article
               className={`timer-card ${
-                gameState.isSafeToFinish
+                isPausedTurn
+                  ? 'is-paused'
+                  : gameState.isSafeToFinish
                   ? 'is-safe'
                   : gameState.timeLeftMs <= 1000
                     ? 'is-urgent'
@@ -591,7 +605,13 @@ function App() {
               }`}
               aria-live="polite"
             >
-              {gameState.isSafeToFinish ? (
+              {isPausedTurn ? (
+                <>
+                  <span>คนก่อนหน้าแพ้</span>
+                  <strong>ยังไม่เริ่มจับเวลา</strong>
+                  <p>พิมพ์คำของ {activePlayer.name} แล้วกดถัดไป จากนั้นจึงเริ่มนับเวลาของคนถัดไป</p>
+                </>
+              ) : gameState.isSafeToFinish ? (
                 <>
                   <span>ผ่านเวลาแล้ว</span>
                   <strong>เริ่มพิมพ์ทันเวลาแล้ว</strong>
@@ -612,7 +632,9 @@ function App() {
               <p className="eyebrow">บันทึกคำตอบ</p>
               <label htmlFor="current-answer">คำตอบของ {activePlayer.name}</label>
               <p className="support-text">
-                เมื่อเริ่มพิมพ์ตัวแรกทันเวลาแล้ว ระบบจะล็อกคิวไว้ให้ผู้เล่นคนนี้จนกว่าจะส่งคำ
+                {isPausedTurn
+                  ? `คนก่อนหน้าเพิ่งตกรอบ เทิร์นนี้ยังไม่จับเวลา พอส่งคำของ ${activePlayer.name} แล้วระบบจะเริ่มนับเวลาของคนถัดไป`
+                  : 'เมื่อเริ่มพิมพ์ตัวแรกทันเวลาแล้ว ระบบจะล็อกคิวไว้ให้ผู้เล่นคนนี้จนกว่าจะส่งคำ'}
               </p>
             </div>
 

@@ -355,6 +355,15 @@ button:disabled {
   background: linear-gradient(180deg, #dff2e8 0%, #cfe8da 100%);
 }
 
+.timer-card.is-paused {
+  border-color: rgba(114, 94, 73, 0.2);
+  background: linear-gradient(180deg, #f3eadc 0%, #eadbc7 100%);
+}
+
+.timer-card.is-paused strong {
+  color: #574032;
+}
+
 .timer-card.is-safe strong {
   color: #1e5e49;
 }
