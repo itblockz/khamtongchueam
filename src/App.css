@@ -22,6 +22,10 @@
   gap: 20px;
 }
 
+.play-screen {
+  gap: 14px;
+}
+
 .surface-card {
   padding: 28px;
   border: 1px solid var(--border);
@@ -401,28 +405,40 @@ button:disabled {
 
 .answer-panel {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(280px, 580px);
-  gap: 24px;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 520px);
+  gap: 18px;
   align-items: end;
+  padding: 20px 22px;
+  border-radius: 30px;
 }
 
 .answer-panel .form-copy {
-  max-width: 42rem;
+  gap: 6px;
+  max-width: 36rem;
+}
+
+.answer-panel .eyebrow {
+  font-size: 0.82rem;
+  letter-spacing: 0.09em;
 }
 
 .answer-panel .form-copy label {
-  font-size: clamp(1.7rem, 3vw, 2.35rem);
+  font-size: clamp(1.45rem, 2.5vw, 1.95rem);
   font-family: var(--display);
-  line-height: 1.05;
+  line-height: 1;
 }
 
 .answer-panel .support-text {
-  line-height: 1.6;
+  max-width: 34rem;
+  font-size: 0.95rem;
+  line-height: 1.45;
 }
 
 .answer-input {
   flex: 1 1 auto;
-  min-height: 62px;
+  min-height: 54px;
+  padding: 0 18px;
+  border-radius: 18px;
   border-color: rgba(210, 106, 58, 0.52);
   box-shadow: inset 0 0 0 4px rgba(210, 106, 58, 0.06);
 }
@@ -432,10 +448,10 @@ button:disabled {
   flex-direction: column;
   justify-content: center;
   align-items: center;
-  min-width: 110px;
-  min-height: 62px;
-  padding: 10px 14px;
-  border-radius: 22px;
+  min-width: 96px;
+  min-height: 54px;
+  padding: 8px 12px;
+  border-radius: 18px;
   border: 1px solid rgba(176, 126, 82, 0.16);
   background: rgba(244, 231, 215, 0.82);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.28);
@@ -443,7 +459,7 @@ button:disabled {
 
 .turn-timer-pill span {
   color: var(--muted);
-  font-size: 0.72rem;
+  font-size: 0.66rem;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -452,7 +468,7 @@ button:disabled {
 .turn-timer-pill strong {
   color: #5d391f;
   font-family: var(--display);
-  font-size: 1.2rem;
+  font-size: 1.05rem;
   line-height: 1.05;
 }
 
@@ -493,24 +509,34 @@ button:disabled {
 }
 
 .answer-panel .compact-symbol-button {
-  min-width: 72px;
-  min-height: 60px;
-  border-radius: 22px;
+  min-width: 64px;
+  min-height: 54px;
+  border-radius: 18px;
 }
 
 .start-turn-button {
-  min-width: 168px;
-  min-height: 60px;
-  padding: 0 22px;
-  border-radius: 22px;
+  min-width: 148px;
+  min-height: 54px;
+  padding: 0 18px;
+  border-radius: 18px;
+}
+
+.start-turn-button .button-copy {
+  font-size: 0.9rem;
 }
 
 .board-card .panel-header {
-  padding-bottom: 14px;
+  padding-bottom: 10px;
   border-bottom: 1px dashed rgba(176, 126, 82, 0.2);
 }
 
-.board-grid,
+.board-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  align-items: start;
+}
+
 .summary-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -523,20 +549,48 @@ button:disabled {
   flex-direction: column;
 }
 
+.board-card {
+  padding: 18px 20px;
+  border-radius: 28px;
+}
+
+.board-card .panel-header h2 {
+  font-size: clamp(1.2rem, 2.1vw, 1.7rem);
+  line-height: 1;
+}
+
+.board-card .eyebrow {
+  font-size: 0.8rem;
+  letter-spacing: 0.09em;
+}
+
 .player-board {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  margin-top: 20px;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.active-player-board {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 12px;
+}
+
+.eliminated-player-board.is-two-column {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 12px;
 }
 
 .player-chip {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  padding: 18px 20px;
-  border-radius: var(--radius-lg);
+  gap: 12px;
+  min-width: 0;
+  padding: 14px 16px;
+  border-radius: 20px;
   border: 1px solid rgba(176, 126, 82, 0.16);
   background: var(--surface-strong);
 }
@@ -544,28 +598,38 @@ button:disabled {
 .player-chip div {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
+  min-width: 0;
 }
 
 .player-chip strong {
   color: var(--ink);
-  font-size: 1.08rem;
+  font-size: 1rem;
+  line-height: 1.08;
 }
 
 .status-line {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  font-size: 0.94rem;
 }
 
 .status-symbol {
-  width: 26px;
-  height: 26px;
+  width: 22px;
+  height: 22px;
   border-radius: 999px;
   background: rgba(210, 106, 58, 0.12);
   color: var(--accent-strong);
-  font-size: 0.86rem;
+  font-size: 0.76rem;
   font-weight: 700;
+}
+
+.player-chip small {
+  max-width: 11ch;
+  font-size: 0.88rem;
+  line-height: 1.3;
+  text-align: right;
 }
 
 .player-chip.is-active {
@@ -581,6 +645,21 @@ button:disabled {
 .player-chip.is-out {
   border-color: rgba(180, 72, 55, 0.18);
   background: linear-gradient(180deg, #fff6f3 0%, #f5e3dc 100%);
+}
+
+.eliminated-board-card.is-empty-collapsed {
+  padding-bottom: 18px;
+}
+
+.eliminated-board-card.is-empty-collapsed .panel-header {
+  padding-bottom: 8px;
+}
+
+.eliminated-board-card.is-empty-collapsed .empty-note {
+  margin-top: 12px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  line-height: 1.5;
 }
 
 .sr-only {
@@ -778,6 +857,10 @@ button:disabled {
     grid-template-columns: 1fr;
   }
 
+  .play-screen {
+    gap: 18px;
+  }
+
   .setup-card {
     width: min(820px, 100%);
   }
@@ -803,12 +886,58 @@ button:disabled {
     min-height: 60px;
   }
 
+  .answer-panel {
+    gap: 20px;
+    padding: 24px;
+  }
+
+  .answer-panel .form-copy {
+    gap: 8px;
+  }
+
+  .answer-panel .support-text {
+    max-width: none;
+    font-size: 1rem;
+    line-height: 1.55;
+  }
+
   .answer-controls {
     align-items: stretch;
   }
 
   .answer-input {
     min-width: 100%;
+    min-height: 60px;
+  }
+
+  .turn-timer-pill,
+  .answer-panel .compact-symbol-button,
+  .start-turn-button {
+    min-height: 60px;
+    border-radius: 22px;
+  }
+
+  .board-card {
+    padding: 24px;
+  }
+
+  .active-player-board {
+    display: flex;
+    grid-template-columns: none;
+  }
+
+  .eliminated-player-board.is-two-column {
+    display: flex;
+    grid-template-columns: none;
+  }
+
+  .player-chip {
+    padding: 18px 20px;
+  }
+
+  .player-chip small {
+    max-width: none;
+    font-size: 0.92rem;
   }
 }
 
@@ -873,6 +1002,14 @@ button:disabled {
 
   .setup-card .draft-field {
     grid-template-columns: 1fr;
+  }
+
+  .board-card {
+    padding: 20px;
+  }
+
+  .eliminated-board-card.is-empty-collapsed {
+    padding-bottom: 20px;
   }
 
   .order-chip,

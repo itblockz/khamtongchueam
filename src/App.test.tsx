@@ -265,6 +265,10 @@ describe('คำต้องเชื่อม', () => {
     fireEvent.click(screen.getByRole('button', { name: 'ยืนยันผู้เล่น' }))
     fireEvent.click(screen.getByRole('button', { name: 'เริ่มรอบแรก' }))
 
+    expect(
+      screen.getByRole('heading', { name: 'ผู้เล่นที่ตกรอบ' }).closest('section'),
+    ).toHaveClass('is-empty-collapsed')
+
     fireEvent.change(screen.getByLabelText('คำตอบของ เอ'), {
       target: { value: 'คำแรก' },
     })
@@ -282,6 +286,10 @@ describe('คำต้องเชื่อม', () => {
       screen.getByRole('heading', { name: 'ถึงตา ซี' }),
     ).toBeInTheDocument()
     expect(screen.getByText('ยังไม่เริ่มจับเวลา')).toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', { name: 'ผู้เล่นที่ตกรอบ' }).closest('section'),
+    ).not.toHaveClass('is-empty-collapsed')
+    expect(screen.getByLabelText('ผู้เล่นที่ตกรอบ')).not.toHaveClass('is-two-column')
 
     act(() => {
       vi.advanceTimersByTime(5000)
@@ -300,6 +308,7 @@ describe('คำต้องเชื่อม', () => {
     expect(
       screen.getByRole('heading', { name: 'ถึงตา เอ' }),
     ).toBeInTheDocument()
+    expect(screen.getByLabelText('ผู้เล่นที่ตกรอบ')).not.toHaveClass('is-two-column')
   })
 
   it('awards leaderboard points to only the last three players', () => {
@@ -353,6 +362,35 @@ describe('คำต้องเชื่อม', () => {
     expect(
       leaderboard.getByLabelText('อันดับ 4 บี 0 คะแนน'),
     ).toBeInTheDocument()
+  })
+
+  it('switches the eliminated board to two columns after two players are out', () => {
+    render(<App />)
+    fillSetupNames(['เอ', 'บี', 'ซี', 'ดี'])
+    fireEvent.click(screen.getByRole('button', { name: 'ยืนยันผู้เล่น' }))
+    fireEvent.click(screen.getByRole('button', { name: 'เริ่มรอบแรก' }))
+
+    fireEvent.change(screen.getByLabelText('คำตอบของ เอ'), {
+      target: { value: 'คำแรก' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'ถัดไป' }))
+
+    act(() => {
+      vi.advanceTimersByTime(3100)
+    })
+
+    expect(screen.getByLabelText('ผู้เล่นที่ตกรอบ')).not.toHaveClass('is-two-column')
+
+    fireEvent.change(screen.getByLabelText('คำตอบของ ซี'), {
+      target: { value: 'คำสอง' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'ถัดไป' }))
+
+    act(() => {
+      vi.advanceTimersByTime(3100)
+    })
+
+    expect(screen.getByLabelText('ผู้เล่นที่ตกรอบ')).toHaveClass('is-two-column')
   })
 
   it('accumulates leaderboard scores across replay with the same roster', () => {

@@ -801,7 +801,7 @@ function App() {
           </form>
 
           <section className="board-grid">
-            <section className="surface-card board-card">
+            <section className="surface-card board-card active-board-card">
               <div className="panel-header compact">
                 <div>
                   <p className="eyebrow">ยังอยู่ในเกม</p>
@@ -815,7 +815,10 @@ function App() {
                 <span className="count-badge">{activePlayers.length} คน</span>
               </div>
 
-              <ul className="player-board" aria-label="ผู้เล่นที่ยังไม่ตกรอบ">
+              <ul
+                className="player-board active-player-board"
+                aria-label="ผู้เล่นที่ยังไม่ตกรอบ"
+              >
                 {gameState.players
                   .filter((player) => player.status === 'active')
                   .map((player) => (
@@ -845,7 +848,11 @@ function App() {
               </ul>
             </section>
 
-            <section className="surface-card board-card">
+            <section
+              className={`surface-card board-card eliminated-board-card ${
+                eliminatedPlayers.length === 0 ? 'is-empty-collapsed' : ''
+              }`.trim()}
+            >
               <div className="panel-header compact">
                 <div>
                   <p className="eyebrow">หลุดออกจากเกม</p>
@@ -860,7 +867,12 @@ function App() {
               </div>
 
               {eliminatedPlayers.length > 0 ? (
-                <ul className="player-board" aria-label="ผู้เล่นที่ตกรอบ">
+                <ul
+                  className={`player-board eliminated-player-board ${
+                    eliminatedPlayers.length >= 2 ? 'is-two-column' : ''
+                  }`.trim()}
+                  aria-label="ผู้เล่นที่ตกรอบ"
+                >
                   {eliminatedPlayers.map((player) => (
                     <li className={getPlayerCardClass(player, null)} key={player.id}>
                       <div>
