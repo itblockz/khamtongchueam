@@ -19,6 +19,7 @@ export interface Player {
   status: PlayerStatus
   answers: string[]
   eliminatedAtRound: number | null
+  eliminatedOrder: number | null
 }
 
 export interface GameState {
@@ -33,6 +34,15 @@ export interface GameState {
   isSafeToFinish: boolean
   winnerId: string | null
   isAwaitingFirstTurnStart: boolean
+}
+
+export interface LeaderboardAward {
+  playerId: string
+  playerName: string
+  placement: number
+  standingPoints: number
+  winnerBonus: number
+  points: number
 }
 
 export type AdvanceTurnAction =
@@ -92,7 +102,16 @@ function createPlayers(playerSeeds: PlayerSeed[]): Player[] {
     status: 'active' as const,
     answers: [],
     eliminatedAtRound: null,
+    eliminatedOrder: null,
   }))
+}
+
+function getPlacementValue(player: Player) {
+  if (player.status === 'winner') {
+    return Number.MAX_SAFE_INTEGER
+  }
+
+  return player.eliminatedOrder ?? Number.MIN_SAFE_INTEGER
 }
 
 export function createPlayerDraft(name = ''): PlayerDraft {
@@ -224,6 +243,62 @@ export function applyInputChange(
   }
 }
 
+export function getFinalPlacements(state: GameState) {
+  if (state.phase !== 'finished' || state.winnerId === null) {
+    return []
+  }
+
+  const initialOrder = new Map(
+    state.players.map((player, index) => [player.id, index]),
+  )
+
+  return [...state.players].sort((left, right) => {
+    const placementDifference =
+      getPlacementValue(right) - getPlacementValue(left)
+
+    if (placementDifference !== 0) {
+      return placementDifference
+    }
+
+    return (initialOrder.get(left.id) ?? 0) - (initialOrder.get(right.id) ?? 0)
+  })
+}
+
+export function getScoreAwards(state: GameState): LeaderboardAward[] {
+  return getFinalPlacements(state)
+    .slice(0, 3)
+    .map((player, index) => {
+      const standingPoints = 1
+      const winnerBonus = index === 0 ? 2 : 0
+
+      return {
+        playerId: player.id,
+        playerName: player.name,
+        placement: index + 1,
+        standingPoints,
+        winnerBonus,
+        points: standingPoints + winnerBonus,
+      }
+    })
+}
+
+export function applyScoreAwards(
+  scoreByPlayerId: Record<string, number>,
+  awards: LeaderboardAward[],
+) {
+  if (awards.length === 0) {
+    return scoreByPlayerId
+  }
+
+  return awards.reduce<Record<string, number>>(
+    (nextScores, award) => ({
+      ...nextScores,
+      [award.playerId]: (nextScores[award.playerId] ?? 0) + award.points,
+    }),
+    { ...scoreByPlayerId },
+  )
+}
+
 export function advanceTurn(
   state: GameState,
   action: AdvanceTurnAction,
@@ -252,6 +327,8 @@ export function advanceTurn(
 
   let nextPlayers = state.players
   let shouldPauseNextTurn = false
+  const nextEliminatedOrder =
+    state.players.filter((player) => player.status === 'eliminated').length + 1
 
   if (action.type === 'submit') {
     const answer = action.answer.trim()
@@ -272,6 +349,7 @@ export function advanceTurn(
               ...player,
               status: 'eliminated' as const,
               eliminatedAtRound: state.round,
+              eliminatedOrder: nextEliminatedOrder,
             }
           : player,
       )
@@ -293,6 +371,7 @@ export function advanceTurn(
             ...player,
             status: 'eliminated' as const,
             eliminatedAtRound: state.round,
+            eliminatedOrder: nextEliminatedOrder,
           }
         : player,
     )

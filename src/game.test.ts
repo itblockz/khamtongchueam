@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
+  applyScoreAwards,
   advanceTurn,
   createConfirmedGameState,
   createGameState,
+  getFinalPlacements,
+  getScoreAwards,
   startActiveTurn,
 } from './game'
 
@@ -89,5 +92,79 @@ describe('advanceTurn', () => {
     expect(finishedState.players.find((player) => player.id === 'a')?.status).toBe(
       'eliminated',
     )
+  })
+
+  it('awards points to the last three players based on elimination order', () => {
+    const initialState = createGameState(
+      [
+        { id: 'a', name: 'A' },
+        { id: 'b', name: 'B' },
+        { id: 'c', name: 'C' },
+        { id: 'd', name: 'D' },
+      ],
+      0,
+    )
+
+    const afterFirstSubmit = advanceTurn(initialState, {
+      type: 'submit',
+      answer: 'alpha',
+      now: 100,
+    })
+    const afterBTimeout = advanceTurn(afterFirstSubmit, {
+      type: 'timeout',
+      now: 200,
+    })
+    const afterCSubmit = advanceTurn(afterBTimeout, {
+      type: 'submit',
+      answer: 'charlie',
+      now: 300,
+    })
+    const afterDTimeout = advanceTurn(afterCSubmit, {
+      type: 'timeout',
+      now: 400,
+    })
+    const afterASecondSubmit = advanceTurn(afterDTimeout, {
+      type: 'submit',
+      answer: 'atlas',
+      now: 500,
+    })
+    const finishedState = advanceTurn(afterASecondSubmit, {
+      type: 'timeout',
+      now: 600,
+    })
+
+    expect(getFinalPlacements(finishedState).map((player) => player.id)).toEqual([
+      'a',
+      'c',
+      'd',
+      'b',
+    ])
+
+    expect(
+      getScoreAwards(finishedState).map((award) => ({
+        playerId: award.playerId,
+        placement: award.placement,
+        points: award.points,
+      })),
+    ).toEqual([
+      { playerId: 'a', placement: 1, points: 3 },
+      { playerId: 'c', placement: 2, points: 1 },
+      { playerId: 'd', placement: 3, points: 1 },
+    ])
+
+    expect(
+      applyScoreAwards(
+        {
+          a: 2,
+          b: 5,
+        },
+        getScoreAwards(finishedState),
+      ),
+    ).toEqual({
+      a: 5,
+      b: 5,
+      c: 1,
+      d: 1,
+    })
   })
 })

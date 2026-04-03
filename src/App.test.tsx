@@ -1,6 +1,6 @@
 import { act } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import App from './App'
 
 function fillSetupNames(playerNames: string[]) {
@@ -299,6 +299,100 @@ describe('คำต้องเชื่อม', () => {
 
     expect(
       screen.getByRole('heading', { name: 'ถึงตา เอ' }),
+    ).toBeInTheDocument()
+  })
+
+  it('awards leaderboard points to only the last three players', () => {
+    render(<App />)
+    fillSetupNames(['เอ', 'บี', 'ซี', 'ดี'])
+    fireEvent.click(screen.getByRole('button', { name: 'ยืนยันผู้เล่น' }))
+    fireEvent.click(screen.getByRole('button', { name: 'เริ่มรอบแรก' }))
+
+    fireEvent.change(screen.getByLabelText('คำตอบของ เอ'), {
+      target: { value: 'คำแรก' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'ถัดไป' }))
+
+    act(() => {
+      vi.advanceTimersByTime(3100)
+    })
+
+    fireEvent.change(screen.getByLabelText('คำตอบของ ซี'), {
+      target: { value: 'คำสอง' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'ถัดไป' }))
+
+    act(() => {
+      vi.advanceTimersByTime(3100)
+    })
+
+    fireEvent.change(screen.getByLabelText('คำตอบของ เอ'), {
+      target: { value: 'คำสาม' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'ถัดไป' }))
+
+    act(() => {
+      vi.advanceTimersByTime(3100)
+    })
+
+    expect(
+      screen.getByRole('heading', { name: 'ผู้ชนะคือ เอ' }),
+    ).toBeInTheDocument()
+
+    const leaderboard = within(screen.getByLabelText('ตารางคะแนนสะสม'))
+
+    expect(
+      leaderboard.getByLabelText('อันดับ 1 เอ 3 คะแนน ได้เพิ่ม 3 คะแนนรอบนี้'),
+    ).toBeInTheDocument()
+    expect(
+      leaderboard.getByLabelText('อันดับ 2 ซี 1 คะแนน ได้เพิ่ม 1 คะแนนรอบนี้'),
+    ).toBeInTheDocument()
+    expect(
+      leaderboard.getByLabelText('อันดับ 3 ดี 1 คะแนน ได้เพิ่ม 1 คะแนนรอบนี้'),
+    ).toBeInTheDocument()
+    expect(
+      leaderboard.getByLabelText('อันดับ 4 บี 0 คะแนน'),
+    ).toBeInTheDocument()
+  })
+
+  it('accumulates leaderboard scores across replay with the same roster', () => {
+    startTwoPlayerGame('ต้น', 'แพรว')
+
+    act(() => {
+      vi.advanceTimersByTime(3100)
+    })
+
+    let leaderboard = within(screen.getByLabelText('ตารางคะแนนสะสม'))
+
+    expect(
+      leaderboard.getByLabelText('อันดับ 1 แพรว 3 คะแนน ได้เพิ่ม 3 คะแนนรอบนี้'),
+    ).toBeInTheDocument()
+    expect(
+      leaderboard.getByLabelText('อันดับ 2 ต้น 1 คะแนน ได้เพิ่ม 1 คะแนนรอบนี้'),
+    ).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'เล่นใหม่ด้วยรายชื่อเดิม' }))
+
+    fireEvent.change(screen.getByLabelText('คำตอบของ ต้น'), {
+      target: { value: 'กล้วย' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'ถัดไป' }))
+
+    act(() => {
+      vi.advanceTimersByTime(3100)
+    })
+
+    expect(
+      screen.getByRole('heading', { name: 'ผู้ชนะคือ ต้น' }),
+    ).toBeInTheDocument()
+
+    leaderboard = within(screen.getByLabelText('ตารางคะแนนสะสม'))
+
+    expect(
+      leaderboard.getByLabelText('อันดับ 1 ต้น 4 คะแนน ได้เพิ่ม 3 คะแนนรอบนี้'),
+    ).toBeInTheDocument()
+    expect(
+      leaderboard.getByLabelText('อันดับ 2 แพรว 4 คะแนน ได้เพิ่ม 1 คะแนนรอบนี้'),
     ).toBeInTheDocument()
   })
 

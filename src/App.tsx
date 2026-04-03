@@ -10,6 +10,7 @@ import {
 import './App.css'
 import {
   TURN_DURATION_MS,
+  applyScoreAwards,
   advanceTurn,
   applyInputChange,
   createConfirmedGameState,
@@ -17,6 +18,8 @@ import {
   createInitialDrafts,
   createPlayerDraft,
   createSetupState,
+  getFinalPlacements,
+  getScoreAwards,
   getSetupValidation,
   prepareRoster,
   startActiveTurn,
@@ -118,15 +121,53 @@ function getPlayerCardClass(player: Player, activePlayerId: string | null) {
   return 'player-chip'
 }
 
+interface SessionState {
+  gameState: GameState
+  leaderboardScores: Record<string, number>
+}
+
+function createInitialSessionState(): SessionState {
+  return {
+    gameState: createSetupState(),
+    leaderboardScores: {},
+  }
+}
+
+function applyFinishedLeaderboardScores(
+  currentSession: SessionState,
+  nextGameState: GameState,
+): SessionState {
+  if (
+    currentSession.gameState.phase === 'finished' ||
+    nextGameState.phase !== 'finished'
+  ) {
+    return {
+      ...currentSession,
+      gameState: nextGameState,
+    }
+  }
+
+  return {
+    gameState: nextGameState,
+    leaderboardScores: applyScoreAwards(
+      currentSession.leaderboardScores,
+      getScoreAwards(nextGameState),
+    ),
+  }
+}
+
 function App() {
   const [playerDrafts, setPlayerDrafts] = useState<PlayerDraft[]>(() =>
     ensureTrailingBlankDraft(createInitialDrafts()),
   )
-  const [gameState, setGameState] = useState<GameState>(() => createSetupState())
+  const [sessionState, setSessionState] = useState<SessionState>(() =>
+    createInitialSessionState(),
+  )
   const answerInputRef = useRef<HTMLInputElement>(null)
   const startFirstTurnButtonRef = useRef<HTMLButtonElement>(null)
   const playerInputRefs = useRef<Record<string, HTMLInputElement | null>>({})
   const pendingSetupFocusIdRef = useRef<string | null>(null)
+  const { gameState, leaderboardScores } = sessionState
 
   const validation = getSetupValidation(playerDrafts)
   const activePlayer =
@@ -140,6 +181,42 @@ function App() {
   )
   const winner =
     gameState.players.find((player) => player.id === gameState.winnerId) ?? null
+  const finalPlacements =
+    gameState.phase === 'finished' ? getFinalPlacements(gameState) : []
+  const roundAwards =
+    gameState.phase === 'finished' ? getScoreAwards(gameState) : []
+  const roundAwardMap = new Map(
+    roundAwards.map((award) => [award.playerId, award]),
+  )
+  const leaderboardEntries =
+    gameState.phase === 'finished'
+      ? gameState.players
+          .map((player, index) => ({
+            player,
+            score: leaderboardScores[player.id] ?? 0,
+            roundPoints: roundAwardMap.get(player.id)?.points ?? 0,
+            placement: roundAwardMap.get(player.id)?.placement ?? null,
+            initialIndex: index,
+          }))
+          .sort((left, right) => {
+            if (right.score !== left.score) {
+              return right.score - left.score
+            }
+
+            if (right.roundPoints !== left.roundPoints) {
+              return right.roundPoints - left.roundPoints
+            }
+
+            const leftPlacement = left.placement ?? Number.MAX_SAFE_INTEGER
+            const rightPlacement = right.placement ?? Number.MAX_SAFE_INTEGER
+
+            if (leftPlacement !== rightPlacement) {
+              return leftPlacement - rightPlacement
+            }
+
+            return left.initialIndex - right.initialIndex
+          })
+      : []
   const totalAnswers = gameState.players.reduce(
     (sum, player) => sum + player.answers.length,
     0,
@@ -184,13 +261,33 @@ function App() {
           ? `เวลาเหลือ ${formatSeconds(gameState.timeLeftMs)} วินาที`
           : 'เวลา'
 
+  function replaceGameState(nextGameState: GameState) {
+    setSessionState((current) =>
+      applyFinishedLeaderboardScores(current, nextGameState),
+    )
+  }
+
+  function updateGameState(
+    updater: (currentGameState: GameState) => GameState,
+  ) {
+    setSessionState((current) => {
+      const nextGameState = updater(current.gameState)
+
+      if (nextGameState === current.gameState) {
+        return current
+      }
+
+      return applyFinishedLeaderboardScores(current, nextGameState)
+    })
+  }
+
   useTurnTimer({
     durationMs: TURN_DURATION_MS,
     active: gameState.phase === 'playing' && gameState.activePlayerId !== null,
     safeToFinish: gameState.phase === 'playing' && gameState.isSafeToFinish,
     startedAt: gameState.phase === 'playing' ? gameState.turnStartedAt : null,
     onTick: (timeLeftMs, startedAt) => {
-      setGameState((current) => {
+      updateGameState((current) => {
         if (
           current.phase !== 'playing' ||
           current.turnStartedAt !== startedAt
@@ -205,7 +302,7 @@ function App() {
       })
     },
     onExpire: (startedAt) => {
-      setGameState((current) => {
+      updateGameState((current) => {
         if (
           current.phase !== 'playing' ||
           current.isSafeToFinish ||
@@ -436,11 +533,11 @@ function App() {
       return
     }
 
-    setGameState(createConfirmedGameState(prepareRoster(playerDrafts)))
+    replaceGameState(createConfirmedGameState(prepareRoster(playerDrafts)))
   }
 
   function handleStartFirstTurn() {
-    setGameState((current) => startActiveTurn(current))
+    updateGameState((current) => startActiveTurn(current))
   }
 
   function handleStartFirstTurnKeyDown(
@@ -457,7 +554,7 @@ function App() {
   function handleAnswerChange(event: ChangeEvent<HTMLInputElement>) {
     const { value } = event.target
 
-    setGameState((current) => {
+    updateGameState((current) => {
       if (current.phase !== 'playing' || current.isAwaitingFirstTurnStart) {
         return current
       }
@@ -469,7 +566,7 @@ function App() {
   function handleSubmitTurn(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
 
-    setGameState((current) => {
+    updateGameState((current) => {
       if (current.phase !== 'playing') {
         return current
       }
@@ -486,12 +583,12 @@ function App() {
       return
     }
 
-    setGameState(createGameState(prepareRoster(playerDrafts)))
+    replaceGameState(createGameState(prepareRoster(playerDrafts)))
   }
 
   function handleResetAll() {
     setPlayerDrafts(ensureTrailingBlankDraft(createInitialDrafts()))
-    setGameState(createSetupState())
+    setSessionState(createInitialSessionState())
   }
 
   return (
@@ -819,6 +916,63 @@ function App() {
               </article>
             </div>
 
+            <section className="surface-card leaderboard-card">
+              <div className="panel-header compact">
+                <div>
+                  <p className="eyebrow">คะแนนสะสม</p>
+                  <h2>Leaderboard</h2>
+                </div>
+                <span className="count-badge">{leaderboardEntries.length} คน</span>
+              </div>
+
+              <p className="support-text leaderboard-note">
+                3 คนสุดท้ายได้คนละ 1 คะแนน และผู้ชนะได้โบนัสเพิ่มอีก 2 คะแนน
+              </p>
+
+              <ol className="leaderboard-list" aria-label="ตารางคะแนนสะสม">
+                {leaderboardEntries.map((entry, index) => (
+                  <li
+                    className={`leaderboard-row ${
+                      entry.player.status === 'winner' ? 'is-winner' : ''
+                    } ${entry.roundPoints > 0 ? 'is-awarded' : ''}`.trim()}
+                    key={entry.player.id}
+                    aria-label={`อันดับ ${index + 1} ${entry.player.name} ${entry.score} คะแนน${
+                      entry.roundPoints > 0
+                        ? ` ได้เพิ่ม ${entry.roundPoints} คะแนนรอบนี้`
+                        : ''
+                    }`}
+                  >
+                    <div className="leaderboard-copy">
+                      <span className="leaderboard-rank" aria-hidden="true">
+                        {index + 1}
+                      </span>
+                      <div>
+                        <strong>{entry.player.name}</strong>
+                        <span>
+                          {entry.placement !== null
+                            ? `จบรอบนี้อันดับ ${entry.placement}`
+                            : 'รอบนี้ยังไม่ได้คะแนน'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="leaderboard-score">
+                      {entry.roundPoints > 0 ? (
+                        <span className="leaderboard-delta">
+                          +{entry.roundPoints} รอบนี้
+                        </span>
+                      ) : (
+                        <span className="leaderboard-delta is-muted">
+                          ยังไม่ได้คะแนน
+                        </span>
+                      )}
+                      <strong>{entry.score} คะแนน</strong>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            </section>
+
             <div className="action-row">
               <button
                 type="button"
@@ -848,7 +1002,7 @@ function App() {
           </section>
 
           <section className="summary-grid">
-            {gameState.players.map((player) => (
+            {finalPlacements.map((player) => (
               <article
                 className={`surface-card summary-card status-${player.status}`}
                 key={player.id}
@@ -870,6 +1024,15 @@ function App() {
                   ) : (
                     <p>อยู่รอดจนจบเกม</p>
                   )}
+                  <p
+                    className={`summary-award ${
+                      roundAwardMap.has(player.id) ? '' : 'is-muted'
+                    }`.trim()}
+                  >
+                    {roundAwardMap.has(player.id)
+                      ? `รับ ${roundAwardMap.get(player.id)?.points} คะแนนรอบนี้`
+                      : 'รอบนี้ยังไม่ได้คะแนน'}
+                  </p>
                 </div>
 
                 {player.answers.length > 0 ? (
