@@ -501,21 +501,15 @@ function App() {
           <div className="surface-card setup-card">
             <div className="panel-header setup-header">
               <div className="setup-copy">
-                <p className="eyebrow">เตรียมรายชื่อ</p>
-                <h1>
-                  <span className="headline-symbol" aria-hidden="true">
-                    ＋
-                  </span>
-                  เพิ่มผู้เล่น
-                </h1>
+                <h1>จัดรายชื่อผู้เล่น</h1>
               </div>
               <button
                 type="button"
                 className="secondary-button symbol-button compact-symbol-button add-player-button"
                 onClick={handleAddPlayer}
-                aria-label="เพิ่มผู้เล่น"
+                aria-label="เพิ่มรายชื่อผู้เล่น"
                 tabIndex={-1}
-                title="เพิ่มผู้เล่น"
+                title="เพิ่มรายชื่อผู้เล่น"
               >
                 <span className="button-symbol" aria-hidden="true">
                   ＋
@@ -609,7 +603,7 @@ function App() {
             ) : (
               <div className="empty-state">
                 <p>ยังไม่มีผู้เล่นในเกมนี้</p>
-                <p>กดปุ่มเพิ่มผู้เล่นเพื่อเริ่มตั้งค่ารายชื่อ</p>
+                <p>กดปุ่มเพิ่มรายชื่อผู้เล่นเพื่อเริ่มจัดลำดับ</p>
               </div>
             )}
 

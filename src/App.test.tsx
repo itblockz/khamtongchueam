@@ -131,7 +131,7 @@ describe('คำต้องเชื่อม', () => {
     render(<App />)
     fillSetupNames(['เอ', 'บี'])
 
-    expect(screen.getByRole('button', { name: 'เพิ่มผู้เล่น' }).tabIndex).toBe(-1)
+    expect(screen.getByRole('button', { name: 'เพิ่มรายชื่อผู้เล่น' }).tabIndex).toBe(-1)
     expect(
       screen.getByRole('button', { name: 'เลื่อนผู้เล่น 1 ขึ้น' }).tabIndex,
     ).toBe(-1)
@@ -339,7 +339,7 @@ describe('คำต้องเชื่อม', () => {
     fireEvent.click(screen.getByRole('button', { name: 'เริ่มใหม่ทั้งหมด' }))
 
     expect(
-      screen.getByRole('heading', { name: 'เพิ่มผู้เล่น' }),
+      screen.getByRole('heading', { name: 'จัดรายชื่อผู้เล่น' }),
     ).toBeInTheDocument()
     expect(screen.getByLabelText('ชื่อผู้เล่น 1')).toHaveValue('')
     expect(screen.queryByLabelText('ชื่อผู้เล่น 2')).not.toBeInTheDocument()
