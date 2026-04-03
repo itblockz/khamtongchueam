@@ -3,15 +3,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
 import App from './App'
 
+function fillSetupNames(playerNames: string[]) {
+  playerNames.forEach((playerName, index) => {
+    fireEvent.change(screen.getByLabelText(`ชื่อผู้เล่น ${index + 1}`), {
+      target: { value: playerName },
+    })
+  })
+}
+
 function startTwoPlayerGame(firstPlayer: string, secondPlayer: string) {
   render(<App />)
-
-  fireEvent.change(screen.getByLabelText('ชื่อผู้เล่น 1'), {
-    target: { value: firstPlayer },
-  })
-  fireEvent.change(screen.getByLabelText('ชื่อผู้เล่น 2'), {
-    target: { value: secondPlayer },
-  })
+  fillSetupNames([firstPlayer, secondPlayer])
   fireEvent.click(screen.getByRole('button', { name: 'เริ่มเกม' }))
 }
 
@@ -26,6 +28,28 @@ describe('คำต้องเชื่อม', () => {
     vi.useRealTimers()
   })
 
+  it('starts setup with one focused blank row and adds a new blank row when typing in the last slot', () => {
+    render(<App />)
+
+    const firstInput = screen.getByLabelText('ชื่อผู้เล่น 1')
+
+    expect(firstInput).toHaveFocus()
+    expect(firstInput).toHaveValue('')
+    expect(screen.queryByLabelText('ชื่อผู้เล่น 2')).not.toBeInTheDocument()
+
+    fireEvent.change(firstInput, {
+      target: { value: 'มีน' },
+    })
+
+    expect(screen.getByLabelText('ชื่อผู้เล่น 2')).toHaveValue('')
+
+    fireEvent.change(screen.getByLabelText('ชื่อผู้เล่น 2'), {
+      target: { value: 'มายด์' },
+    })
+
+    expect(screen.getByLabelText('ชื่อผู้เล่น 3')).toHaveValue('')
+  })
+
   it('requires at least two unique trimmed names before starting', () => {
     render(<App />)
 
@@ -33,12 +57,7 @@ describe('คำต้องเชื่อม', () => {
 
     expect(startButton).toBeDisabled()
 
-    fireEvent.change(screen.getByLabelText('ชื่อผู้เล่น 1'), {
-      target: { value: 'มีน' },
-    })
-    fireEvent.change(screen.getByLabelText('ชื่อผู้เล่น 2'), {
-      target: { value: ' มีน ' },
-    })
+    fillSetupNames(['มีน', ' มีน '])
 
     expect(
       screen.getByText('ชื่อผู้เล่นห้ามซ้ำหลังตัดช่องว่างหน้า-ท้าย'),
@@ -50,6 +69,94 @@ describe('คำต้องเชื่อม', () => {
     })
 
     expect(startButton).toBeEnabled()
+  })
+
+  it('moves with Enter and starts the game from the trailing blank row', () => {
+    render(<App />)
+
+    const firstInput = screen.getByLabelText('ชื่อผู้เล่น 1')
+
+    fireEvent.change(firstInput, {
+      target: { value: 'มีน' },
+    })
+    fireEvent.keyDown(firstInput, { key: 'Enter' })
+
+    const secondInput = screen.getByLabelText('ชื่อผู้เล่น 2')
+
+    expect(secondInput).toHaveFocus()
+
+    fireEvent.change(secondInput, {
+      target: { value: 'มายด์' },
+    })
+    fireEvent.keyDown(secondInput, { key: 'Enter' })
+
+    const thirdInput = screen.getByLabelText('ชื่อผู้เล่น 3')
+
+    expect(thirdInput).toHaveFocus()
+
+    fireEvent.keyDown(thirdInput, { key: 'Enter' })
+
+    expect(
+      screen.getByRole('heading', { name: 'ถึงตา มีน' }),
+    ).toBeInTheDocument()
+  })
+
+  it('removes a cleared blank row with Backspace and moves focus to the previous row', () => {
+    render(<App />)
+    fillSetupNames(['เอ', 'บี', 'ซี'])
+
+    const secondInput = screen.getByLabelText('ชื่อผู้เล่น 2')
+
+    fireEvent.change(secondInput, {
+      target: { value: '' },
+    })
+
+    expect(screen.getByLabelText('ชื่อผู้เล่น 2')).toHaveValue('')
+    expect(screen.getByLabelText('ชื่อผู้เล่น 3')).toHaveValue('ซี')
+
+    fireEvent.keyDown(screen.getByLabelText('ชื่อผู้เล่น 2'), {
+      key: 'Backspace',
+    })
+
+    expect(screen.getByLabelText('ชื่อผู้เล่น 1')).toHaveFocus()
+    expect(screen.getByLabelText('ชื่อผู้เล่น 2')).toHaveValue('ซี')
+    expect(screen.getByLabelText('ชื่อผู้เล่น 3')).toHaveValue('')
+    expect(screen.queryByLabelText('ชื่อผู้เล่น 4')).not.toBeInTheDocument()
+  })
+
+  it('keeps row action buttons out of the Tab order', () => {
+    render(<App />)
+    fillSetupNames(['เอ', 'บี'])
+
+    expect(screen.getByRole('button', { name: 'เพิ่มผู้เล่น' }).tabIndex).toBe(-1)
+    expect(
+      screen.getByRole('button', { name: 'เลื่อนผู้เล่น 1 ขึ้น' }).tabIndex,
+    ).toBe(-1)
+    expect(
+      screen.getByRole('button', { name: 'เลื่อนผู้เล่น 1 ลง' }).tabIndex,
+    ).toBe(-1)
+    expect(
+      screen.getByRole('button', { name: 'ลบผู้เล่น 1' }).tabIndex,
+    ).toBe(-1)
+    expect(screen.getByRole('button', { name: 'เริ่มเกม' }).tabIndex).toBe(0)
+  })
+
+  it('supports pasting multiple lines and still flags duplicate names', () => {
+    render(<App />)
+
+    fireEvent.paste(screen.getByLabelText('ชื่อผู้เล่น 1'), {
+      clipboardData: {
+        getData: () => 'มีน\nมายด์\nมีน',
+      },
+    })
+
+    expect(screen.getByLabelText('ชื่อผู้เล่น 1')).toHaveValue('มีน')
+    expect(screen.getByLabelText('ชื่อผู้เล่น 2')).toHaveValue('มายด์')
+    expect(screen.getByLabelText('ชื่อผู้เล่น 3')).toHaveValue('มีน')
+    expect(screen.getByLabelText('ชื่อผู้เล่น 4')).toHaveValue('')
+    expect(
+      screen.getByText('ชื่อผู้เล่นห้ามซ้ำหลังตัดช่องว่างหน้า-ท้าย'),
+    ).toBeInTheDocument()
   })
 
   it('eliminates the current player when no input is started within 3 seconds', () => {
@@ -141,6 +248,6 @@ describe('คำต้องเชื่อม', () => {
       screen.getByRole('heading', { name: 'เพิ่มผู้เล่น' }),
     ).toBeInTheDocument()
     expect(screen.getByLabelText('ชื่อผู้เล่น 1')).toHaveValue('')
-    expect(screen.getByLabelText('ชื่อผู้เล่น 2')).toHaveValue('')
+    expect(screen.queryByLabelText('ชื่อผู้เล่น 2')).not.toBeInTheDocument()
   })
 })

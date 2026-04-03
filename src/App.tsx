@@ -1,9 +1,11 @@
 import {
+  type ClipboardEvent,
   useEffect,
   useRef,
   useState,
   type ChangeEvent,
   type FormEvent,
+  type KeyboardEvent,
 } from 'react'
 import './App.css'
 import {
@@ -27,22 +29,43 @@ function formatSeconds(timeLeftMs: number) {
 }
 
 function getSetupMessage(
-  playerDrafts: PlayerDraft[],
   validation: ReturnType<typeof getSetupValidation>,
 ) {
-  if (playerDrafts.length < 2) {
+  if (validation.playerCount < 2) {
     return 'ต้องมีผู้เล่นอย่างน้อย 2 คน'
-  }
-
-  if (validation.hasBlankNames) {
-    return 'กรอกชื่อให้ครบทุกช่องก่อนเริ่มเกม'
   }
 
   if (validation.hasDuplicates) {
     return 'ชื่อผู้เล่นห้ามซ้ำหลังตัดช่องว่างหน้า-ท้าย'
   }
 
-  return `พร้อมเริ่มเกม ${playerDrafts.length} คน`
+  return `พร้อมเริ่มเกม ${validation.playerCount} คน`
+}
+
+function isBlankDraft(draft: PlayerDraft) {
+  return draft.name.trim().length === 0
+}
+
+function ensureTrailingBlankDraft(playerDrafts: PlayerDraft[]) {
+  if (playerDrafts.length === 0) {
+    return [createPlayerDraft()]
+  }
+
+  const nextDrafts = [...playerDrafts]
+
+  while (
+    nextDrafts.length > 1 &&
+    isBlankDraft(nextDrafts[nextDrafts.length - 1]) &&
+    isBlankDraft(nextDrafts[nextDrafts.length - 2])
+  ) {
+    nextDrafts.pop()
+  }
+
+  if (!isBlankDraft(nextDrafts[nextDrafts.length - 1])) {
+    nextDrafts.push(createPlayerDraft())
+  }
+
+  return nextDrafts
 }
 
 function getPlayerStatusLabel(player: Player, activePlayerId: string | null) {
@@ -95,10 +118,12 @@ function getPlayerCardClass(player: Player, activePlayerId: string | null) {
 
 function App() {
   const [playerDrafts, setPlayerDrafts] = useState<PlayerDraft[]>(() =>
-    createInitialDrafts(),
+    ensureTrailingBlankDraft(createInitialDrafts()),
   )
   const [gameState, setGameState] = useState<GameState>(() => createSetupState())
   const answerInputRef = useRef<HTMLInputElement>(null)
+  const playerInputRefs = useRef<Record<string, HTMLInputElement | null>>({})
+  const pendingSetupFocusIdRef = useRef<string | null>(null)
 
   const validation = getSetupValidation(playerDrafts)
   const activePlayer =
@@ -174,6 +199,45 @@ function App() {
     }
   }, [gameState.phase, gameState.activePlayerId])
 
+  useEffect(() => {
+    if (gameState.phase !== 'setup') {
+      return
+    }
+
+    const targetId = pendingSetupFocusIdRef.current
+
+    if (!targetId) {
+      return
+    }
+
+    const targetInput = playerInputRefs.current[targetId]
+
+    if (targetInput) {
+      targetInput.focus()
+      targetInput.select()
+    }
+
+    pendingSetupFocusIdRef.current = null
+  }, [gameState.phase, playerDrafts])
+
+  function focusPlayerInput(draftId: string | null, shouldSelect = false) {
+    if (!draftId) {
+      return
+    }
+
+    const targetInput = playerInputRefs.current[draftId]
+
+    if (!targetInput) {
+      return
+    }
+
+    targetInput.focus()
+
+    if (shouldSelect) {
+      targetInput.select()
+    }
+  }
+
   function handlePlayerDraftChange(
     draftId: string,
     event: ChangeEvent<HTMLInputElement>,
@@ -181,14 +245,21 @@ function App() {
     const { value } = event.target
 
     setPlayerDrafts((current) =>
-      current.map((draft) =>
-        draft.id === draftId ? { ...draft, name: value } : draft,
+      ensureTrailingBlankDraft(
+        current.map((draft) =>
+          draft.id === draftId ? { ...draft, name: value } : draft,
+        ),
       ),
     )
   }
 
   function handleAddPlayer() {
-    setPlayerDrafts((current) => [...current, createPlayerDraft()])
+    setPlayerDrafts((current) => {
+      const nextDrafts = ensureTrailingBlankDraft(current)
+      pendingSetupFocusIdRef.current =
+        nextDrafts[nextDrafts.length - 1]?.id ?? null
+      return nextDrafts
+    })
   }
 
   function handleMovePlayer(draftId: string, direction: -1 | 1) {
@@ -213,9 +284,108 @@ function App() {
   }
 
   function handleRemovePlayer(draftId: string) {
-    setPlayerDrafts((current) =>
-      current.filter((draft) => draft.id !== draftId),
-    )
+    setPlayerDrafts((current) => {
+      const draftIndex = current.findIndex((draft) => draft.id === draftId)
+
+      if (draftIndex === -1) {
+        return current
+      }
+
+      const nextDrafts = ensureTrailingBlankDraft(
+        current.filter((draft) => draft.id !== draftId),
+      )
+      const focusIndex = Math.min(draftIndex, nextDrafts.length - 1)
+      pendingSetupFocusIdRef.current = nextDrafts[focusIndex]?.id ?? null
+      return nextDrafts
+    })
+  }
+
+  function handlePlayerDraftPaste(
+    draftId: string,
+    event: ClipboardEvent<HTMLInputElement>,
+  ) {
+    const pastedLines = event.clipboardData
+      .getData('text')
+      .split(/\r?\n/u)
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
+
+    if (pastedLines.length <= 1) {
+      return
+    }
+
+    event.preventDefault()
+
+    setPlayerDrafts((current) => {
+      const draftIndex = current.findIndex((draft) => draft.id === draftId)
+
+      if (draftIndex === -1) {
+        return current
+      }
+
+      const insertedDrafts = pastedLines.map((name) => createPlayerDraft(name))
+      const nextDrafts = ensureTrailingBlankDraft([
+        ...current.slice(0, draftIndex),
+        ...insertedDrafts,
+        ...current.slice(draftIndex + 1),
+      ])
+      const focusIndex = Math.min(draftIndex + insertedDrafts.length, nextDrafts.length - 1)
+      pendingSetupFocusIdRef.current = nextDrafts[focusIndex]?.id ?? null
+      return nextDrafts
+    })
+  }
+
+  function handlePlayerDraftKeyDown(
+    draftId: string,
+    index: number,
+    event: KeyboardEvent<HTMLInputElement>,
+  ) {
+    const currentDraft = playerDrafts[index]
+
+    if (!currentDraft || currentDraft.id !== draftId) {
+      return
+    }
+
+    const isTrailingRow = index === playerDrafts.length - 1
+    const hasName = currentDraft.name.trim().length > 0
+
+    if (event.key === 'Enter') {
+      event.preventDefault()
+
+      if (!hasName && isTrailingRow) {
+        if (validation.canStart) {
+          handleStartGame()
+        }
+        return
+      }
+
+      const nextDraft = playerDrafts[Math.min(index + 1, playerDrafts.length - 1)]
+      focusPlayerInput(nextDraft?.id ?? null, true)
+      return
+    }
+
+    if (
+      event.key === 'Backspace' &&
+      currentDraft.name.length === 0 &&
+      playerDrafts.length > 1
+    ) {
+      event.preventDefault()
+
+      setPlayerDrafts((current) => {
+        const draftIndex = current.findIndex((draft) => draft.id === draftId)
+
+        if (draftIndex === -1 || current[draftIndex].name.length > 0) {
+          return current
+        }
+
+        const nextDrafts = ensureTrailingBlankDraft(
+          current.filter((draft) => draft.id !== draftId),
+        )
+        const focusIndex = Math.max(0, draftIndex - 1)
+        pendingSetupFocusIdRef.current = nextDrafts[focusIndex]?.id ?? null
+        return nextDrafts
+      })
+    }
   }
 
   function handleStartGame() {
@@ -262,7 +432,7 @@ function App() {
   }
 
   function handleResetAll() {
-    setPlayerDrafts(createInitialDrafts())
+    setPlayerDrafts(ensureTrailingBlankDraft(createInitialDrafts()))
     setGameState(createSetupState())
   }
 
@@ -314,6 +484,7 @@ function App() {
                 className="secondary-button symbol-button compact-symbol-button"
                 onClick={handleAddPlayer}
                 aria-label="เพิ่มผู้เล่น"
+                tabIndex={-1}
                 title="เพิ่มผู้เล่น"
               >
                 <span className="button-symbol" aria-hidden="true">
@@ -323,7 +494,8 @@ function App() {
             </div>
 
             <p className="support-text">
-              ตั้งชื่อ แก้ไขรายชื่อ และสลับลำดับได้ก่อนเริ่มเกมเท่านั้น
+              พิมพ์ชื่อแล้วกด Enter เพื่อไปแถวถัดไป, กด Enter บนแถวว่างท้ายเพื่อเริ่ม,
+              กด Backspace บนช่องว่างเพื่อลบ และวางรายชื่อหลายบรรทัดได้
             </p>
 
             {playerDrafts.length > 0 ? (
@@ -342,12 +514,20 @@ function App() {
                         id={`player-${draft.id}`}
                         className="text-input"
                         type="text"
+                        ref={(input) => {
+                          playerInputRefs.current[draft.id] = input
+                        }}
                         value={draft.name}
                         onChange={(event) =>
                           handlePlayerDraftChange(draft.id, event)
                         }
+                        onKeyDown={(event) =>
+                          handlePlayerDraftKeyDown(draft.id, index, event)
+                        }
+                        onPaste={(event) => handlePlayerDraftPaste(draft.id, event)}
                         placeholder="เช่น เมย์"
                         autoComplete="off"
+                        autoFocus={index === 0}
                       />
                     </div>
 
@@ -358,6 +538,7 @@ function App() {
                         onClick={() => handleMovePlayer(draft.id, -1)}
                         disabled={index === 0}
                         aria-label={`เลื่อนผู้เล่น ${index + 1} ขึ้น`}
+                        tabIndex={-1}
                         title="เลื่อนขึ้น"
                       >
                         <span className="button-symbol" aria-hidden="true">
@@ -370,6 +551,7 @@ function App() {
                         onClick={() => handleMovePlayer(draft.id, 1)}
                         disabled={index === playerDrafts.length - 1}
                         aria-label={`เลื่อนผู้เล่น ${index + 1} ลง`}
+                        tabIndex={-1}
                         title="เลื่อนลง"
                       >
                         <span className="button-symbol" aria-hidden="true">
@@ -381,6 +563,7 @@ function App() {
                         className="ghost-button danger-button symbol-button compact-symbol-button"
                         onClick={() => handleRemovePlayer(draft.id)}
                         aria-label={`ลบผู้เล่น ${index + 1}`}
+                        tabIndex={-1}
                         title="ลบผู้เล่น"
                       >
                         <span className="button-symbol" aria-hidden="true">
@@ -404,7 +587,7 @@ function App() {
                   validation.canStart ? 'is-ready' : ''
                 }`}
               >
-                {getSetupMessage(playerDrafts, validation)}
+                {getSetupMessage(validation)}
               </p>
 
               <button

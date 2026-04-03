@@ -81,7 +81,7 @@ export function createPlayerDraft(name = ''): PlayerDraft {
   }
 }
 
-export function createInitialDrafts(count = 2) {
+export function createInitialDrafts(count = 1) {
   return Array.from({ length: count }, () => createPlayerDraft())
 }
 
@@ -101,24 +101,28 @@ export function createSetupState(): GameState {
 }
 
 export function getSetupValidation(playerDrafts: PlayerDraft[]) {
-  const trimmedNames = playerDrafts.map((draft) => draft.name.trim())
-  const hasBlankNames = trimmedNames.some((name) => name.length === 0)
-  const normalizedNames = trimmedNames.map((name) => name.toLocaleLowerCase())
+  const meaningfulNames = playerDrafts
+    .map((draft) => draft.name.trim())
+    .filter((name) => name.length > 0)
+  const normalizedNames = meaningfulNames.map((name) => name.toLocaleLowerCase())
   const hasDuplicates =
     new Set(normalizedNames).size !== normalizedNames.length
 
   return {
-    hasBlankNames,
+    hasBlankNames: false,
     hasDuplicates,
-    canStart: playerDrafts.length >= 2 && !hasBlankNames && !hasDuplicates,
+    playerCount: meaningfulNames.length,
+    canStart: meaningfulNames.length >= 2 && !hasDuplicates,
   }
 }
 
 export function prepareRoster(playerDrafts: PlayerDraft[]): PlayerSeed[] {
-  return playerDrafts.map((draft) => ({
-    id: draft.id,
-    name: draft.name.trim(),
-  }))
+  return playerDrafts
+    .map((draft) => ({
+      id: draft.id,
+      name: draft.name.trim(),
+    }))
+    .filter((draft) => draft.name.length > 0)
 }
 
 export function createGameState(
