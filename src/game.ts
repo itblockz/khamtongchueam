@@ -32,6 +32,7 @@ export interface GameState {
   timeLeftMs: number
   isSafeToFinish: boolean
   winnerId: string | null
+  isAwaitingFirstTurnStart: boolean
 }
 
 export type AdvanceTurnAction =
@@ -84,6 +85,16 @@ function markWinner(players: Player[], winnerId: string) {
   )
 }
 
+function createPlayers(playerSeeds: PlayerSeed[]): Player[] {
+  return playerSeeds.map((seed) => ({
+    id: seed.id,
+    name: seed.name,
+    status: 'active' as const,
+    answers: [],
+    eliminatedAtRound: null,
+  }))
+}
+
 export function createPlayerDraft(name = ''): PlayerDraft {
   return {
     id: createId(),
@@ -107,6 +118,7 @@ export function createSetupState(): GameState {
     timeLeftMs: TURN_DURATION_MS,
     isSafeToFinish: false,
     winnerId: null,
+    isAwaitingFirstTurnStart: false,
   }
 }
 
@@ -140,13 +152,7 @@ export function createGameState(
   now = Date.now(),
   durationMs = TURN_DURATION_MS,
 ): GameState {
-  const players = playerSeeds.map((seed) => ({
-    id: seed.id,
-    name: seed.name,
-    status: 'active' as const,
-    answers: [],
-    eliminatedAtRound: null,
-  }))
+  const players = createPlayers(playerSeeds)
 
   return {
     phase: 'playing',
@@ -154,6 +160,44 @@ export function createGameState(
     activePlayerId: players[0]?.id ?? null,
     round: 1,
     winnerId: null,
+    isAwaitingFirstTurnStart: false,
+    ...buildTurnState(now, durationMs),
+  }
+}
+
+export function createConfirmedGameState(
+  playerSeeds: PlayerSeed[],
+  durationMs = TURN_DURATION_MS,
+): GameState {
+  const players = createPlayers(playerSeeds)
+
+  return {
+    phase: 'playing',
+    players,
+    activePlayerId: players[0]?.id ?? null,
+    round: 1,
+    winnerId: null,
+    isAwaitingFirstTurnStart: true,
+    ...buildPausedTurnState(durationMs),
+  }
+}
+
+export function startActiveTurn(
+  state: GameState,
+  now = Date.now(),
+  durationMs = TURN_DURATION_MS,
+): GameState {
+  if (
+    state.phase !== 'playing' ||
+    state.activePlayerId === null ||
+    !state.isAwaitingFirstTurnStart
+  ) {
+    return state
+  }
+
+  return {
+    ...state,
+    isAwaitingFirstTurnStart: false,
     ...buildTurnState(now, durationMs),
   }
 }
@@ -163,7 +207,7 @@ export function applyInputChange(
   nextValue: string,
   now = Date.now(),
 ): GameState {
-  if (state.phase !== 'playing') {
+  if (state.phase !== 'playing' || state.isAwaitingFirstTurnStart) {
     return state
   }
 
@@ -185,7 +229,11 @@ export function advanceTurn(
   action: AdvanceTurnAction,
   durationMs = TURN_DURATION_MS,
 ): GameState {
-  if (state.phase !== 'playing' || state.activePlayerId === null) {
+  if (
+    state.phase !== 'playing' ||
+    state.activePlayerId === null ||
+    state.isAwaitingFirstTurnStart
+  ) {
     return state
   }
 
@@ -266,6 +314,7 @@ export function advanceTurn(
       timeLeftMs: 0,
       isSafeToFinish: false,
       winnerId,
+      isAwaitingFirstTurnStart: false,
     }
   }
 
@@ -281,6 +330,7 @@ export function advanceTurn(
     activePlayerId: nextPlayers[nextIndex].id,
     round: nextIndex <= currentIndex ? state.round + 1 : state.round,
     winnerId: null,
+    isAwaitingFirstTurnStart: false,
     ...(shouldPauseNextTurn
       ? buildPausedTurnState(durationMs)
       : buildTurnState(now, durationMs)),

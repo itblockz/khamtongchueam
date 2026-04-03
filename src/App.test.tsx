@@ -14,7 +14,8 @@ function fillSetupNames(playerNames: string[]) {
 function startTwoPlayerGame(firstPlayer: string, secondPlayer: string) {
   render(<App />)
   fillSetupNames([firstPlayer, secondPlayer])
-  fireEvent.click(screen.getByRole('button', { name: 'เริ่มเกม' }))
+  fireEvent.click(screen.getByRole('button', { name: 'ยืนยันผู้เล่น' }))
+  fireEvent.click(screen.getByRole('button', { name: 'เริ่มรอบแรก' }))
 }
 
 describe('คำต้องเชื่อม', () => {
@@ -53,7 +54,7 @@ describe('คำต้องเชื่อม', () => {
   it('requires at least two unique trimmed names before starting', () => {
     render(<App />)
 
-    const startButton = screen.getByRole('button', { name: 'เริ่มเกม' })
+    const startButton = screen.getByRole('button', { name: 'ยืนยันผู้เล่น' })
 
     expect(startButton).toBeDisabled()
 
@@ -71,7 +72,7 @@ describe('คำต้องเชื่อม', () => {
     expect(startButton).toBeEnabled()
   })
 
-  it('moves with Enter and starts the game from the trailing blank row', () => {
+  it('moves with Enter and confirms players from the trailing blank row', () => {
     render(<App />)
 
     const firstInput = screen.getByLabelText('ชื่อผู้เล่น 1')
@@ -99,6 +100,8 @@ describe('คำต้องเชื่อม', () => {
     expect(
       screen.getByRole('heading', { name: 'ถึงตา มีน' }),
     ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'เริ่มรอบแรก' })).toBeInTheDocument()
+    expect(screen.getByLabelText('คำตอบของ มีน')).toBeDisabled()
   })
 
   it('removes a cleared blank row with Backspace and moves focus to the previous row', () => {
@@ -138,7 +141,7 @@ describe('คำต้องเชื่อม', () => {
     expect(
       screen.getByRole('button', { name: 'ลบผู้เล่น 1' }).tabIndex,
     ).toBe(-1)
-    expect(screen.getByRole('button', { name: 'เริ่มเกม' }).tabIndex).toBe(0)
+    expect(screen.getByRole('button', { name: 'ยืนยันผู้เล่น' }).tabIndex).toBe(0)
   })
 
   it('supports pasting multiple lines and still flags duplicate names', () => {
@@ -156,6 +159,54 @@ describe('คำต้องเชื่อม', () => {
     expect(screen.getByLabelText('ชื่อผู้เล่น 4')).toHaveValue('')
     expect(
       screen.getByText('ชื่อผู้เล่นห้ามซ้ำหลังตัดช่องว่างหน้า-ท้าย'),
+    ).toBeInTheDocument()
+  })
+
+  it('confirms players without starting the first timer immediately', () => {
+    render(<App />)
+    fillSetupNames(['ออย', 'บีม'])
+
+    fireEvent.click(screen.getByRole('button', { name: 'ยืนยันผู้เล่น' }))
+
+    expect(
+      screen.getByRole('heading', { name: 'ถึงตา ออย' }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'เริ่มรอบแรก' })).toBeInTheDocument()
+    expect(screen.getByLabelText('คำตอบของ ออย')).toBeDisabled()
+
+    act(() => {
+      vi.advanceTimersByTime(5000)
+    })
+
+    expect(
+      screen.getByRole('heading', { name: 'ถึงตา ออย' }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'เริ่มรอบแรก' })).toBeInTheDocument()
+    expect(screen.getByLabelText('คำตอบของ ออย')).toBeDisabled()
+  })
+
+  it('focuses the first-turn start button and lets Enter start the first round', () => {
+    render(<App />)
+    fillSetupNames(['ออย', 'บีม'])
+
+    fireEvent.click(screen.getByRole('button', { name: 'ยืนยันผู้เล่น' }))
+
+    const startFirstTurnButton = screen.getByRole('button', {
+      name: 'เริ่มรอบแรก',
+    })
+
+    expect(startFirstTurnButton).toHaveFocus()
+
+    fireEvent.keyDown(startFirstTurnButton, { key: 'Enter', code: 'Enter' })
+
+    expect(screen.getByLabelText('คำตอบของ ออย')).toBeEnabled()
+
+    act(() => {
+      vi.advanceTimersByTime(3100)
+    })
+
+    expect(
+      screen.getByRole('heading', { name: 'ผู้ชนะคือ บีม' }),
     ).toBeInTheDocument()
   })
 
@@ -211,7 +262,8 @@ describe('คำต้องเชื่อม', () => {
   it('pauses the timer for the next player after someone is eliminated', () => {
     render(<App />)
     fillSetupNames(['เอ', 'บี', 'ซี'])
-    fireEvent.click(screen.getByRole('button', { name: 'เริ่มเกม' }))
+    fireEvent.click(screen.getByRole('button', { name: 'ยืนยันผู้เล่น' }))
+    fireEvent.click(screen.getByRole('button', { name: 'เริ่มรอบแรก' }))
 
     fireEvent.change(screen.getByLabelText('คำตอบของ เอ'), {
       target: { value: 'คำแรก' },

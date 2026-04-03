@@ -241,6 +241,14 @@
   color: #918073;
 }
 
+.text-input:disabled {
+  color: #8a7a6f;
+  border-color: rgba(176, 126, 82, 0.18);
+  background: rgba(244, 238, 230, 0.92);
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
 .text-input:focus {
   outline: none;
   border-color: var(--accent);
@@ -389,6 +397,15 @@ button:disabled {
   color: #1e5e49;
 }
 
+.turn-timer-pill.is-pending {
+  border-color: rgba(176, 126, 82, 0.22);
+  background: rgba(243, 232, 216, 0.94);
+}
+
+.turn-timer-pill.is-pending strong {
+  color: #6a4d39;
+}
+
 .turn-timer-pill.is-paused {
   border-color: rgba(114, 94, 73, 0.18);
   background: rgba(237, 225, 208, 0.92);
@@ -410,6 +427,13 @@ button:disabled {
 .answer-panel .compact-symbol-button {
   min-width: 72px;
   min-height: 60px;
+  border-radius: 22px;
+}
+
+.start-turn-button {
+  min-width: 168px;
+  min-height: 60px;
+  padding: 0 22px;
   border-radius: 22px;
 }
 

@@ -12,12 +12,14 @@ import {
   TURN_DURATION_MS,
   advanceTurn,
   applyInputChange,
+  createConfirmedGameState,
   createGameState,
   createInitialDrafts,
   createPlayerDraft,
   createSetupState,
   getSetupValidation,
   prepareRoster,
+  startActiveTurn,
   type GameState,
   type Player,
   type PlayerDraft,
@@ -39,7 +41,7 @@ function getSetupMessage(
     return 'ชื่อผู้เล่นห้ามซ้ำหลังตัดช่องว่างหน้า-ท้าย'
   }
 
-  return `พร้อมเริ่มเกม ${validation.playerCount} คน`
+  return `พร้อมยืนยันผู้เล่น ${validation.playerCount} คน`
 }
 
 function isBlankDraft(draft: PlayerDraft) {
@@ -122,6 +124,7 @@ function App() {
   )
   const [gameState, setGameState] = useState<GameState>(() => createSetupState())
   const answerInputRef = useRef<HTMLInputElement>(null)
+  const startFirstTurnButtonRef = useRef<HTMLButtonElement>(null)
   const playerInputRefs = useRef<Record<string, HTMLInputElement | null>>({})
   const pendingSetupFocusIdRef = useRef<string | null>(null)
 
@@ -141,25 +144,31 @@ function App() {
     (sum, player) => sum + player.answers.length,
     0,
   )
+  const isAwaitingFirstTurnStart =
+    gameState.phase === 'playing' && gameState.isAwaitingFirstTurnStart
   const isPausedTurn =
     gameState.phase === 'playing' &&
+    !gameState.isAwaitingFirstTurnStart &&
     gameState.activePlayerId !== null &&
     gameState.turnStartedAt === null &&
     !gameState.isSafeToFinish
   const canSubmitCurrentTurn =
     gameState.phase === 'playing' &&
+    !gameState.isAwaitingFirstTurnStart &&
     gameState.currentInput.trim().length > 0 &&
     (gameState.isSafeToFinish || gameState.timeLeftMs > 0)
   const timerTone =
-    gameState.phase === 'playing' && isPausedTurn
-      ? 'is-paused'
+    gameState.phase === 'playing' && isAwaitingFirstTurnStart
+      ? 'is-pending'
+      : gameState.phase === 'playing' && isPausedTurn
+        ? 'is-paused'
       : gameState.phase === 'playing' && gameState.isSafeToFinish
         ? 'is-safe'
         : gameState.phase === 'playing' && gameState.timeLeftMs <= 1000
           ? 'is-urgent'
           : ''
   const timerValue =
-    gameState.phase === 'playing' && isPausedTurn
+    gameState.phase === 'playing' && (isAwaitingFirstTurnStart || isPausedTurn)
       ? 'รอเริ่ม'
       : gameState.phase === 'playing' && gameState.isSafeToFinish
         ? 'ผ่านแล้ว'
@@ -167,7 +176,7 @@ function App() {
           ? `${formatSeconds(gameState.timeLeftMs)}s`
           : ''
   const timerAriaLabel =
-    gameState.phase === 'playing' && isPausedTurn
+    gameState.phase === 'playing' && (isAwaitingFirstTurnStart || isPausedTurn)
       ? 'เวลา รอเริ่ม'
       : gameState.phase === 'playing' && gameState.isSafeToFinish
         ? 'เวลา ผ่านแล้ว'
@@ -211,10 +220,24 @@ function App() {
   })
 
   useEffect(() => {
-    if (gameState.phase === 'playing') {
+    if (gameState.phase !== 'playing') {
+      return
+    }
+
+    if (gameState.isAwaitingFirstTurnStart) {
+      startFirstTurnButtonRef.current?.focus()
+      return
+    }
+
+    if (!gameState.isAwaitingFirstTurnStart) {
       answerInputRef.current?.focus()
     }
-  }, [gameState.phase, gameState.activePlayerId])
+  }, [
+    gameState.phase,
+    gameState.activePlayerId,
+    gameState.turnStartedAt,
+    gameState.isAwaitingFirstTurnStart,
+  ])
 
   useEffect(() => {
     if (gameState.phase !== 'setup') {
@@ -374,7 +397,7 @@ function App() {
 
       if (!hasName && isTrailingRow) {
         if (validation.canStart) {
-          handleStartGame()
+          handleConfirmPlayers()
         }
         return
       }
@@ -408,19 +431,34 @@ function App() {
     }
   }
 
-  function handleStartGame() {
+  function handleConfirmPlayers() {
     if (!validation.canStart) {
       return
     }
 
-    setGameState(createGameState(prepareRoster(playerDrafts)))
+    setGameState(createConfirmedGameState(prepareRoster(playerDrafts)))
+  }
+
+  function handleStartFirstTurn() {
+    setGameState((current) => startActiveTurn(current))
+  }
+
+  function handleStartFirstTurnKeyDown(
+    event: KeyboardEvent<HTMLButtonElement>,
+  ) {
+    if (event.key !== 'Enter') {
+      return
+    }
+
+    event.preventDefault()
+    handleStartFirstTurn()
   }
 
   function handleAnswerChange(event: ChangeEvent<HTMLInputElement>) {
     const { value } = event.target
 
     setGameState((current) => {
-      if (current.phase !== 'playing') {
+      if (current.phase !== 'playing' || current.isAwaitingFirstTurnStart) {
         return current
       }
 
@@ -485,8 +523,8 @@ function App() {
               </button>
             </div>
 
-            <p className="support-text setup-support">
-              พิมพ์ชื่อแล้วกด Enter เพื่อไปแถวถัดไป, กด Enter บนแถวว่างท้ายเพื่อเริ่ม,
+              <p className="support-text setup-support">
+              พิมพ์ชื่อแล้วกด Enter เพื่อไปแถวถัดไป, กด Enter บนแถวว่างท้ายเพื่อยืนยันรายชื่อ,
               กด Backspace บนช่องว่างเพื่อลบ และวางรายชื่อหลายบรรทัดได้
             </p>
 
@@ -588,9 +626,9 @@ function App() {
                 type="button"
                 className="primary-button symbol-button compact-symbol-button start-button"
                 disabled={!validation.canStart}
-                onClick={handleStartGame}
-                aria-label="เริ่มเกม"
-                title="เริ่มเกม"
+                onClick={handleConfirmPlayers}
+                aria-label="ยืนยันผู้เล่น"
+                title="ยืนยันผู้เล่น"
               >
                 <span className="button-symbol" aria-hidden="true">
                   ▶
@@ -609,11 +647,15 @@ function App() {
               <p className="eyebrow">บันทึกคำตอบ</p>
               <label htmlFor="current-answer">คำตอบของ {activePlayer.name}</label>
               <p className="support-text">
-                {isPausedTurn
+                {isAwaitingFirstTurnStart
+                  ? `ยืนยันผู้เล่นแล้ว กดเริ่มรอบแรกเพื่อเริ่มจับเวลา ${activePlayer.name}`
+                  : isPausedTurn
                   ? `ยังไม่เริ่มจับเวลา คนก่อนหน้าเพิ่งตกรอบ พอส่งคำของ ${activePlayer.name} แล้วระบบจะเริ่มนับเวลาของคนถัดไป`
                   : 'เมื่อเริ่มพิมพ์ตัวแรกทันเวลาแล้ว ระบบจะล็อกคิวไว้ให้ผู้เล่นคนนี้จนกว่าจะส่งคำ'}
               </p>
-              {isPausedTurn && <span className="sr-only">ยังไม่เริ่มจับเวลา</span>}
+              {(isAwaitingFirstTurnStart || isPausedTurn) && (
+                <span className="sr-only">ยังไม่เริ่มจับเวลา</span>
+              )}
             </div>
 
             <div className="answer-controls">
@@ -626,6 +668,7 @@ function App() {
                 onChange={handleAnswerChange}
                 placeholder="พิมพ์คำตอบของผู้เล่น"
                 autoComplete="off"
+                disabled={isAwaitingFirstTurnStart}
               />
               <div
                 className={`turn-timer-pill ${timerTone}`}
@@ -635,17 +678,34 @@ function App() {
                 <span>เวลา</span>
                 <strong>{timerValue}</strong>
               </div>
-              <button
-                type="submit"
-                className="primary-button symbol-button compact-symbol-button"
-                disabled={!canSubmitCurrentTurn}
-                aria-label="ถัดไป"
-                title="ถัดไป"
-              >
-                <span className="button-symbol" aria-hidden="true">
-                  →
-                </span>
-              </button>
+              {isAwaitingFirstTurnStart ? (
+                <button
+                  ref={startFirstTurnButtonRef}
+                  type="button"
+                  className="primary-button symbol-button start-turn-button"
+                  onClick={handleStartFirstTurn}
+                  onKeyDown={handleStartFirstTurnKeyDown}
+                  aria-label="เริ่มรอบแรก"
+                  title="เริ่มรอบแรก"
+                >
+                  <span className="button-symbol" aria-hidden="true">
+                    ▶
+                  </span>
+                  <span className="button-copy">เริ่มรอบแรก</span>
+                </button>
+              ) : (
+                <button
+                  type="submit"
+                  className="primary-button symbol-button compact-symbol-button"
+                  disabled={!canSubmitCurrentTurn}
+                  aria-label="ถัดไป"
+                  title="ถัดไป"
+                >
+                  <span className="button-symbol" aria-hidden="true">
+                    →
+                  </span>
+                </button>
+              )}
             </div>
           </form>
 
