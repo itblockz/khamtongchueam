@@ -109,6 +109,32 @@
   font-size: 0.92rem;
 }
 
+.stat-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.stat-symbol,
+.headline-symbol,
+.status-symbol,
+.rule-symbol,
+.button-symbol {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+}
+
+.stat-symbol {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  background: rgba(221, 107, 54, 0.12);
+  color: var(--accent-strong);
+  font-size: 1rem;
+}
+
 .stat-tile strong {
   color: var(--ink);
   font-family: var(--display);
@@ -162,6 +188,11 @@
 .spotlight-copy h2,
 .winner-panel h2 {
   margin-top: 6px;
+}
+
+.headline-symbol {
+  width: 1.65em;
+  color: var(--accent-strong);
 }
 
 .support-text {
@@ -232,6 +263,32 @@
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
+}
+
+.symbol-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.compact-symbol-button {
+  min-width: 52px;
+  padding: 0 14px;
+}
+
+.start-button {
+  min-width: 64px;
+}
+
+.button-symbol {
+  font-size: 1.18rem;
+  line-height: 1;
+}
+
+.button-copy {
+  font-size: 0.92rem;
+  letter-spacing: 0.04em;
 }
 
 .text-input {
@@ -326,20 +383,15 @@ button:disabled {
 }
 
 .rule-list li {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
   line-height: 1.65;
-  padding-left: 18px;
-  position: relative;
 }
 
-.rule-list li::before {
-  content: '';
-  position: absolute;
-  top: 0.78em;
-  left: 0;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--accent);
+.rule-symbol {
+  min-width: 20px;
+  color: var(--accent-strong);
 }
 
 .spotlight-panel {
@@ -456,6 +508,21 @@ button:disabled {
 .player-chip span,
 .player-chip small {
   color: var(--muted);
+}
+
+.status-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.status-symbol {
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: rgba(221, 107, 54, 0.12);
+  color: var(--accent-strong);
+  font-size: 0.82rem;
 }
 
 .player-chip.is-active {

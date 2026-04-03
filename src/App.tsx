@@ -61,6 +61,22 @@ function getPlayerStatusLabel(player: Player, activePlayerId: string | null) {
   return 'รอคิว'
 }
 
+function getPlayerStatusSymbol(player: Player, activePlayerId: string | null) {
+  if (player.status === 'winner') {
+    return '★'
+  }
+
+  if (player.status === 'eliminated') {
+    return '×'
+  }
+
+  if (player.id === activePlayerId) {
+    return '▶'
+  }
+
+  return '◌'
+}
+
 function getPlayerCardClass(player: Player, activePlayerId: string | null) {
   if (player.status === 'winner') {
     return 'player-chip is-winner'
@@ -108,20 +124,20 @@ function App() {
   const heroStats =
     gameState.phase === 'playing'
       ? [
-          { label: 'รอบปัจจุบัน', value: `รอบ ${gameState.round}` },
-          { label: 'ผู้เล่นที่เหลือ', value: `${activePlayers.length} คน` },
-          { label: 'เวลาต่อเทิร์น', value: '3 วินาที' },
+          { symbol: '◎', label: 'รอบปัจจุบัน', value: `รอบ ${gameState.round}` },
+          { symbol: '◌', label: 'ผู้เล่นที่เหลือ', value: `${activePlayers.length} คน` },
+          { symbol: '⌛', label: 'เวลาต่อเทิร์น', value: '3 วินาที' },
         ]
       : gameState.phase === 'finished' && winner
         ? [
-            { label: 'ผู้ชนะ', value: winner.name },
-            { label: 'จำนวนคำทั้งหมด', value: `${totalAnswers} คำ` },
-            { label: 'รอบสุดท้าย', value: `รอบ ${gameState.round}` },
+            { symbol: '★', label: 'ผู้ชนะ', value: winner.name },
+            { symbol: '∑', label: 'จำนวนคำทั้งหมด', value: `${totalAnswers} คำ` },
+            { symbol: '◆', label: 'รอบสุดท้าย', value: `รอบ ${gameState.round}` },
           ]
         : [
-            { label: 'โหมดเล่น', value: 'โฮสต์คนเดียว' },
-            { label: 'เวลาต่อคน', value: '3 วินาที' },
-            { label: 'เงื่อนไขชนะ', value: 'เหลือคนสุดท้าย' },
+            { symbol: '◇', label: 'โหมดเล่น', value: 'ผู้ดำเนินเกมคนเดียว' },
+            { symbol: '⌛', label: 'เวลาต่อคน', value: '3 วินาที' },
+            { symbol: '★', label: 'เงื่อนไขชนะ', value: 'เหลือคนสุดท้าย' },
           ]
 
   useTurnTimer({
@@ -257,10 +273,10 @@ function App() {
 
       <header className="hero-banner">
         <div className="hero-copy">
-          <p className="eyebrow">HOST-ONLY WORD CHAIN</p>
+          <p className="eyebrow">ผู้ดำเนินเกมคนเดียว</p>
           <h1>คำต้องเชื่อม</h1>
           <p className="hero-text">
-            โฮสต์คนเดียวควบคุมคิวผู้เล่น จับเวลา 3 วินาที และบันทึกคำตอบทีละคน
+            ผู้ดำเนินเกมคนเดียวควบคุมลำดับผู้เล่น จับเวลา 3 วินาที และบันทึกคำตอบทีละคน
             ใครไม่เริ่มพิมพ์ในเวลาจะตกรอบทันที
           </p>
         </div>
@@ -268,7 +284,12 @@ function App() {
         <div className="hero-stats" aria-label="ข้อมูลสรุปเกม">
           {heroStats.map((stat) => (
             <article className="stat-tile" key={stat.label}>
-              <span>{stat.label}</span>
+              <div className="stat-head">
+                <span className="stat-symbol" aria-hidden="true">
+                  {stat.symbol}
+                </span>
+                <span>{stat.label}</span>
+              </div>
               <strong>{stat.value}</strong>
             </article>
           ))}
@@ -281,14 +302,23 @@ function App() {
             <div className="panel-header">
               <div>
                 <p className="eyebrow">เตรียมรายชื่อ</p>
-                <h2>เพิ่มผู้เล่น</h2>
+                <h2>
+                  <span className="headline-symbol" aria-hidden="true">
+                    ＋
+                  </span>
+                  เพิ่มผู้เล่น
+                </h2>
               </div>
               <button
                 type="button"
-                className="secondary-button"
+                className="secondary-button symbol-button compact-symbol-button"
                 onClick={handleAddPlayer}
+                aria-label="เพิ่มผู้เล่น"
+                title="เพิ่มผู้เล่น"
               >
-                เพิ่มผู้เล่น
+                <span className="button-symbol" aria-hidden="true">
+                  ＋
+                </span>
               </button>
             </div>
 
@@ -324,29 +354,38 @@ function App() {
                     <div className="draft-actions">
                       <button
                         type="button"
-                        className="ghost-button"
+                        className="ghost-button symbol-button compact-symbol-button"
                         onClick={() => handleMovePlayer(draft.id, -1)}
                         disabled={index === 0}
                         aria-label={`เลื่อนผู้เล่น ${index + 1} ขึ้น`}
+                        title="เลื่อนขึ้น"
                       >
-                        ขึ้น
+                        <span className="button-symbol" aria-hidden="true">
+                          ↑
+                        </span>
                       </button>
                       <button
                         type="button"
-                        className="ghost-button"
+                        className="ghost-button symbol-button compact-symbol-button"
                         onClick={() => handleMovePlayer(draft.id, 1)}
                         disabled={index === playerDrafts.length - 1}
                         aria-label={`เลื่อนผู้เล่น ${index + 1} ลง`}
+                        title="เลื่อนลง"
                       >
-                        ลง
+                        <span className="button-symbol" aria-hidden="true">
+                          ↓
+                        </span>
                       </button>
                       <button
                         type="button"
-                        className="ghost-button danger-button"
+                        className="ghost-button danger-button symbol-button compact-symbol-button"
                         onClick={() => handleRemovePlayer(draft.id)}
                         aria-label={`ลบผู้เล่น ${index + 1}`}
+                        title="ลบผู้เล่น"
                       >
-                        ลบ
+                        <span className="button-symbol" aria-hidden="true">
+                          ×
+                        </span>
                       </button>
                     </div>
                   </li>
@@ -370,23 +409,52 @@ function App() {
 
               <button
                 type="button"
-                className="primary-button"
+                className="primary-button symbol-button compact-symbol-button start-button"
                 disabled={!validation.canStart}
                 onClick={handleStartGame}
+                aria-label="เริ่มเกม"
+                title="เริ่มเกม"
               >
-                เริ่มเกม
+                <span className="button-symbol" aria-hidden="true">
+                  ▶
+                </span>
               </button>
             </div>
           </section>
 
           <aside className="panel panel-side">
             <p className="eyebrow">กติกาย่อ</p>
-            <h2>โฟลว์ของโฮสต์</h2>
+            <h2>
+              <span className="headline-symbol" aria-hidden="true">
+                ↔
+              </span>
+              ลำดับการเล่นของผู้ดำเนินเกม
+            </h2>
             <ul className="rule-list">
-              <li>เริ่มเทิร์นแล้วต้องเริ่มพิมพ์ภายใน 3 วินาที</li>
-              <li>ถ้าเริ่มพิมพ์ทันเวลา จะพิมพ์ต่อได้นานเท่าที่ต้องการ</li>
-              <li>กด Enter หรือปุ่มถัดไปเมื่อคำตอบจบแล้ว</li>
-              <li>ใครไม่ทันจะตกรอบทันที เกมจบเมื่อเหลือผู้เล่นคนเดียว</li>
+              <li>
+                <span className="rule-symbol" aria-hidden="true">
+                  ⌛
+                </span>
+                เริ่มเทิร์นแล้วต้องเริ่มพิมพ์ภายใน 3 วินาที
+              </li>
+              <li>
+                <span className="rule-symbol" aria-hidden="true">
+                  ✓
+                </span>
+                ถ้าเริ่มพิมพ์ทันเวลา จะพิมพ์ต่อได้นานเท่าที่ต้องการ
+              </li>
+              <li>
+                <span className="rule-symbol" aria-hidden="true">
+                  →
+                </span>
+                กดแป้นยืนยันหรือปุ่มถัดไปเมื่อคำตอบจบแล้ว
+              </li>
+              <li>
+                <span className="rule-symbol" aria-hidden="true">
+                  ×
+                </span>
+                ใครไม่ทันจะตกรอบทันที เกมจบเมื่อเหลือผู้เล่นคนเดียว
+              </li>
             </ul>
           </aside>
         </section>
@@ -397,7 +465,12 @@ function App() {
           <section className="panel spotlight-panel">
             <div className="spotlight-copy">
               <p className="eyebrow">รอบที่ {gameState.round}</p>
-              <h2>ถึงตา {activePlayer.name}</h2>
+              <h2>
+                <span className="headline-symbol" aria-hidden="true">
+                  ▶
+                </span>
+                ถึงตา {activePlayer.name}
+              </h2>
               <p className="support-text">
                 โฮสต์พิมพ์คำตอบตามที่ผู้เล่นพูด เมื่อคำจบแล้วค่อยส่งไปคนถัดไป
               </p>
@@ -415,13 +488,13 @@ function App() {
             >
               {gameState.isSafeToFinish ? (
                 <>
-                  <span>ผ่านเวลาแล้ว</span>
+                  <span>✓ ผ่านเวลาแล้ว</span>
                   <strong>เริ่มพิมพ์ทันเวลาแล้ว</strong>
                   <p>พิมพ์ต่อได้จนกว่าจะกดถัดไป</p>
                 </>
               ) : (
                 <>
-                  <span>เวลาที่เหลือ</span>
+                  <span>⌛ เวลาที่เหลือ</span>
                   <strong>{formatSeconds(gameState.timeLeftMs)} วินาที</strong>
                   <p>ถ้ายังไม่เริ่มพิมพ์เมื่อหมดเวลา ผู้เล่นจะตกรอบทันที</p>
                 </>
@@ -450,10 +523,14 @@ function App() {
               />
               <button
                 type="submit"
-                className="primary-button"
+                className="primary-button symbol-button compact-symbol-button"
                 disabled={!canSubmitCurrentTurn}
+                aria-label="ถัดไป"
+                title="ถัดไป"
               >
-                ถัดไป
+                <span className="button-symbol" aria-hidden="true">
+                  →
+                </span>
               </button>
             </div>
           </form>
@@ -463,7 +540,12 @@ function App() {
               <div className="panel-header compact">
                 <div>
                   <p className="eyebrow">ยังอยู่ในเกม</p>
-                  <h2>ลำดับผู้เล่น</h2>
+                  <h2>
+                    <span className="headline-symbol" aria-hidden="true">
+                      ◌
+                    </span>
+                    ลำดับผู้เล่น
+                  </h2>
                 </div>
                 <span className="count-badge">{activePlayers.length} คน</span>
               </div>
@@ -478,13 +560,19 @@ function App() {
                     >
                       <div>
                         <strong>{player.name}</strong>
-                        <span>
+                        <span className="status-line">
+                          <span className="status-symbol" aria-hidden="true">
+                            {getPlayerStatusSymbol(
+                              player,
+                              gameState.activePlayerId,
+                            )}
+                          </span>
                           {getPlayerStatusLabel(player, gameState.activePlayerId)}
                         </span>
                       </div>
                       <small>
                         {player.answers.length > 0
-                          ? `ล่าสุด: ${player.answers.at(-1)}`
+                          ? `↳ ${player.answers.at(-1)}`
                           : 'ยังไม่มีคำตอบ'}
                       </small>
                     </li>
@@ -496,7 +584,12 @@ function App() {
               <div className="panel-header compact">
                 <div>
                   <p className="eyebrow">หลุดออกจากเกม</p>
-                  <h2>ผู้เล่นที่ตกรอบ</h2>
+                  <h2>
+                    <span className="headline-symbol" aria-hidden="true">
+                      ×
+                    </span>
+                    ผู้เล่นที่ตกรอบ
+                  </h2>
                 </div>
                 <span className="count-badge">{eliminatedPlayers.length} คน</span>
               </div>
@@ -507,9 +600,14 @@ function App() {
                     <li className={getPlayerCardClass(player, null)} key={player.id}>
                       <div>
                         <strong>{player.name}</strong>
-                        <span>{getPlayerStatusLabel(player, null)}</span>
+                        <span className="status-line">
+                          <span className="status-symbol" aria-hidden="true">
+                            {getPlayerStatusSymbol(player, null)}
+                          </span>
+                          {getPlayerStatusLabel(player, null)}
+                        </span>
                       </div>
-                      <small>ตกรอบในรอบ {player.eliminatedAtRound}</small>
+                      <small>× รอบ {player.eliminatedAtRound}</small>
                     </li>
                   ))}
                 </ul>
@@ -525,7 +623,12 @@ function App() {
         <section className="result-stack">
           <section className="panel winner-panel">
             <p className="eyebrow">เกมจบแล้ว</p>
-            <h2>ผู้ชนะคือ {winner.name}</h2>
+            <h2>
+              <span className="headline-symbol" aria-hidden="true">
+                ★
+              </span>
+              ผู้ชนะคือ {winner.name}
+            </h2>
             <p className="support-text">
               เหลือรอดเป็นผู้เล่นคนสุดท้ายจากทั้งหมด {gameState.players.length}{' '}
               คน
@@ -534,17 +637,27 @@ function App() {
             <div className="action-row">
               <button
                 type="button"
-                className="primary-button"
+                className="primary-button symbol-button"
                 onClick={handleReplaySamePlayers}
+                aria-label="เล่นใหม่ด้วยรายชื่อเดิม"
+                title="เล่นใหม่ด้วยรายชื่อเดิม"
               >
-                เล่นใหม่ด้วยรายชื่อเดิม
+                <span className="button-symbol" aria-hidden="true">
+                  ↺
+                </span>
+                <span className="button-copy">เดิม</span>
               </button>
               <button
                 type="button"
-                className="secondary-button"
+                className="secondary-button symbol-button"
                 onClick={handleResetAll}
+                aria-label="เริ่มใหม่ทั้งหมด"
+                title="เริ่มใหม่ทั้งหมด"
               >
-                เริ่มใหม่ทั้งหมด
+                <span className="button-symbol" aria-hidden="true">
+                  ⌂
+                </span>
+                <span className="button-copy">ใหม่</span>
               </button>
             </div>
           </section>
@@ -557,7 +670,10 @@ function App() {
               >
                 <div className="panel-header compact">
                   <div>
-                    <p className="eyebrow">{getPlayerStatusLabel(player, null)}</p>
+                    <p className="eyebrow">
+                      {getPlayerStatusSymbol(player, null)}{' '}
+                      {getPlayerStatusLabel(player, null)}
+                    </p>
                     <h2>{player.name}</h2>
                   </div>
                   <span className="count-badge">{player.answers.length} คำ</span>
