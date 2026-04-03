@@ -1,0 +1,66 @@
+@import url('https://fonts.googleapis.com/css2?family=Mitr:wght@400;500;600&family=Noto+Sans+Thai:wght@400;500;600;700&display=swap');
+
+:root {
+  --bg: #f3ead8;
+  --surface: #fff9f0;
+  --border: rgba(150, 106, 63, 0.18);
+  --ink: #2d241d;
+  --muted: #65554a;
+  --accent: #dd6b36;
+  --accent-strong: #b64f28;
+  --success: #1f8a70;
+  --danger: #c44536;
+  --shadow: 0 22px 48px rgba(86, 59, 35, 0.12);
+  --display: 'Mitr', 'Segoe UI', sans-serif;
+  --body: 'Noto Sans Thai', 'Segoe UI', sans-serif;
+  font-family: var(--body);
+  line-height: 1.5;
+  font-weight: 500;
+  color: var(--ink);
+  background:
+    radial-gradient(circle at top left, rgba(255, 238, 197, 0.78), rgba(255, 238, 197, 0) 32%),
+    linear-gradient(180deg, #f7efdf 0%, #f2e7d5 100%);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+}
+
+h1,
+h2 {
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--display);
+  line-height: 1.15;
+}
+
+h1 {
+  font-size: clamp(2.6rem, 5vw, 4.4rem);
+}
+
+h2 {
+  font-size: clamp(1.4rem, 3vw, 2rem);
+}
+
+p {
+  margin: 0;
+}
+
+button,
+input {
+  font: inherit;
+}
