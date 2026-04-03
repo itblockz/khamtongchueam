@@ -73,6 +73,16 @@ function ensureTrailingBlankDraft(playerDrafts: PlayerDraft[]) {
   return nextDrafts
 }
 
+function findNextBlankDraftIndex(playerDrafts: PlayerDraft[], startIndex: number) {
+  for (let index = startIndex + 1; index < playerDrafts.length; index += 1) {
+    if (isBlankDraft(playerDrafts[index])) {
+      return index
+    }
+  }
+
+  return -1
+}
+
 function getPlayerStatusLabel(player: Player, activePlayerId: string | null) {
   if (player.status === 'winner') {
     return 'ผู้ชนะ'
@@ -441,13 +451,16 @@ function App() {
     draftId: string,
     event: ClipboardEvent<HTMLInputElement>,
   ) {
-    const pastedLines = event.clipboardData
-      .getData('text')
+    const pastedText = event.clipboardData.getData('text')
+    const pastedLines = pastedText
       .split(/\r?\n/u)
       .map((line) => line.trim())
       .filter((line) => line.length > 0)
+    const selectionStart =
+      event.currentTarget.selectionStart ?? event.currentTarget.value.length
+    const selectionEnd = event.currentTarget.selectionEnd ?? selectionStart
 
-    if (pastedLines.length <= 1) {
+    if (pastedLines.length === 0) {
       return
     }
 
@@ -460,16 +473,42 @@ function App() {
         return current
       }
 
+      if (pastedLines.length === 1) {
+        const nextDrafts = ensureTrailingBlankDraft(
+          current.map((draft, index) =>
+            index === draftIndex
+              ? {
+                  ...draft,
+                  name: `${draft.name.slice(0, selectionStart)}${
+                    pastedLines[0]
+                  }${draft.name.slice(selectionEnd)}`,
+                }
+              : draft,
+          ),
+        )
+        const nextBlankIndex = findNextBlankDraftIndex(nextDrafts, draftIndex)
+        const focusIndex =
+          nextBlankIndex === -1
+            ? Math.min(draftIndex + 1, nextDrafts.length - 1)
+            : nextBlankIndex
+
+        pendingSetupFocusIdRef.current = nextDrafts[focusIndex]?.id ?? null
+        return nextDrafts
+      }
+
       const insertedDrafts = pastedLines.map((name) => createPlayerDraft(name))
       const nextDrafts = ensureTrailingBlankDraft([
         ...current.slice(0, draftIndex),
         ...insertedDrafts,
         ...current.slice(draftIndex + 1),
       ])
-      const focusIndex = Math.min(
-        draftIndex + insertedDrafts.length,
-        nextDrafts.length - 1,
+      const nextBlankIndex = findNextBlankDraftIndex(
+        nextDrafts,
+        draftIndex + insertedDrafts.length - 1,
       )
+      const focusIndex =
+        nextBlankIndex === -1 ? nextDrafts.length - 1 : nextBlankIndex
+
       pendingSetupFocusIdRef.current = nextDrafts[focusIndex]?.id ?? null
       return nextDrafts
     })

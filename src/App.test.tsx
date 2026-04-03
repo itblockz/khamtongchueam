@@ -157,9 +157,24 @@ describe('คำต้องเชื่อม', () => {
     expect(screen.getByLabelText('ชื่อผู้เล่น 2')).toHaveValue('มายด์')
     expect(screen.getByLabelText('ชื่อผู้เล่น 3')).toHaveValue('มีน')
     expect(screen.getByLabelText('ชื่อผู้เล่น 4')).toHaveValue('')
+    expect(screen.getByLabelText('ชื่อผู้เล่น 4')).toHaveFocus()
     expect(
       screen.getByText('ชื่อผู้เล่นห้ามซ้ำหลังตัดช่องว่างหน้า-ท้าย'),
     ).toBeInTheDocument()
+  })
+
+  it('moves focus to the next blank row after pasting a single name', () => {
+    render(<App />)
+
+    fireEvent.paste(screen.getByLabelText('ชื่อผู้เล่น 1'), {
+      clipboardData: {
+        getData: () => 'มีน',
+      },
+    })
+
+    expect(screen.getByLabelText('ชื่อผู้เล่น 1')).toHaveValue('มีน')
+    expect(screen.getByLabelText('ชื่อผู้เล่น 2')).toHaveValue('')
+    expect(screen.getByLabelText('ชื่อผู้เล่น 2')).toHaveFocus()
   })
 
   it('confirms players without starting the first timer immediately', () => {
