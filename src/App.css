@@ -49,7 +49,6 @@
 }
 
 .setup-copy,
-.spotlight-copy,
 .winner-copy,
 .form-copy {
   display: flex;
@@ -67,7 +66,6 @@
 }
 
 .setup-copy h1,
-.spotlight-copy h1,
 .winner-copy h1,
 .panel-header h2,
 .form-copy label {
@@ -188,7 +186,7 @@
 }
 
 .answer-controls {
-  align-items: center;
+  align-items: stretch;
 }
 
 .symbol-button {
@@ -325,67 +323,99 @@ button:disabled {
   color: var(--success);
 }
 
-.spotlight-card {
-  display: grid;
-  grid-template-columns: minmax(0, 1.25fr) minmax(250px, 320px);
-  gap: 22px;
-  align-items: stretch;
-}
-
-.timer-card {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 8px;
-  padding: 22px;
-  border-radius: var(--radius-lg);
-  border: 1px solid rgba(191, 153, 91, 0.26);
-  background: linear-gradient(180deg, #f8ecd2 0%, #f4e2bf 100%);
-}
-
-.timer-card strong {
-  color: #5d391f;
-  font-family: var(--display);
-  font-size: clamp(1.8rem, 3vw, 2.4rem);
-  line-height: 1.08;
-}
-
-.timer-card.is-safe {
-  border-color: rgba(74, 134, 108, 0.22);
-  background: linear-gradient(180deg, #dff2e8 0%, #cfe8da 100%);
-}
-
-.timer-card.is-paused {
-  border-color: rgba(114, 94, 73, 0.2);
-  background: linear-gradient(180deg, #f3eadc 0%, #eadbc7 100%);
-}
-
-.timer-card.is-paused strong {
-  color: #574032;
-}
-
-.timer-card.is-safe strong {
-  color: #1e5e49;
-}
-
-.timer-card.is-urgent {
-  border-color: rgba(189, 87, 66, 0.22);
-  background: linear-gradient(180deg, #f9ddd4 0%, #f4cbc0 100%);
-}
-
-.timer-card.is-urgent strong {
-  color: #7f2f24;
-}
-
 .answer-panel {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 460px);
-  gap: 20px;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 580px);
+  gap: 24px;
   align-items: end;
 }
 
+.answer-panel .form-copy {
+  max-width: 42rem;
+}
+
+.answer-panel .form-copy label {
+  font-size: clamp(1.7rem, 3vw, 2.35rem);
+  font-family: var(--display);
+  line-height: 1.05;
+}
+
+.answer-panel .support-text {
+  line-height: 1.6;
+}
+
 .answer-input {
+  flex: 1 1 auto;
   min-height: 62px;
+  border-color: rgba(210, 106, 58, 0.52);
+  box-shadow: inset 0 0 0 4px rgba(210, 106, 58, 0.06);
+}
+
+.turn-timer-pill {
+  display: inline-flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  min-width: 110px;
+  min-height: 62px;
+  padding: 10px 14px;
+  border-radius: 22px;
+  border: 1px solid rgba(176, 126, 82, 0.16);
+  background: rgba(244, 231, 215, 0.82);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.28);
+}
+
+.turn-timer-pill span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.turn-timer-pill strong {
+  color: #5d391f;
+  font-family: var(--display);
+  font-size: 1.2rem;
+  line-height: 1.05;
+}
+
+.turn-timer-pill.is-safe {
+  border-color: rgba(74, 134, 108, 0.18);
+  background: rgba(223, 242, 232, 0.88);
+}
+
+.turn-timer-pill.is-safe strong {
+  color: #1e5e49;
+}
+
+.turn-timer-pill.is-paused {
+  border-color: rgba(114, 94, 73, 0.18);
+  background: rgba(237, 225, 208, 0.92);
+}
+
+.turn-timer-pill.is-paused strong {
+  color: #574032;
+}
+
+.turn-timer-pill.is-urgent {
+  border-color: rgba(189, 87, 66, 0.22);
+  background: rgba(249, 221, 212, 0.92);
+}
+
+.turn-timer-pill.is-urgent strong {
+  color: #7f2f24;
+}
+
+.answer-panel .compact-symbol-button {
+  min-width: 72px;
+  min-height: 60px;
+  border-radius: 22px;
+}
+
+.board-card .panel-header {
+  padding-bottom: 14px;
+  border-bottom: 1px dashed rgba(176, 126, 82, 0.2);
 }
 
 .board-grid,
@@ -422,11 +452,12 @@ button:disabled {
 .player-chip div {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
 }
 
 .player-chip strong {
   color: var(--ink);
+  font-size: 1.08rem;
 }
 
 .status-line {
@@ -458,6 +489,18 @@ button:disabled {
 .player-chip.is-out {
   border-color: rgba(180, 72, 55, 0.18);
   background: linear-gradient(180deg, #fff6f3 0%, #f5e3dc 100%);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .winner-card {
@@ -519,7 +562,6 @@ button:disabled {
 }
 
 @media (max-width: 960px) {
-  .spotlight-card,
   .answer-panel,
   .board-grid,
   .summary-grid,
@@ -565,6 +607,7 @@ button:disabled {
   }
 
   .draft-actions > button,
+  .turn-timer-pill,
   .answer-controls > button {
     width: 100%;
   }

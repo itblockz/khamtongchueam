@@ -150,6 +150,30 @@ function App() {
     gameState.phase === 'playing' &&
     gameState.currentInput.trim().length > 0 &&
     (gameState.isSafeToFinish || gameState.timeLeftMs > 0)
+  const timerTone =
+    gameState.phase === 'playing' && isPausedTurn
+      ? 'is-paused'
+      : gameState.phase === 'playing' && gameState.isSafeToFinish
+        ? 'is-safe'
+        : gameState.phase === 'playing' && gameState.timeLeftMs <= 1000
+          ? 'is-urgent'
+          : ''
+  const timerValue =
+    gameState.phase === 'playing' && isPausedTurn
+      ? 'รอเริ่ม'
+      : gameState.phase === 'playing' && gameState.isSafeToFinish
+        ? 'ผ่านแล้ว'
+        : gameState.phase === 'playing'
+          ? `${formatSeconds(gameState.timeLeftMs)}s`
+          : ''
+  const timerAriaLabel =
+    gameState.phase === 'playing' && isPausedTurn
+      ? 'เวลา รอเริ่ม'
+      : gameState.phase === 'playing' && gameState.isSafeToFinish
+        ? 'เวลา ผ่านแล้ว'
+        : gameState.phase === 'playing'
+          ? `เวลาเหลือ ${formatSeconds(gameState.timeLeftMs)} วินาที`
+          : 'เวลา'
 
   useTurnTimer({
     durationMs: TURN_DURATION_MS,
@@ -579,63 +603,17 @@ function App() {
 
       {gameState.phase === 'playing' && activePlayer && (
         <section className="phase-screen play-screen">
-          <header className="surface-card spotlight-card">
-            <div className="spotlight-copy">
-              <p className="eyebrow">รอบที่ {gameState.round}</p>
-              <h1>
-                <span className="headline-symbol" aria-hidden="true">
-                  ▶
-                </span>
-                ถึงตา {activePlayer.name}
-              </h1>
-              <p className="support-text">
-                โฮสต์พิมพ์คำตอบตามที่ผู้เล่นพูด เมื่อคำจบแล้วค่อยส่งไปคนถัดไป
-              </p>
-            </div>
-
-            <article
-              className={`timer-card ${
-                isPausedTurn
-                  ? 'is-paused'
-                  : gameState.isSafeToFinish
-                  ? 'is-safe'
-                  : gameState.timeLeftMs <= 1000
-                    ? 'is-urgent'
-                    : ''
-              }`}
-              aria-live="polite"
-            >
-              {isPausedTurn ? (
-                <>
-                  <span>คนก่อนหน้าแพ้</span>
-                  <strong>ยังไม่เริ่มจับเวลา</strong>
-                  <p>พิมพ์คำของ {activePlayer.name} แล้วกดถัดไป จากนั้นจึงเริ่มนับเวลาของคนถัดไป</p>
-                </>
-              ) : gameState.isSafeToFinish ? (
-                <>
-                  <span>ผ่านเวลาแล้ว</span>
-                  <strong>เริ่มพิมพ์ทันเวลาแล้ว</strong>
-                  <p>พิมพ์ต่อได้จนกว่าจะกดถัดไป</p>
-                </>
-              ) : (
-                <>
-                  <span>เวลาที่เหลือ</span>
-                  <strong>{formatSeconds(gameState.timeLeftMs)} วินาที</strong>
-                  <p>ถ้ายังไม่เริ่มพิมพ์เมื่อหมดเวลา ผู้เล่นจะตกรอบทันที</p>
-                </>
-              )}
-            </article>
-          </header>
-
           <form className="surface-card answer-panel" onSubmit={handleSubmitTurn}>
             <div className="form-copy">
+              <h1 className="sr-only">ถึงตา {activePlayer.name}</h1>
               <p className="eyebrow">บันทึกคำตอบ</p>
               <label htmlFor="current-answer">คำตอบของ {activePlayer.name}</label>
               <p className="support-text">
                 {isPausedTurn
-                  ? `คนก่อนหน้าเพิ่งตกรอบ เทิร์นนี้ยังไม่จับเวลา พอส่งคำของ ${activePlayer.name} แล้วระบบจะเริ่มนับเวลาของคนถัดไป`
+                  ? `ยังไม่เริ่มจับเวลา คนก่อนหน้าเพิ่งตกรอบ พอส่งคำของ ${activePlayer.name} แล้วระบบจะเริ่มนับเวลาของคนถัดไป`
                   : 'เมื่อเริ่มพิมพ์ตัวแรกทันเวลาแล้ว ระบบจะล็อกคิวไว้ให้ผู้เล่นคนนี้จนกว่าจะส่งคำ'}
               </p>
+              {isPausedTurn && <span className="sr-only">ยังไม่เริ่มจับเวลา</span>}
             </div>
 
             <div className="answer-controls">
@@ -649,6 +627,14 @@ function App() {
                 placeholder="พิมพ์คำตอบของผู้เล่น"
                 autoComplete="off"
               />
+              <div
+                className={`turn-timer-pill ${timerTone}`}
+                aria-live="polite"
+                aria-label={timerAriaLabel}
+              >
+                <span>เวลา</span>
+                <strong>{timerValue}</strong>
+              </div>
               <button
                 type="submit"
                 className="primary-button symbol-button compact-symbol-button"
