@@ -1,16 +1,23 @@
 @import url('https://fonts.googleapis.com/css2?family=Mitr:wght@400;500;600&family=Noto+Sans+Thai:wght@400;500;600;700&display=swap');
 
 :root {
-  --bg: #f3ead8;
-  --surface: #fff9f0;
-  --border: rgba(150, 106, 63, 0.18);
-  --ink: #2d241d;
-  --muted: #65554a;
-  --accent: #dd6b36;
-  --accent-strong: #b64f28;
-  --success: #1f8a70;
-  --danger: #c44536;
-  --shadow: 0 22px 48px rgba(86, 59, 35, 0.12);
+  --bg: #efe1d0;
+  --bg-soft: #f7efe3;
+  --surface: #fbf4ea;
+  --surface-soft: #f2e5d3;
+  --surface-strong: #fffdf8;
+  --border: rgba(133, 92, 59, 0.14);
+  --ink: #2f241d;
+  --muted: #6a594d;
+  --accent: #d26a3a;
+  --accent-strong: #b7552d;
+  --accent-soft: #f4e2d4;
+  --success: #2e7d60;
+  --danger: #b44837;
+  --shadow: 0 24px 54px rgba(92, 66, 43, 0.12);
+  --shadow-soft: 0 12px 28px rgba(92, 66, 43, 0.08);
+  --radius-xl: 34px;
+  --radius-lg: 24px;
   --display: 'Mitr', 'Segoe UI', sans-serif;
   --body: 'Noto Sans Thai', 'Segoe UI', sans-serif;
   font-family: var(--body);
@@ -18,8 +25,9 @@
   font-weight: 500;
   color: var(--ink);
   background:
-    radial-gradient(circle at top left, rgba(255, 238, 197, 0.78), rgba(255, 238, 197, 0) 32%),
-    linear-gradient(180deg, #f7efdf 0%, #f2e7d5 100%);
+    radial-gradient(circle at top left, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0) 28%),
+    radial-gradient(circle at bottom right, rgba(233, 206, 176, 0.44), rgba(233, 206, 176, 0) 34%),
+    linear-gradient(180deg, var(--bg-soft) 0%, var(--bg) 100%);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -45,15 +53,15 @@ h2 {
   margin: 0;
   color: var(--ink);
   font-family: var(--display);
-  line-height: 1.15;
+  line-height: 1.1;
 }
 
 h1 {
-  font-size: clamp(2.6rem, 5vw, 4.4rem);
+  font-size: clamp(2.2rem, 4vw, 3.5rem);
 }
 
 h2 {
-  font-size: clamp(1.4rem, 3vw, 2rem);
+  font-size: clamp(1.35rem, 2.8vw, 2rem);
 }
 
 p {
@@ -63,4 +71,8 @@ p {
 button,
 input {
   font: inherit;
+}
+
+::selection {
+  background: rgba(210, 106, 58, 0.22);
 }

@@ -146,25 +146,6 @@ function App() {
     gameState.currentInput.trim().length > 0 &&
     (gameState.isSafeToFinish || gameState.timeLeftMs > 0)
 
-  const heroStats =
-    gameState.phase === 'playing'
-      ? [
-          { symbol: '◎', label: 'รอบปัจจุบัน', value: `รอบ ${gameState.round}` },
-          { symbol: '◌', label: 'ผู้เล่นที่เหลือ', value: `${activePlayers.length} คน` },
-          { symbol: '⌛', label: 'เวลาต่อเทิร์น', value: '3 วินาที' },
-        ]
-      : gameState.phase === 'finished' && winner
-        ? [
-            { symbol: '★', label: 'ผู้ชนะ', value: winner.name },
-            { symbol: '∑', label: 'จำนวนคำทั้งหมด', value: `${totalAnswers} คำ` },
-            { symbol: '◆', label: 'รอบสุดท้าย', value: `รอบ ${gameState.round}` },
-          ]
-        : [
-            { symbol: '◇', label: 'โหมดเล่น', value: 'ผู้ดำเนินเกมคนเดียว' },
-            { symbol: '⌛', label: 'เวลาต่อคน', value: '3 วินาที' },
-            { symbol: '★', label: 'เงื่อนไขชนะ', value: 'เหลือคนสุดท้าย' },
-          ]
-
   useTurnTimer({
     durationMs: TURN_DURATION_MS,
     active: gameState.phase === 'playing' && gameState.activePlayerId !== null,
@@ -329,7 +310,10 @@ function App() {
         ...insertedDrafts,
         ...current.slice(draftIndex + 1),
       ])
-      const focusIndex = Math.min(draftIndex + insertedDrafts.length, nextDrafts.length - 1)
+      const focusIndex = Math.min(
+        draftIndex + insertedDrafts.length,
+        nextDrafts.length - 1,
+      )
       pendingSetupFocusIdRef.current = nextDrafts[focusIndex]?.id ?? null
       return nextDrafts
     })
@@ -438,50 +422,22 @@ function App() {
 
   return (
     <main className="app-shell">
-      <div className="ambient-orb orb-left" aria-hidden="true" />
-      <div className="ambient-orb orb-right" aria-hidden="true" />
-
-      <header className="hero-banner">
-        <div className="hero-copy">
-          <p className="eyebrow">ผู้ดำเนินเกมคนเดียว</p>
-          <h1>คำต้องเชื่อม</h1>
-          <p className="hero-text">
-            ผู้ดำเนินเกมคนเดียวควบคุมลำดับผู้เล่น จับเวลา 3 วินาที และบันทึกคำตอบทีละคน
-            ใครไม่เริ่มพิมพ์ในเวลาจะตกรอบทันที
-          </p>
-        </div>
-
-        <div className="hero-stats" aria-label="ข้อมูลสรุปเกม">
-          {heroStats.map((stat) => (
-            <article className="stat-tile" key={stat.label}>
-              <div className="stat-head">
-                <span className="stat-symbol" aria-hidden="true">
-                  {stat.symbol}
-                </span>
-                <span>{stat.label}</span>
-              </div>
-              <strong>{stat.value}</strong>
-            </article>
-          ))}
-        </div>
-      </header>
-
       {gameState.phase === 'setup' && (
-        <section className="screen-grid">
-          <section className="panel panel-main">
-            <div className="panel-header">
-              <div>
+        <section className="phase-screen setup-screen">
+          <div className="surface-card setup-card">
+            <div className="panel-header setup-header">
+              <div className="setup-copy">
                 <p className="eyebrow">เตรียมรายชื่อ</p>
-                <h2>
+                <h1>
                   <span className="headline-symbol" aria-hidden="true">
                     ＋
                   </span>
                   เพิ่มผู้เล่น
-                </h2>
+                </h1>
               </div>
               <button
                 type="button"
-                className="secondary-button symbol-button compact-symbol-button"
+                className="secondary-button symbol-button compact-symbol-button add-player-button"
                 onClick={handleAddPlayer}
                 aria-label="เพิ่มผู้เล่น"
                 tabIndex={-1}
@@ -493,7 +449,7 @@ function App() {
               </button>
             </div>
 
-            <p className="support-text">
+            <p className="support-text setup-support">
               พิมพ์ชื่อแล้วกด Enter เพื่อไปแถวถัดไป, กด Enter บนแถวว่างท้ายเพื่อเริ่ม,
               กด Backspace บนช่องว่างเพื่อลบ และวางรายชื่อหลายบรรทัดได้
             </p>
@@ -502,9 +458,11 @@ function App() {
               <ol className="draft-list">
                 {playerDrafts.map((draft, index) => (
                   <li className="draft-item" key={draft.id}>
-                    <span className="order-chip" aria-hidden="true">
-                      {index + 1}
-                    </span>
+                    <div className="draft-order">
+                      <span className="order-chip" aria-hidden="true">
+                        {index + 1}
+                      </span>
+                    </div>
 
                     <div className="draft-field">
                       <label htmlFor={`player-${draft.id}`}>
@@ -603,57 +561,21 @@ function App() {
                 </span>
               </button>
             </div>
-          </section>
-
-          <aside className="panel panel-side">
-            <p className="eyebrow">กติกาย่อ</p>
-            <h2>
-              <span className="headline-symbol" aria-hidden="true">
-                ↔
-              </span>
-              ลำดับการเล่นของผู้ดำเนินเกม
-            </h2>
-            <ul className="rule-list">
-              <li>
-                <span className="rule-symbol" aria-hidden="true">
-                  ⌛
-                </span>
-                เริ่มเทิร์นแล้วต้องเริ่มพิมพ์ภายใน 3 วินาที
-              </li>
-              <li>
-                <span className="rule-symbol" aria-hidden="true">
-                  ✓
-                </span>
-                ถ้าเริ่มพิมพ์ทันเวลา จะพิมพ์ต่อได้นานเท่าที่ต้องการ
-              </li>
-              <li>
-                <span className="rule-symbol" aria-hidden="true">
-                  →
-                </span>
-                กดแป้นยืนยันหรือปุ่มถัดไปเมื่อคำตอบจบแล้ว
-              </li>
-              <li>
-                <span className="rule-symbol" aria-hidden="true">
-                  ×
-                </span>
-                ใครไม่ทันจะตกรอบทันที เกมจบเมื่อเหลือผู้เล่นคนเดียว
-              </li>
-            </ul>
-          </aside>
+          </div>
         </section>
       )}
 
       {gameState.phase === 'playing' && activePlayer && (
-        <section className="playing-stack">
-          <section className="panel spotlight-panel">
+        <section className="phase-screen play-screen">
+          <header className="surface-card spotlight-card">
             <div className="spotlight-copy">
               <p className="eyebrow">รอบที่ {gameState.round}</p>
-              <h2>
+              <h1>
                 <span className="headline-symbol" aria-hidden="true">
                   ▶
                 </span>
                 ถึงตา {activePlayer.name}
-              </h2>
+              </h1>
               <p className="support-text">
                 โฮสต์พิมพ์คำตอบตามที่ผู้เล่นพูด เมื่อคำจบแล้วค่อยส่งไปคนถัดไป
               </p>
@@ -671,24 +593,25 @@ function App() {
             >
               {gameState.isSafeToFinish ? (
                 <>
-                  <span>✓ ผ่านเวลาแล้ว</span>
+                  <span>ผ่านเวลาแล้ว</span>
                   <strong>เริ่มพิมพ์ทันเวลาแล้ว</strong>
                   <p>พิมพ์ต่อได้จนกว่าจะกดถัดไป</p>
                 </>
               ) : (
                 <>
-                  <span>⌛ เวลาที่เหลือ</span>
+                  <span>เวลาที่เหลือ</span>
                   <strong>{formatSeconds(gameState.timeLeftMs)} วินาที</strong>
                   <p>ถ้ายังไม่เริ่มพิมพ์เมื่อหมดเวลา ผู้เล่นจะตกรอบทันที</p>
                 </>
               )}
             </article>
-          </section>
+          </header>
 
-          <form className="panel answer-form" onSubmit={handleSubmitTurn}>
+          <form className="surface-card answer-panel" onSubmit={handleSubmitTurn}>
             <div className="form-copy">
+              <p className="eyebrow">บันทึกคำตอบ</p>
               <label htmlFor="current-answer">คำตอบของ {activePlayer.name}</label>
-              <p>
+              <p className="support-text">
                 เมื่อเริ่มพิมพ์ตัวแรกทันเวลาแล้ว ระบบจะล็อกคิวไว้ให้ผู้เล่นคนนี้จนกว่าจะส่งคำ
               </p>
             </div>
@@ -719,7 +642,7 @@ function App() {
           </form>
 
           <section className="board-grid">
-            <section className="panel">
+            <section className="surface-card board-card">
               <div className="panel-header compact">
                 <div>
                   <p className="eyebrow">ยังอยู่ในเกม</p>
@@ -755,7 +678,7 @@ function App() {
                       </div>
                       <small>
                         {player.answers.length > 0
-                          ? `↳ ${player.answers.at(-1)}`
+                          ? `ตอบล่าสุด ${player.answers.at(-1)}`
                           : 'ยังไม่มีคำตอบ'}
                       </small>
                     </li>
@@ -763,7 +686,7 @@ function App() {
               </ul>
             </section>
 
-            <section className="panel">
+            <section className="surface-card board-card">
               <div className="panel-header compact">
                 <div>
                   <p className="eyebrow">หลุดออกจากเกม</p>
@@ -790,7 +713,7 @@ function App() {
                           {getPlayerStatusLabel(player, null)}
                         </span>
                       </div>
-                      <small>× รอบ {player.eliminatedAtRound}</small>
+                      <small>ตกรอบในรอบ {player.eliminatedAtRound}</small>
                     </li>
                   ))}
                 </ul>
@@ -803,19 +726,36 @@ function App() {
       )}
 
       {gameState.phase === 'finished' && winner && (
-        <section className="result-stack">
-          <section className="panel winner-panel">
-            <p className="eyebrow">เกมจบแล้ว</p>
-            <h2>
-              <span className="headline-symbol" aria-hidden="true">
-                ★
-              </span>
-              ผู้ชนะคือ {winner.name}
-            </h2>
-            <p className="support-text">
-              เหลือรอดเป็นผู้เล่นคนสุดท้ายจากทั้งหมด {gameState.players.length}{' '}
-              คน
-            </p>
+        <section className="phase-screen result-screen">
+          <section className="surface-card winner-card">
+            <div className="winner-copy">
+              <p className="eyebrow">เกมจบแล้ว</p>
+              <h1>
+                <span className="headline-symbol" aria-hidden="true">
+                  ★
+                </span>
+                ผู้ชนะคือ {winner.name}
+              </h1>
+              <p className="support-text">
+                เหลือรอดเป็นผู้เล่นคนสุดท้ายจากทั้งหมด {gameState.players.length}{' '}
+                คน
+              </p>
+            </div>
+
+            <div className="winner-stats" aria-label="ข้อมูลสรุปเกม">
+              <article className="stat-tile">
+                <span>จำนวนคำทั้งหมด</span>
+                <strong>{totalAnswers} คำ</strong>
+              </article>
+              <article className="stat-tile">
+                <span>รอบสุดท้าย</span>
+                <strong>รอบ {gameState.round}</strong>
+              </article>
+              <article className="stat-tile">
+                <span>ผู้เล่นเริ่มต้น</span>
+                <strong>{gameState.players.length} คน</strong>
+              </article>
+            </div>
 
             <div className="action-row">
               <button
@@ -848,7 +788,7 @@ function App() {
           <section className="summary-grid">
             {gameState.players.map((player) => (
               <article
-                className={`panel summary-card status-${player.status}`}
+                className={`surface-card summary-card status-${player.status}`}
                 key={player.id}
               >
                 <div className="panel-header compact">
