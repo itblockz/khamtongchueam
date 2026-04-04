@@ -11,6 +11,7 @@ import {
 } from 'react'
 import './App.css'
 import {
+  acknowledgeRoundSummary,
   TURN_DURATION_MS,
   applyScoreAwards,
   advanceTurn,
@@ -27,9 +28,16 @@ import {
   type PlayerDraft,
   type TurnDirection,
 } from './game'
+import {
+  DEFAULT_SYLLABLE_ENGINE,
+  SyllableSegmentationError,
+  type SyllableSegmentationResponse,
+  segmentThaiText,
+} from './syllableClient'
 import { useTurnTimer } from './useTurnTimer'
 
 const MATCH_ROUNDS_PER_MATCH = 4
+const SYLLABLE_REQUEST_DEBOUNCE_MS = 250
 
 function getTurnDirectionForMatchRound(matchRound: number): TurnDirection {
   return matchRound % 2 === 1 ? 1 : -1
@@ -51,6 +59,59 @@ function getSetupMessage(
   }
 
   return `พร้อมยืนยันผู้เล่น ${validation.playerCount} คน`
+}
+
+function getEliminatedPlayerSummary(
+  player: GameState['players'][number] | null,
+) {
+  if (!player) {
+    return 'มีผู้เล่นตกรอบในรอบนี้'
+  }
+
+  if (player.eliminationReason === 'duplicate_syllable') {
+    return `${player.name} ตกรอบเพราะใช้พยางค์ซ้ำ`
+  }
+
+  if (player.eliminationReason === 'late_submit') {
+    return `${player.name} ตกรอบเพราะส่งคำช้าเกินเวลา`
+  }
+
+  if (player.eliminationReason === 'timeout') {
+    return `${player.name} ตกรอบเพราะไม่ทันเวลา`
+  }
+
+  return `${player.name} ตกรอบ`
+}
+
+function getPausedTurnReasonText(
+  player: GameState['players'][number] | null,
+) {
+  return getEliminatedPlayerSummary(player)
+}
+
+function getPausedTurnInstructions(
+  player: GameState['players'][number] | null,
+  activePlayerName: string,
+) {
+  return `ยังไม่เริ่มจับเวลา ${getPausedTurnReasonText(
+    player,
+  )} กดเริ่มเพื่อเริ่มจับเวลาของ ${activePlayerName}`
+}
+
+function getSegmentationCacheKey(text: string) {
+  return `${DEFAULT_SYLLABLE_ENGINE}::${text.trim()}`
+}
+
+function getSegmentationErrorMessage(error: unknown) {
+  if (error instanceof SyllableSegmentationError) {
+    return error.message
+  }
+
+  if (error instanceof Error && error.message.trim().length > 0) {
+    return error.message
+  }
+
+  return 'ไม่สามารถเชื่อมต่อระบบแยกพยางค์ได้'
 }
 
 function isBlankDraft(draft: PlayerDraft) {
@@ -230,8 +291,16 @@ function App() {
   const draftItemRefs = useRef<Record<string, HTMLLIElement | null>>({})
   const draftItemPositionSnapshotRef = useRef<Record<string, number>>({})
   const transparentDragImageRef = useRef<HTMLImageElement | null>(null)
+  const segmentationCacheRef = useRef<
+    Map<string, SyllableSegmentationResponse>
+  >(new Map())
   const pendingSetupFocusIdRef = useRef<string | null>(null)
   const [draggedDraftId, setDraggedDraftId] = useState<string | null>(null)
+  const [currentInputSegmentation, setCurrentInputSegmentation] =
+    useState<SyllableSegmentationResponse | null>(null)
+  const [segmentationError, setSegmentationError] = useState<string | null>(null)
+  const [isSegmentingCurrentInput, setIsSegmentingCurrentInput] = useState(false)
+  const [isSubmittingTurn, setIsSubmittingTurn] = useState(false)
   const { gameState, leaderboardScores, roundScoresInMatch } = sessionState
   const currentMatchRound =
     gameState.phase === 'finished'
@@ -251,16 +320,41 @@ function App() {
   const activePlayer =
     gameState.players.find((player) => player.id === gameState.activePlayerId) ??
     null
+  const winner =
+    gameState.players.find((player) => player.id === gameState.winnerId) ?? null
+  const isAwaitingRoundSummary =
+    gameState.phase === 'finished' &&
+    gameState.isAwaitingRoundSummary &&
+    winner !== null
+  const playScreenPlayer =
+    gameState.phase === 'playing'
+      ? activePlayer
+      : isAwaitingRoundSummary
+        ? winner
+        : null
   const activePlayers = gameState.players.filter(
     (player) => player.status === 'active',
   )
+  const visiblePlayers =
+    isAwaitingRoundSummary && winner !== null ? [winner] : activePlayers
   const displayedActivePlayers =
-    currentMatchRound % 2 === 0 ? [...activePlayers].reverse() : activePlayers
+    currentMatchRound % 2 === 0 && !isAwaitingRoundSummary
+      ? [...visiblePlayers].reverse()
+      : visiblePlayers
   const eliminatedPlayers = gameState.players.filter(
     (player) => player.status === 'eliminated',
   )
-  const winner =
-    gameState.players.find((player) => player.id === gameState.winnerId) ?? null
+  const latestEliminatedPlayer =
+    eliminatedPlayers.length > 0
+      ? [...eliminatedPlayers].sort(
+          (left, right) =>
+            (right.eliminatedOrder ?? 0) - (left.eliminatedOrder ?? 0),
+        )[0]
+      : null
+  const pausedTurnReasonText = getPausedTurnReasonText(latestEliminatedPlayer)
+  const eliminatedPlayerSummary = getEliminatedPlayerSummary(
+    latestEliminatedPlayer,
+  )
   const roundAwards =
     gameState.phase === 'finished' ? getScoreAwards(gameState) : []
   const roundAwardMap = new Map(
@@ -315,13 +409,18 @@ function App() {
     !gameState.isSafeToFinish
   const requiresManualTurnStart =
     gameState.phase === 'playing' && (isAwaitingFirstTurnStart || isPausedTurn)
+  const requiresPrimaryAction =
+    requiresManualTurnStart || isAwaitingRoundSummary
   const canSubmitCurrentTurn =
     gameState.phase === 'playing' &&
-    !requiresManualTurnStart &&
+    !requiresPrimaryAction &&
+    !isSubmittingTurn &&
     gameState.currentInput.trim().length > 0 &&
     (gameState.isSafeToFinish || gameState.timeLeftMs > 0)
   const timerTone =
-    gameState.phase === 'playing' && isAwaitingFirstTurnStart
+    isAwaitingRoundSummary
+      ? 'is-safe'
+      : gameState.phase === 'playing' && isAwaitingFirstTurnStart
       ? 'is-pending'
       : gameState.phase === 'playing' && isPausedTurn
         ? 'is-paused'
@@ -330,22 +429,59 @@ function App() {
         : gameState.phase === 'playing' && gameState.timeLeftMs <= 1000
           ? 'is-urgent'
           : ''
-  const timerValue =
-    requiresManualTurnStart
+  const timerValue = isAwaitingRoundSummary
+    ? 'สรุปรอบ'
+    : requiresManualTurnStart
       ? 'รอเริ่ม'
       : gameState.phase === 'playing' && gameState.isSafeToFinish
         ? 'ผ่านแล้ว'
         : gameState.phase === 'playing'
           ? `${formatSeconds(gameState.timeLeftMs)}s`
           : ''
-  const timerAriaLabel =
-    requiresManualTurnStart
+  const timerAriaLabel = isAwaitingRoundSummary
+    ? 'เวลา สรุปรอบ'
+    : requiresManualTurnStart
       ? 'เวลา รอเริ่ม'
       : gameState.phase === 'playing' && gameState.isSafeToFinish
         ? 'เวลา ผ่านแล้ว'
         : gameState.phase === 'playing'
           ? `เวลาเหลือ ${formatSeconds(gameState.timeLeftMs)} วินาที`
           : 'เวลา'
+  const currentInputSyllables = currentInputSegmentation?.syllables ?? []
+  const currentInputSegmentationMeta = currentInputSegmentation
+    ? `${currentInputSegmentation.engine} · ${currentInputSegmentation.modelVersion}`
+    : null
+
+  async function getSyllableSegmentation(
+    text: string,
+    signal?: AbortSignal,
+  ) {
+    const normalizedText = text.trim()
+
+    if (!normalizedText) {
+      return {
+        syllables: [],
+        engine: DEFAULT_SYLLABLE_ENGINE,
+        mode: 'written' as const,
+        modelVersion: 'empty-input',
+      }
+    }
+
+    const cacheKey = getSegmentationCacheKey(normalizedText)
+    const cachedResult = segmentationCacheRef.current.get(cacheKey)
+
+    if (cachedResult) {
+      return cachedResult
+    }
+
+    const result = await segmentThaiText(normalizedText, {
+      engine: DEFAULT_SYLLABLE_ENGINE,
+      signal,
+    })
+
+    segmentationCacheRef.current.set(cacheKey, result)
+    return result
+  }
 
   function replaceGameState(nextGameState: GameState) {
     setSessionState((current) =>
@@ -425,12 +561,24 @@ function App() {
   ])
 
   useEffect(() => {
-    if (gameState.phase !== 'finished') {
+    if (!isAwaitingRoundSummary) {
+      return
+    }
+
+    startFirstTurnButtonRef.current?.focus()
+  }, [isAwaitingRoundSummary])
+
+  useEffect(() => {
+    if (gameState.phase !== 'finished' || gameState.isAwaitingRoundSummary) {
       return
     }
 
     leaderboardActionButtonRef.current?.focus()
-  }, [gameState.phase, sessionState.completedRoundsInMatch])
+  }, [
+    gameState.phase,
+    gameState.isAwaitingRoundSummary,
+    sessionState.completedRoundsInMatch,
+  ])
 
   useEffect(() => {
     if (gameState.phase !== 'setup') {
@@ -452,6 +600,74 @@ function App() {
 
     pendingSetupFocusIdRef.current = null
   }, [gameState.phase, playerDrafts])
+
+  useEffect(() => {
+    if (gameState.phase !== 'playing') {
+      setCurrentInputSegmentation(null)
+      setSegmentationError(null)
+      setIsSegmentingCurrentInput(false)
+      return
+    }
+
+    if (requiresManualTurnStart) {
+      setCurrentInputSegmentation(null)
+      setIsSegmentingCurrentInput(false)
+      return
+    }
+
+    const normalizedInput = gameState.currentInput.trim()
+
+    if (!normalizedInput) {
+      setCurrentInputSegmentation(null)
+      setSegmentationError(null)
+      setIsSegmentingCurrentInput(false)
+      return
+    }
+
+    const cacheKey = getSegmentationCacheKey(normalizedInput)
+    const cachedResult = segmentationCacheRef.current.get(cacheKey)
+
+    if (cachedResult) {
+      setCurrentInputSegmentation(cachedResult)
+      setSegmentationError(null)
+      setIsSegmentingCurrentInput(false)
+      return
+    }
+
+    const controller = new AbortController()
+    const timeoutId = window.setTimeout(() => {
+      void getSyllableSegmentation(normalizedInput, controller.signal)
+        .then((result) => {
+          setCurrentInputSegmentation(result)
+          setSegmentationError(null)
+        })
+        .catch((error) => {
+          if (controller.signal.aborted) {
+            return
+          }
+
+          setCurrentInputSegmentation(null)
+          setSegmentationError(getSegmentationErrorMessage(error))
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) {
+            setIsSegmentingCurrentInput(false)
+          }
+        })
+    }, SYLLABLE_REQUEST_DEBOUNCE_MS)
+
+    setSegmentationError(null)
+    setIsSegmentingCurrentInput(true)
+
+    return () => {
+      controller.abort()
+      window.clearTimeout(timeoutId)
+    }
+  }, [
+    gameState.phase,
+    gameState.currentInput,
+    requiresManualTurnStart,
+  ])
 
   useLayoutEffect(() => {
     const previousPositions = draftItemPositionSnapshotRef.current
@@ -741,6 +957,10 @@ function App() {
       return
     }
 
+    setCurrentInputSegmentation(null)
+    setSegmentationError(null)
+    setIsSegmentingCurrentInput(false)
+
     replaceGameState(
       createConfirmedGameState(
         prepareRoster(playerDrafts),
@@ -751,7 +971,12 @@ function App() {
   }
 
   function handleStartFirstTurn() {
+    setSegmentationError(null)
     updateGameState((current) => startActiveTurn(current))
+  }
+
+  function handleContinueToRoundSummary() {
+    updateGameState((current) => acknowledgeRoundSummary(current))
   }
 
   function handleStartFirstTurnKeyDown(
@@ -762,6 +987,11 @@ function App() {
     }
 
     event.preventDefault()
+    if (isAwaitingRoundSummary) {
+      handleContinueToRoundSummary()
+      return
+    }
+
     handleStartFirstTurn()
   }
 
@@ -781,23 +1011,53 @@ function App() {
     })
   }
 
-  function handleSubmitTurn(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmitTurn(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
 
-    updateGameState((current) => {
-      if (
-        current.phase !== 'playing' ||
-        current.isAwaitingFirstTurnStart ||
-        current.turnStartedAt === null
-      ) {
-        return current
-      }
+    const submittedAt = Date.now()
+    const currentGameState = sessionState.gameState
 
-      return advanceTurn(current, {
-        type: 'submit',
-        answer: current.currentInput,
+    if (
+      currentGameState.phase !== 'playing' ||
+      currentGameState.isAwaitingFirstTurnStart ||
+      currentGameState.turnStartedAt === null
+    ) {
+      return
+    }
+
+    const answer = currentGameState.currentInput.trim()
+
+    if (!answer) {
+      return
+    }
+
+    setIsSubmittingTurn(true)
+    setSegmentationError(null)
+
+    try {
+      const segmentation = await getSyllableSegmentation(answer)
+
+      updateGameState((current) => {
+        if (
+          current.phase !== 'playing' ||
+          current.isAwaitingFirstTurnStart ||
+          current.turnStartedAt === null
+        ) {
+          return current
+        }
+
+        return advanceTurn(current, {
+          type: 'submit',
+          answer: current.currentInput,
+          syllables: segmentation.syllables,
+          now: submittedAt,
+        })
       })
-    })
+    } catch (error) {
+      setSegmentationError(getSegmentationErrorMessage(error))
+    } finally {
+      setIsSubmittingTurn(false)
+    }
   }
 
   function handleReplaySamePlayers() {
@@ -805,7 +1065,17 @@ function App() {
       return
     }
 
+    setCurrentInputSegmentation(null)
+    setSegmentationError(null)
+    setIsSegmentingCurrentInput(false)
+
     setSessionState((current) => {
+      if (
+        current.completedRoundsInMatch >= MATCH_ROUNDS_PER_MATCH
+      ) {
+        segmentationCacheRef.current.clear()
+      }
+
       const shouldStartNewMatch =
         current.completedRoundsInMatch >= MATCH_ROUNDS_PER_MATCH
       const nextMatchRound = shouldStartNewMatch
@@ -832,6 +1102,11 @@ function App() {
   }
 
   function handleResetAll() {
+    segmentationCacheRef.current.clear()
+    setCurrentInputSegmentation(null)
+    setSegmentationError(null)
+    setIsSegmentingCurrentInput(false)
+    setIsSubmittingTurn(false)
     setPlayerDrafts(ensureTrailingBlankDraft(createInitialDrafts()))
     setSessionState(createInitialSessionState())
   }
@@ -974,25 +1249,45 @@ function App() {
         </section>
       )}
 
-      {gameState.phase === 'playing' && activePlayer && (
+      {playScreenPlayer && (gameState.phase === 'playing' || isAwaitingRoundSummary) && (
         <section className="phase-screen play-screen">
           <form className="surface-card answer-panel" onSubmit={handleSubmitTurn}>
             <div className="form-copy">
-              <h1 className="sr-only">ถึงตา {activePlayer.name}</h1>
+              <h1 className="sr-only">ถึงตา {playScreenPlayer.name}</h1>
               <p className="round-indicator">
                 รอบ {currentMatchRound}/{MATCH_ROUNDS_PER_MATCH}
               </p>
+              {isAwaitingRoundSummary && (
+                <p className="pause-note" role="status" aria-live="polite">
+                  {eliminatedPlayerSummary}
+                </p>
+              )}
+              {isPausedTurn && (
+                <p className="pause-note" role="status" aria-live="polite">
+                  {pausedTurnReasonText}
+                </p>
+              )}
+              {segmentationError && (
+                <p className="segmentation-error" role="alert">
+                  {segmentationError}
+                </p>
+              )}
               <label htmlFor="current-answer" className="sr-only">
-                คำตอบของ {activePlayer.name}
+                คำตอบของ {playScreenPlayer.name}
               </label>
               <p className="sr-only">
-                {isAwaitingFirstTurnStart
-                  ? `ยืนยันผู้เล่นแล้ว กดเริ่มรอบแรกเพื่อเริ่มจับเวลา ${activePlayer.name}`
+                {isAwaitingRoundSummary
+                  ? `${eliminatedPlayerSummary} กดสรุปรอบเพื่อดูตารางคะแนนของ ${playScreenPlayer.name}`
+                  : isAwaitingFirstTurnStart
+                  ? `ยืนยันผู้เล่นแล้ว กดเริ่มรอบแรกเพื่อเริ่มจับเวลา ${playScreenPlayer.name}`
                   : isPausedTurn
-                    ? `ยังไม่เริ่มจับเวลา คนก่อนหน้าเพิ่งตกรอบ กดเริ่มเพื่อเริ่มจับเวลาของ ${activePlayer.name}`
+                    ? getPausedTurnInstructions(
+                        latestEliminatedPlayer,
+                        playScreenPlayer.name,
+                      )
                     : 'เมื่อเริ่มพิมพ์ตัวแรกทันเวลาแล้ว ระบบจะล็อกคิวไว้ให้ผู้เล่นคนนี้จนกว่าจะส่งคำ'}
               </p>
-              {requiresManualTurnStart && (
+              {requiresPrimaryAction && (
                 <span className="sr-only">ยังไม่เริ่มจับเวลา</span>
               )}
             </div>
@@ -1007,7 +1302,7 @@ function App() {
                 onChange={handleAnswerChange}
                 placeholder="พิมพ์คำตอบของผู้เล่น"
                 autoComplete="off"
-                disabled={requiresManualTurnStart}
+                disabled={requiresPrimaryAction || isSubmittingTurn}
               />
               <div
                 className={`turn-timer-pill ${timerTone}`}
@@ -1017,21 +1312,41 @@ function App() {
                 <span>เวลา</span>
                 <strong>{timerValue}</strong>
               </div>
-              {requiresManualTurnStart ? (
+              {requiresPrimaryAction ? (
                 <button
                   ref={startFirstTurnButtonRef}
                   type="button"
                   className="primary-button symbol-button start-turn-button"
-                  onClick={handleStartFirstTurn}
+                  onClick={
+                    isAwaitingRoundSummary
+                      ? handleContinueToRoundSummary
+                      : handleStartFirstTurn
+                  }
                   onKeyDown={handleStartFirstTurnKeyDown}
-                  aria-label={isAwaitingFirstTurnStart ? 'เริ่มรอบแรก' : 'เริ่มตาถัดไป'}
-                  title={isAwaitingFirstTurnStart ? 'เริ่มรอบแรก' : 'เริ่มตาถัดไป'}
+                  aria-label={
+                    isAwaitingRoundSummary
+                      ? 'สรุปรอบ'
+                      : isAwaitingFirstTurnStart
+                        ? 'เริ่มรอบแรก'
+                        : 'เริ่มตาถัดไป'
+                  }
+                  title={
+                    isAwaitingRoundSummary
+                      ? 'สรุปรอบ'
+                      : isAwaitingFirstTurnStart
+                        ? 'เริ่มรอบแรก'
+                        : 'เริ่มตาถัดไป'
+                  }
                 >
                   <span className="button-symbol" aria-hidden="true">
                     ▶
                   </span>
                   <span className="button-copy">
-                    {isAwaitingFirstTurnStart ? 'เริ่มรอบแรก' : 'เริ่มตาถัดไป'}
+                    {isAwaitingRoundSummary
+                      ? 'สรุปรอบ'
+                      : isAwaitingFirstTurnStart
+                        ? 'เริ่มรอบแรก'
+                        : 'เริ่มตาถัดไป'}
                   </span>
                 </button>
               ) : (
@@ -1050,6 +1365,61 @@ function App() {
             </div>
           </form>
 
+          <section className="surface-card syllable-debug-card" aria-label="ดีบักพยางค์">
+            <div className="panel-header compact debug-header">
+              <div>
+                <p className="eyebrow">debug</p>
+                <h2>พยางค์ที่ระบบใช้จริง</h2>
+              </div>
+            </div>
+
+            <div className="syllable-debug-grid">
+              <section className="syllable-debug-group" aria-label="พยางค์ของคำปัจจุบัน">
+                <h3>คำที่กำลังพิมพ์</h3>
+                {currentInputSegmentationMeta && (
+                  <p className="syllable-meta">{currentInputSegmentationMeta}</p>
+                )}
+                <div className="syllable-chip-list">
+                  {isSegmentingCurrentInput ? (
+                    <span className="syllable-empty">กำลังแยกพยางค์...</span>
+                  ) : currentInputSyllables.length > 0 ? (
+                    currentInputSyllables.map((syllable, index) => (
+                      <span
+                        className="syllable-chip is-current"
+                        key={`${syllable}-${index}`}
+                      >
+                        {syllable}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="syllable-empty">ยังไม่มีพยางค์</span>
+                  )}
+                </div>
+              </section>
+
+              <section
+                className="syllable-debug-group"
+                aria-label="พยางค์ที่บันทึกในรอบนี้"
+              >
+                <h3>พยางค์ที่บันทึกในรอบนี้</h3>
+                <div className="syllable-chip-list">
+                  {gameState.usedSyllablesInRound.length > 0 ? (
+                    gameState.usedSyllablesInRound.map((syllable, index) => (
+                      <span
+                        className="syllable-chip"
+                        key={`${syllable}-${index}`}
+                      >
+                        {syllable}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="syllable-empty">ยังไม่มีพยางค์</span>
+                  )}
+                </div>
+              </section>
+            </div>
+          </section>
+
           <section className="board-grid">
             <section className="surface-card board-card active-board-card">
               <div className="panel-header compact">
@@ -1062,7 +1432,7 @@ function App() {
                     คิวผู้เล่น
                   </h2>
                 </div>
-                <span className="count-badge">{activePlayers.length} คน</span>
+                <span className="count-badge">{visiblePlayers.length} คน</span>
               </div>
 
               <ol
@@ -1123,7 +1493,7 @@ function App() {
         </section>
       )}
 
-      {gameState.phase === 'finished' && winner && (
+      {gameState.phase === 'finished' && winner && !gameState.isAwaitingRoundSummary && (
         <section className="phase-screen result-screen">
           <section className="surface-card leaderboard-card result-leaderboard-card">
             <div className="panel-header compact">

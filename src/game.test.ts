@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
+  TURN_DURATION_MS,
+  acknowledgeRoundSummary,
   applyScoreAwards,
   advanceTurn,
   createConfirmedGameState,
@@ -8,6 +10,19 @@ import {
   getScoreAwards,
   startActiveTurn,
 } from './game'
+
+function submit(
+  answer: string,
+  now: number,
+  syllables: string[] = [answer],
+) {
+  return {
+    type: 'submit' as const,
+    answer,
+    syllables,
+    now,
+  }
+}
 
 describe('advanceTurn', () => {
   it('can confirm players first and start the first turn later', () => {
@@ -59,25 +74,13 @@ describe('advanceTurn', () => {
       0,
     )
 
-    const afterFirstSubmit = advanceTurn(initialState, {
-      type: 'submit',
-      answer: 'one',
-      now: 100,
-    })
+    const afterFirstSubmit = advanceTurn(initialState, submit('one', 100))
     const afterTimeout = advanceTurn(afterFirstSubmit, {
       type: 'timeout',
       now: 200,
     })
-    const afterRoundWrap = advanceTurn(afterTimeout, {
-      type: 'submit',
-      answer: 'two',
-      now: 300,
-    })
-    const afterForwardContinue = advanceTurn(afterRoundWrap, {
-      type: 'submit',
-      answer: 'three',
-      now: 400,
-    })
+    const afterRoundWrap = advanceTurn(afterTimeout, submit('two', 300))
+    const afterForwardContinue = advanceTurn(afterRoundWrap, submit('three', 400))
 
     expect(afterFirstSubmit.activePlayerId).toBe('b')
     expect(afterFirstSubmit.round).toBe(1)
@@ -110,21 +113,9 @@ describe('advanceTurn', () => {
       -1,
     )
 
-    const afterC = advanceTurn(initialState, {
-      type: 'submit',
-      answer: 'charlie',
-      now: 100,
-    })
-    const afterB = advanceTurn(afterC, {
-      type: 'submit',
-      answer: 'bravo',
-      now: 200,
-    })
-    const afterWrap = advanceTurn(afterB, {
-      type: 'submit',
-      answer: 'alpha',
-      now: 300,
-    })
+    const afterC = advanceTurn(initialState, submit('charlie', 100))
+    const afterB = advanceTurn(afterC, submit('bravo', 200))
+    const afterWrap = advanceTurn(afterB, submit('alpha', 300))
 
     expect(initialState.activePlayerId).toBe('c')
     expect(initialState.turnDirection).toBe(-1)
@@ -147,16 +138,8 @@ describe('advanceTurn', () => {
       0,
     )
 
-    const afterA = advanceTurn(initialState, {
-      type: 'submit',
-      answer: 'alpha',
-      now: 100,
-    })
-    const afterB = advanceTurn(afterA, {
-      type: 'submit',
-      answer: 'bravo',
-      now: 200,
-    })
+    const afterA = advanceTurn(initialState, submit('alpha', 100))
+    const afterB = advanceTurn(afterA, submit('bravo', 200))
     const afterBoundaryTimeout = advanceTurn(afterB, {
       type: 'timeout',
       now: 300,
@@ -168,6 +151,168 @@ describe('advanceTurn', () => {
     expect(afterBoundaryTimeout.round).toBe(2)
     expect(afterBoundaryTimeout.turnStartedAt).toBeNull()
     expect(afterBoundaryTimeout.turnDeadlineAt).toBeNull()
+    expect(
+      afterBoundaryTimeout.players.find((player) => player.id === 'c')
+        ?.eliminationReason,
+    ).toBe('timeout')
+  })
+
+  it('tracks provided syllables used in the current round for multi-syllable answers', () => {
+    const initialState = createGameState(
+      [
+        { id: 'a', name: 'A' },
+        { id: 'b', name: 'B' },
+      ],
+      0,
+    )
+
+    const afterSubmit = advanceTurn(
+      initialState,
+      submit('กาแฟ', 100, ['กา', 'แฟ']),
+    )
+
+    expect(afterSubmit.usedSyllablesInRound).toEqual(['กา', 'แฟ'])
+  })
+
+  it('accepts a provided leading-vowel syllable as-is', () => {
+    const initialState = createGameState(
+      [
+        { id: 'a', name: 'A' },
+        { id: 'b', name: 'B' },
+      ],
+      0,
+    )
+
+    const afterSubmit = advanceTurn(initialState, submit('แกง', 100, ['แกง']))
+
+    expect(afterSubmit.usedSyllablesInRound).toEqual(['แกง'])
+  })
+
+  it('accepts provided Thai syllables with leading vowels and tone marks as-is', () => {
+    const initialState = createGameState(
+      [
+        { id: 'a', name: 'A' },
+        { id: 'b', name: 'B' },
+      ],
+      0,
+    )
+
+    const afterSubmit = advanceTurn(
+      initialState,
+      submit('ต้นไม้', 100, ['ต้น', 'ไม้']),
+    )
+
+    expect(afterSubmit.usedSyllablesInRound).toEqual(['ต้น', 'ไม้'])
+  })
+
+  it('eliminates a player immediately when they reuse a syllable in the same round', () => {
+    const initialState = createGameState(
+      [
+        { id: 'a', name: 'A' },
+        { id: 'b', name: 'B' },
+        { id: 'c', name: 'C' },
+      ],
+      0,
+    )
+
+    const afterFirstSubmit = advanceTurn(
+      initialState,
+      submit('กาแฟ', 100, ['กา', 'แฟ']),
+    )
+    const afterDuplicateSubmit = advanceTurn(
+      afterFirstSubmit,
+      submit('กากี', 200, ['กา', 'กี']),
+    )
+
+    expect(afterDuplicateSubmit.activePlayerId).toBe('c')
+    expect(afterDuplicateSubmit.turnStartedAt).toBeNull()
+    expect(afterDuplicateSubmit.turnDeadlineAt).toBeNull()
+    expect(afterDuplicateSubmit.usedSyllablesInRound).toEqual(['กา', 'แฟ'])
+    expect(
+      afterDuplicateSubmit.players.find((player) => player.id === 'b')?.status,
+    ).toBe('eliminated')
+    expect(
+      afterDuplicateSubmit.players.find((player) => player.id === 'b')
+        ?.eliminationReason,
+    ).toBe('duplicate_syllable')
+  })
+
+  it('resets used syllables when the in-game round wraps', () => {
+    const initialState = createGameState(
+      [
+        { id: 'a', name: 'A' },
+        { id: 'b', name: 'B' },
+      ],
+      0,
+    )
+
+    const afterFirstSubmit = advanceTurn(initialState, submit('กา', 100, ['กา']))
+    const afterRoundWrap = advanceTurn(afterFirstSubmit, submit('แฟ', 200, ['แฟ']))
+    const afterNewRoundSubmit = advanceTurn(
+      afterRoundWrap,
+      submit('กา', 300, ['กา']),
+    )
+
+    expect(afterRoundWrap.round).toBe(2)
+    expect(afterRoundWrap.usedSyllablesInRound).toEqual([])
+    expect(afterNewRoundSubmit.usedSyllablesInRound).toEqual(['กา'])
+    expect(
+      afterNewRoundSubmit.players.find((player) => player.id === 'a')?.status,
+    ).toBe('active')
+  })
+
+  it('does not treat different provided syllable text as duplicates', () => {
+    const initialState = createGameState(
+      [
+        { id: 'a', name: 'A' },
+        { id: 'b', name: 'B' },
+        { id: 'c', name: 'C' },
+      ],
+      0,
+    )
+
+    const afterFirstSubmit = advanceTurn(
+      initialState,
+      submit('เกา', 100, ['เกา']),
+    )
+    const afterDifferentTextSubmit = advanceTurn(
+      afterFirstSubmit,
+      submit('เก่า', 200, ['เก่า']),
+    )
+
+    expect(afterDifferentTextSubmit.activePlayerId).toBe('c')
+    expect(afterDifferentTextSubmit.usedSyllablesInRound).toEqual([
+      'เกา',
+      'เก่า',
+    ])
+    expect(
+      afterDifferentTextSubmit.players.find((player) => player.id === 'b')
+        ?.status,
+    ).toBe('active')
+  })
+
+  it('marks a late submit with the correct elimination reason', () => {
+    const initialState = createGameState(
+      [
+        { id: 'a', name: 'A' },
+        { id: 'b', name: 'B' },
+        { id: 'c', name: 'C' },
+      ],
+      0,
+    )
+
+    const afterLateSubmit = advanceTurn(
+      initialState,
+      submit('กา', TURN_DURATION_MS + 100, ['กา']),
+    )
+
+    expect(afterLateSubmit.activePlayerId).toBe('b')
+    expect(afterLateSubmit.turnStartedAt).toBeNull()
+    expect(afterLateSubmit.usedSyllablesInRound).toEqual([])
+    expect(
+      afterLateSubmit.players.find((player) => player.id === 'a')
+        ?.eliminationReason,
+    ).toBe('late_submit')
   })
 
   it('marks the final active player as the winner', () => {
@@ -186,12 +331,34 @@ describe('advanceTurn', () => {
 
     expect(finishedState.phase).toBe('finished')
     expect(finishedState.winnerId).toBe('b')
+    expect(finishedState.isAwaitingRoundSummary).toBe(true)
     expect(finishedState.players.find((player) => player.id === 'b')?.status).toBe(
       'winner',
     )
     expect(finishedState.players.find((player) => player.id === 'a')?.status).toBe(
       'eliminated',
     )
+  })
+
+  it('can acknowledge the finished round before showing the summary screen', () => {
+    const initialState = createGameState(
+      [
+        { id: 'a', name: 'A' },
+        { id: 'b', name: 'B' },
+      ],
+      0,
+    )
+
+    const finishedState = advanceTurn(initialState, {
+      type: 'timeout',
+      now: 3000,
+    })
+    const acknowledgedState = acknowledgeRoundSummary(finishedState)
+
+    expect(finishedState.isAwaitingRoundSummary).toBe(true)
+    expect(acknowledgedState.isAwaitingRoundSummary).toBe(false)
+    expect(acknowledgedState.phase).toBe('finished')
+    expect(acknowledgedState.winnerId).toBe('b')
   })
 
   it('awards points to the last three players based on elimination order', () => {
@@ -205,29 +372,17 @@ describe('advanceTurn', () => {
       0,
     )
 
-    const afterA = advanceTurn(initialState, {
-      type: 'submit',
-      answer: 'alpha',
-      now: 100,
-    })
+    const afterA = advanceTurn(initialState, submit('alpha', 100))
     const afterBTimeout = advanceTurn(afterA, {
       type: 'timeout',
       now: 200,
     })
-    const afterC = advanceTurn(afterBTimeout, {
-      type: 'submit',
-      answer: 'charlie',
-      now: 300,
-    })
+    const afterC = advanceTurn(afterBTimeout, submit('charlie', 300))
     const afterDTimeout = advanceTurn(afterC, {
       type: 'timeout',
       now: 400,
     })
-    const afterAAgain = advanceTurn(afterDTimeout, {
-      type: 'submit',
-      answer: 'atlas',
-      now: 500,
-    })
+    const afterAAgain = advanceTurn(afterDTimeout, submit('atlas', 500))
     const finishedState = advanceTurn(afterAAgain, {
       type: 'timeout',
       now: 600,

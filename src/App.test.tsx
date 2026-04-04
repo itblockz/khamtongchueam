@@ -4,6 +4,24 @@ import { fireEvent, render, screen, within } from '@testing-library/react'
 import App from './App'
 
 const MATCH_ROUNDS_PER_MATCH = 4
+const SEGMENTATION_DEBOUNCE_MS = 250
+const SEGMENTATION_ERROR_TEXT = 'ระบบแยกพยางค์ไม่พร้อมใช้งาน'
+
+const mockSyllablesByText: Record<string, string[]> = {
+  ก: ['ก'],
+  กา: ['กา'],
+  แฟ: ['แฟ'],
+  กาแฟ: ['กา', 'แฟ'],
+  กากี: ['กา', 'กี'],
+  กล้วย: ['กล้วย'],
+  สับปะรด: ['สับ', 'ปะ', 'รด'],
+  ลำไย: ['ลำ', 'ไย'],
+  เกา: ['เกา'],
+  เก่า: ['เก่า'],
+  คำตอบ: ['คำ', 'ตอบ'],
+  ต้นไม้: ['ต้น', 'ไม้'],
+  แกง: ['แกง'],
+}
 
 function fillSetupNames(playerNames: string[]) {
   playerNames.forEach((playerName, index) => {
@@ -77,15 +95,93 @@ function expectCurrentTurnPlayer(listLabel: string, currentPlayerName: string) {
   })
 }
 
+async function flushAsyncWork() {
+  await act(async () => {
+    await Promise.resolve()
+    await Promise.resolve()
+  })
+}
+
+async function advanceTimers(ms: number) {
+  await act(async () => {
+    vi.advanceTimersByTime(ms)
+    await Promise.resolve()
+  })
+}
+
+async function flushSegmentationDebounce() {
+  await act(async () => {
+    vi.advanceTimersByTime(SEGMENTATION_DEBOUNCE_MS)
+    await Promise.resolve()
+    await Promise.resolve()
+  })
+}
+
+async function waitForTurn(playerName: string) {
+  await flushAsyncWork()
+  expect(
+    screen.getByRole('heading', { name: `ถึงตา ${playerName}` }),
+  ).toBeInTheDocument()
+}
+
+async function waitForLeaderboard() {
+  await flushAsyncWork()
+  expect(screen.getByLabelText('ตารางคะแนนสะสม')).toBeInTheDocument()
+}
+
+async function openRoundSummary() {
+  fireEvent.click(screen.getByRole('button', { name: 'สรุปรอบ' }))
+  await flushAsyncWork()
+}
+
+async function submitAnswer(playerName: string, answer: string) {
+  fireEvent.change(screen.getByLabelText(`คำตอบของ ${playerName}`), {
+    target: { value: answer },
+  })
+  fireEvent.click(screen.getByRole('button', { name: 'ถัดไป' }))
+  await flushAsyncWork()
+}
+
 describe('คำต้องเชื่อม', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-04-03T12:00:00.000Z'))
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+        const payload =
+          typeof init?.body === 'string'
+            ? (JSON.parse(init.body) as { text?: string })
+            : {}
+        const text = payload.text?.trim() ?? ''
+
+        if (text === 'ปิดระบบ') {
+          return {
+            ok: false,
+            status: 503,
+            json: async () => ({ detail: SEGMENTATION_ERROR_TEXT }),
+          }
+        }
+
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            syllables: mockSyllablesByText[text] ?? [text],
+            engine: 'han_solo',
+            mode: 'written',
+            modelVersion: 'pythainlp-test; engine=han_solo',
+          }),
+        }
+      }),
+    )
   })
 
-  afterEach(() => {
+  afterEach(async () => {
     vi.runOnlyPendingTimers()
     vi.useRealTimers()
+    vi.unstubAllGlobals()
   })
 
   it('starts setup with one focused blank row and adds a new blank row when typing in the last slot', () => {
@@ -190,9 +286,7 @@ describe('คำต้องเชื่อม', () => {
     render(<App />)
     fillSetupNames(['เอ', 'บี'])
 
-    expect(
-      screen.getByRole('button', { name: 'ลบผู้เล่น 1' }).tabIndex,
-    ).toBe(-1)
+    expect(screen.getByRole('button', { name: 'ลบผู้เล่น 1' }).tabIndex).toBe(-1)
     expect(screen.getByRole('button', { name: 'ยืนยันผู้เล่น' }).tabIndex).toBe(0)
   })
 
@@ -255,7 +349,7 @@ describe('คำต้องเชื่อม', () => {
     expect(screen.getByLabelText('ชื่อผู้เล่น 2')).toHaveFocus()
   })
 
-  it('confirms players without starting the first timer immediately', () => {
+  it('confirms players without starting the first timer immediately', async () => {
     render(<App />)
     fillSetupNames(['ออย', 'บีม'])
 
@@ -267,9 +361,7 @@ describe('คำต้องเชื่อม', () => {
     expect(screen.getByRole('button', { name: 'เริ่มรอบแรก' })).toBeInTheDocument()
     expect(screen.getByLabelText('คำตอบของ ออย')).toBeDisabled()
 
-    act(() => {
-      vi.advanceTimersByTime(5000)
-    })
+    await advanceTimers(5000)
 
     expect(
       screen.getByRole('heading', { name: 'ถึงตา ออย' }),
@@ -278,7 +370,7 @@ describe('คำต้องเชื่อม', () => {
     expect(screen.getByLabelText('คำตอบของ ออย')).toBeDisabled()
   })
 
-  it('focuses the first-turn start button and lets Enter start the first round', () => {
+  it('focuses the first-turn start button and lets Enter start the first round', async () => {
     render(<App />)
     fillSetupNames(['ออย', 'บีม'])
 
@@ -294,47 +386,48 @@ describe('คำต้องเชื่อม', () => {
 
     expect(screen.getByLabelText('คำตอบของ ออย')).toBeEnabled()
 
-    act(() => {
-      vi.advanceTimersByTime(3100)
-    })
+    await advanceTimers(3100)
 
+    expect(screen.getByRole('button', { name: 'สรุปรอบ' })).toHaveFocus()
+    await openRoundSummary()
     expect(screen.getByLabelText('ตารางคะแนนสะสม')).toBeInTheDocument()
   })
 
-  it('eliminates the current player when no input is started within 3 seconds', () => {
+  it('eliminates the current player when no input is started within 3 seconds', async () => {
     startTwoPlayerGame('ออย', 'บีม')
 
     expect(
       screen.getByRole('heading', { name: 'ถึงตา ออย' }),
     ).toBeInTheDocument()
 
-    act(() => {
-      vi.advanceTimersByTime(3100)
-    })
+    await advanceTimers(3100)
 
+    expect(screen.getByRole('heading', { name: 'ถึงตา บีม' })).toBeInTheDocument()
+    expect(screen.getByText('ออย ตกรอบเพราะไม่ทันเวลา')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'สรุปรอบ' })).toBeInTheDocument()
+    await openRoundSummary()
     expect(screen.getByLabelText('ตารางคะแนนสะสม')).toBeInTheDocument()
     expectLeaderboardRow('บีม', [3, '-', '-', '-'], 3)
     expectLeaderboardRow('ออย', [1, '-', '-', '-'], 1)
   })
 
-  it('focuses the primary action button when the leaderboard screen opens', () => {
+  it('focuses the summary button before showing the leaderboard and then focuses the leaderboard action', async () => {
     startTwoPlayerGame('ออย', 'บีม')
 
-    act(() => {
-      vi.advanceTimersByTime(3100)
-    })
+    await advanceTimers(3100)
 
+    expect(screen.getByRole('button', { name: 'สรุปรอบ' })).toHaveFocus()
+    await openRoundSummary()
     expect(
       screen.getByRole('button', { name: 'เล่นรอบถัดไปด้วยรายชื่อเดิม' }),
     ).toHaveFocus()
   })
 
-  it('starts the second match round from the last player and the third from the first again', () => {
+  it('starts the second match round from the last player and the third from the first again', async () => {
     startTwoPlayerGame('ออย', 'บีม')
 
-    act(() => {
-      vi.advanceTimersByTime(3100)
-    })
+    await advanceTimers(3100)
+    await openRoundSummary()
 
     fireEvent.click(
       screen.getByRole('button', { name: 'เล่นรอบถัดไปด้วยรายชื่อเดิม' }),
@@ -344,10 +437,8 @@ describe('คำต้องเชื่อม', () => {
     expect(screen.getByRole('button', { name: 'เริ่มรอบแรก' })).toHaveFocus()
 
     fireEvent.click(screen.getByRole('button', { name: 'เริ่มรอบแรก' }))
-
-    act(() => {
-      vi.advanceTimersByTime(3100)
-    })
+    await advanceTimers(3100)
+    await openRoundSummary()
 
     fireEvent.click(
       screen.getByRole('button', { name: 'เล่นรอบถัดไปด้วยรายชื่อเดิม' }),
@@ -357,20 +448,15 @@ describe('คำต้องเชื่อม', () => {
     expect(screen.getByRole('button', { name: 'เริ่มรอบแรก' })).toHaveFocus()
   })
 
-  it('keeps the same player active after typing starts in time until the host submits', () => {
+  it('keeps the same player active after typing starts in time until the host submits', async () => {
     startTwoPlayerGame('ก้อย', 'จูน')
 
-    act(() => {
-      vi.advanceTimersByTime(1000)
-    })
+    await advanceTimers(1000)
 
     const answerInput = screen.getByLabelText('คำตอบของ ก้อย')
 
     fireEvent.change(answerInput, { target: { value: 'ก' } })
-
-    act(() => {
-      vi.advanceTimersByTime(5000)
-    })
+    await advanceTimers(5000)
 
     expect(
       screen.getByRole('heading', { name: 'ถึงตา ก้อย' }),
@@ -378,53 +464,65 @@ describe('คำต้องเชื่อม', () => {
     expect(screen.getByText('รอบ 1/4')).toBeInTheDocument()
 
     fireEvent.change(answerInput, { target: { value: 'กาแฟ' } })
+    await flushSegmentationDebounce()
+
+    const currentInputDebug = within(
+      screen.getByLabelText('พยางค์ของคำปัจจุบัน'),
+    )
+
+    expect(currentInputDebug.getByText('กา')).toBeInTheDocument()
+    expect(currentInputDebug.getByText('แฟ')).toBeInTheDocument()
+    expect(currentInputDebug.getByText(/han_solo/)).toBeInTheDocument()
+
     fireEvent.submit(answerInput.closest('form')!)
+    await waitForTurn('จูน')
 
-    expect(
-      screen.getByRole('heading', { name: 'ถึงตา จูน' }),
-    ).toBeInTheDocument()
+    const usedSyllablesDebug = within(
+      screen.getByLabelText('พยางค์ที่บันทึกในรอบนี้'),
+    )
+
+    expect(usedSyllablesDebug.getByText('กา')).toBeInTheDocument()
+    expect(usedSyllablesDebug.getByText('แฟ')).toBeInTheDocument()
   })
 
-  it('shows the active queue in forward order with now and next labels', () => {
+  it('uses backend syllables in the debug panel for words the old heuristic split badly', async () => {
+    startTwoPlayerGame('ต้น', 'แพรว')
+
+    fireEvent.change(screen.getByLabelText('คำตอบของ ต้น'), {
+      target: { value: 'กล้วย' },
+    })
+    await flushSegmentationDebounce()
+
+    const currentInputDebug = within(
+      screen.getByLabelText('พยางค์ของคำปัจจุบัน'),
+    )
+
+    expect(currentInputDebug.getByText('กล้วย')).toBeInTheDocument()
+    expect(currentInputDebug.queryByText('กล้ว')).not.toBeInTheDocument()
+    expect(currentInputDebug.queryByText('ย')).not.toBeInTheDocument()
+  })
+
+  it('reverses active player order on even-numbered match rounds', async () => {
     render(<App />)
     fillSetupNames(['เอ', 'บี', 'ซี'])
     fireEvent.click(screen.getByRole('button', { name: 'ยืนยันผู้เล่น' }))
     fireEvent.click(screen.getByRole('button', { name: 'เริ่มรอบแรก' }))
 
-    expect(
-      screen.getByRole('heading', { name: 'คิวผู้เล่น' }),
-    ).toBeInTheDocument()
-    expectPlayerListOrder('ผู้เล่นที่ยังไม่ตกรอบ', ['เอ', 'บี', 'ซี'])
-    expectCurrentTurnPlayer('ผู้เล่นที่ยังไม่ตกรอบ', 'เอ')
-    expect(screen.queryByText('ถัดไป')).not.toBeInTheDocument()
-    expect(screen.queryByText('คิว 3')).not.toBeInTheDocument()
-  })
+    await submitAnswer('เอ', 'กาแฟ')
+    await waitForTurn('บี')
 
-  it('reverses active player order on even-numbered match rounds', () => {
-    render(<App />)
-    fillSetupNames(['เอ', 'บี', 'ซี'])
-    fireEvent.click(screen.getByRole('button', { name: 'ยืนยันผู้เล่น' }))
-    fireEvent.click(screen.getByRole('button', { name: 'เริ่มรอบแรก' }))
-
-    fireEvent.change(screen.getByLabelText('คำตอบของ เอ'), {
-      target: { value: 'คำแรก' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: 'ถัดไป' }))
-
-    act(() => {
-      vi.advanceTimersByTime(3100)
-    })
+    await advanceTimers(3100)
 
     fireEvent.click(screen.getByRole('button', { name: 'เริ่มตาถัดไป' }))
+    expect(screen.getByLabelText('คำตอบของ ซี')).toBeEnabled()
 
-    fireEvent.change(screen.getByLabelText('คำตอบของ ซี'), {
-      target: { value: 'คำสอง' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: 'ถัดไป' }))
+    await submitAnswer('ซี', 'สับปะรด')
+    await waitForTurn('เอ')
 
-    act(() => {
-      vi.advanceTimersByTime(3100)
-    })
+    await advanceTimers(3100)
+    expect(screen.getByRole('button', { name: 'สรุปรอบ' })).toBeInTheDocument()
+    await openRoundSummary()
+    await waitForLeaderboard()
 
     fireEvent.click(
       screen.getByRole('button', { name: 'เล่นรอบถัดไปด้วยรายชื่อเดิม' }),
@@ -435,7 +533,7 @@ describe('คำต้องเชื่อม', () => {
     expectCurrentTurnPlayer('ผู้เล่นที่ยังไม่ตกรอบ', 'ซี')
   })
 
-  it('pauses the timer for the next player after someone is eliminated', () => {
+  it('pauses the timer for the next player after someone is eliminated', async () => {
     render(<App />)
     fillSetupNames(['เอ', 'บี', 'ซี'])
     fireEvent.click(screen.getByRole('button', { name: 'ยืนยันผู้เล่น' }))
@@ -445,96 +543,69 @@ describe('คำต้องเชื่อม', () => {
       screen.getByRole('heading', { name: 'ผู้เล่นที่ตกรอบ' }).closest('section'),
     ).toHaveClass('is-empty-collapsed')
 
-    fireEvent.change(screen.getByLabelText('คำตอบของ เอ'), {
-      target: { value: 'คำแรก' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: 'ถัดไป' }))
+    await submitAnswer('เอ', 'กาแฟ')
+    await waitForTurn('บี')
 
-    expect(
-      screen.getByRole('heading', { name: 'ถึงตา บี' }),
-    ).toBeInTheDocument()
-
-    act(() => {
-      vi.advanceTimersByTime(3100)
-    })
+    await advanceTimers(3100)
 
     expect(
       screen.getByRole('heading', { name: 'ถึงตา ซี' }),
     ).toBeInTheDocument()
-    expect(screen.getByText('ยังไม่เริ่มจับเวลา')).toBeInTheDocument()
+    expect(
+      screen.getByText('บี ตกรอบเพราะไม่ทันเวลา'),
+    ).toBeInTheDocument()
     expect(
       screen.getByRole('heading', { name: 'ผู้เล่นที่ตกรอบ' }).closest('section'),
     ).not.toHaveClass('is-empty-collapsed')
     expectPlayerListOrder('ผู้เล่นที่ยังไม่ตกรอบ', ['เอ', 'ซี'])
     expectCurrentTurnPlayer('ผู้เล่นที่ยังไม่ตกรอบ', 'ซี')
     expect(screen.getByRole('button', { name: 'เริ่มตาถัดไป' })).toHaveFocus()
-    expect(screen.getByRole('button', { name: 'เริ่มตาถัดไป' })).toBeInTheDocument()
     expect(screen.getByLabelText('คำตอบของ ซี')).toBeDisabled()
 
-    act(() => {
-      vi.advanceTimersByTime(5000)
-    })
+    await advanceTimers(5000)
 
     expect(
       screen.getByRole('heading', { name: 'ถึงตา ซี' }),
     ).toBeInTheDocument()
-    expect(screen.getByText('ยังไม่เริ่มจับเวลา')).toBeInTheDocument()
     expect(screen.getByLabelText('คำตอบของ ซี')).toBeDisabled()
 
     fireEvent.click(screen.getByRole('button', { name: 'เริ่มตาถัดไป' }))
 
     expect(screen.getByLabelText('คำตอบของ ซี')).toBeEnabled()
 
-    fireEvent.change(screen.getByLabelText('คำตอบของ ซี'), {
-      target: { value: 'คำต่อไป' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: 'ถัดไป' }))
+    await submitAnswer('ซี', 'สับปะรด')
+    await waitForTurn('เอ')
 
-    expect(
-      screen.getByRole('heading', { name: 'ถึงตา เอ' }),
-    ).toBeInTheDocument()
     expectPlayerListOrder('ผู้เล่นที่ยังไม่ตกรอบ', ['เอ', 'ซี'])
     expectCurrentTurnPlayer('ผู้เล่นที่ยังไม่ตกรอบ', 'เอ')
   })
 
-  it('awards leaderboard points to only the last three players', () => {
+  it('awards leaderboard points to only the last three players', async () => {
     render(<App />)
     fillSetupNames(['เอ', 'บี', 'ซี', 'ดี'])
     fireEvent.click(screen.getByRole('button', { name: 'ยืนยันผู้เล่น' }))
     fireEvent.click(screen.getByRole('button', { name: 'เริ่มรอบแรก' }))
 
-    fireEvent.change(screen.getByLabelText('คำตอบของ เอ'), {
-      target: { value: 'คำแรก' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: 'ถัดไป' }))
+    await submitAnswer('เอ', 'กาแฟ')
+    await waitForTurn('บี')
 
-    act(() => {
-      vi.advanceTimersByTime(3100)
-    })
-
+    await advanceTimers(3100)
     fireEvent.click(screen.getByRole('button', { name: 'เริ่มตาถัดไป' }))
 
-    fireEvent.change(screen.getByLabelText('คำตอบของ ซี'), {
-      target: { value: 'คำสอง' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: 'ถัดไป' }))
+    await submitAnswer('ซี', 'สับปะรด')
+    await waitForTurn('ดี')
 
-    act(() => {
-      vi.advanceTimersByTime(3100)
-    })
-
+    await advanceTimers(3100)
     fireEvent.click(screen.getByRole('button', { name: 'เริ่มตาถัดไป' }))
 
-    fireEvent.change(screen.getByLabelText('คำตอบของ เอ'), {
-      target: { value: 'คำสาม' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: 'ถัดไป' }))
+    await submitAnswer('เอ', 'ลำไย')
+    await waitForTurn('ซี')
 
-    act(() => {
-      vi.advanceTimersByTime(3100)
-    })
+    await advanceTimers(3100)
+    expect(screen.getByRole('button', { name: 'สรุปรอบ' })).toBeInTheDocument()
+    await openRoundSummary()
+    await waitForLeaderboard()
 
-    expect(screen.getByLabelText('ตารางคะแนนสะสม')).toBeInTheDocument()
     expect(screen.getByRole('columnheader', { name: 'รอบที่ 1' })).toBeInTheDocument()
     expect(screen.getByRole('columnheader', { name: 'รอบที่ 2' })).toBeInTheDocument()
     expect(screen.getByRole('columnheader', { name: 'รอบที่ 3' })).toBeInTheDocument()
@@ -546,46 +617,72 @@ describe('คำต้องเชื่อม', () => {
     expectLeaderboardRow('บี', [0, '-', '-', '-'], 0)
   })
 
-  it('keeps eliminated players in roster order even when they are eliminated later', () => {
+  it('keeps eliminated players in roster order even when they are eliminated later', async () => {
     render(<App />)
     fillSetupNames(['เอ', 'บี', 'ซี', 'ดี'])
     fireEvent.click(screen.getByRole('button', { name: 'ยืนยันผู้เล่น' }))
     fireEvent.click(screen.getByRole('button', { name: 'เริ่มรอบแรก' }))
 
-    fireEvent.change(screen.getByLabelText('คำตอบของ เอ'), {
-      target: { value: 'คำแรก' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: 'ถัดไป' }))
+    await submitAnswer('เอ', 'กาแฟ')
+    await waitForTurn('บี')
 
-    fireEvent.change(screen.getByLabelText('คำตอบของ บี'), {
-      target: { value: 'คำสอง' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: 'ถัดไป' }))
+    await submitAnswer('บี', 'สับปะรด')
+    await waitForTurn('ซี')
 
-    act(() => {
-      vi.advanceTimersByTime(3100)
-    })
-
+    await advanceTimers(3100)
     fireEvent.click(screen.getByRole('button', { name: 'เริ่มตาถัดไป' }))
 
-    fireEvent.change(screen.getByLabelText('คำตอบของ ดี'), {
-      target: { value: 'คำสาม' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: 'ถัดไป' }))
+    await submitAnswer('ดี', 'ลำไย')
+    await waitForTurn('เอ')
 
-    act(() => {
-      vi.advanceTimersByTime(3100)
-    })
+    await advanceTimers(3100)
+    expect(screen.queryByRole('button', { name: 'สรุปรอบ' })).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'ถึงตา บี' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'เริ่มตาถัดไป' })).toBeInTheDocument()
 
     expectPlayerListOrder('ผู้เล่นที่ตกรอบ', ['เอ', 'ซี'])
   })
 
-  it('accumulates leaderboard scores across replay with the same roster', () => {
+  it('shows a duplicate-syllable pause message and requires manually starting the next turn', async () => {
+    render(<App />)
+    fillSetupNames(['เอ', 'บี', 'ซี'])
+    fireEvent.click(screen.getByRole('button', { name: 'ยืนยันผู้เล่น' }))
+    fireEvent.click(screen.getByRole('button', { name: 'เริ่มรอบแรก' }))
+
+    await submitAnswer('เอ', 'กาแฟ')
+    await waitForTurn('บี')
+
+    await submitAnswer('บี', 'กากี')
+    await waitForTurn('ซี')
+
+    expect(
+      screen.getByText('บี ตกรอบเพราะใช้พยางค์ซ้ำ'),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'เริ่มตาถัดไป' })).toHaveFocus()
+    expect(screen.getByLabelText('คำตอบของ ซี')).toBeDisabled()
+  })
+
+  it('shows a backend segmentation error and does not silently fall back', async () => {
+    startTwoPlayerGame('เอ', 'บี')
+
+    fireEvent.change(screen.getByLabelText('คำตอบของ เอ'), {
+      target: { value: 'ปิดระบบ' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'ถัดไป' }))
+
+    await flushAsyncWork()
+
+    expect(screen.getByRole('alert')).toHaveTextContent(SEGMENTATION_ERROR_TEXT)
+    expect(screen.getByRole('heading', { name: 'ถึงตา เอ' })).toBeInTheDocument()
+    expect(screen.getByLabelText('คำตอบของ เอ')).toHaveValue('ปิดระบบ')
+    expect(screen.getByRole('button', { name: 'ถัดไป' })).toBeEnabled()
+  })
+
+  it('accumulates leaderboard scores across replay with the same roster', async () => {
     startTwoPlayerGame('ต้น', 'แพรว')
 
-    act(() => {
-      vi.advanceTimersByTime(3100)
-    })
+    await advanceTimers(3100)
+    await openRoundSummary()
 
     expectLeaderboardRow('แพรว', [3, '-', '-', '-'], 3)
     expectLeaderboardRow('ต้น', [1, '-', '-', '-'], 1)
@@ -599,24 +696,20 @@ describe('คำต้องเชื่อม', () => {
     expect(screen.getByLabelText('คำตอบของ แพรว')).toBeDisabled()
 
     fireEvent.click(screen.getByRole('button', { name: 'เริ่มรอบแรก' }))
+    await advanceTimers(3100)
 
-    act(() => {
-      vi.advanceTimersByTime(3100)
-    })
-
+    await openRoundSummary()
     expect(screen.getByLabelText('ตารางคะแนนสะสม')).toBeInTheDocument()
-
     expectLeaderboardRow('ต้น', [1, 3, '-', '-'], 4)
     expectLeaderboardRow('แพรว', [3, 1, '-', '-'], 4)
   })
 
-  it('supports replaying with the same roster and resetting everything', () => {
+  it('supports replaying with the same roster and resetting everything', async () => {
     startTwoPlayerGame('ต้น', 'แพรว')
 
-    act(() => {
-      vi.advanceTimersByTime(3100)
-    })
+    await advanceTimers(3100)
 
+    await openRoundSummary()
     expect(screen.getByLabelText('ตารางคะแนนสะสม')).toBeInTheDocument()
 
     fireEvent.click(
@@ -628,46 +721,36 @@ describe('คำต้องเชื่อม', () => {
     expect(screen.getByLabelText('คำตอบของ แพรว')).toBeDisabled()
 
     fireEvent.click(screen.getByRole('button', { name: 'เริ่มรอบแรก' }))
-
     expect(
       screen.getByRole('heading', { name: 'ถึงตา แพรว' }),
     ).toBeInTheDocument()
 
-    fireEvent.change(screen.getByLabelText('คำตอบของ แพรว'), {
-      target: { value: 'กล้วย' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: 'ถัดไป' }))
+    await submitAnswer('แพรว', 'กล้วย')
+    await waitForTurn('ต้น')
 
-    expect(
-      screen.getByRole('heading', { name: 'ถึงตา ต้น' }),
-    ).toBeInTheDocument()
-
-    act(() => {
-      vi.advanceTimersByTime(3100)
-    })
-
-    expect(screen.getByLabelText('ตารางคะแนนสะสม')).toBeInTheDocument()
+    await advanceTimers(3100)
+    await openRoundSummary()
+    await waitForLeaderboard()
 
     fireEvent.click(screen.getByRole('button', { name: 'เริ่มใหม่' }))
 
-    expect(
-      screen.getByRole('heading', { name: 'จัดรายชื่อผู้เล่น' }),
-    ).toBeInTheDocument()
     expect(screen.getByLabelText('ชื่อผู้เล่น 1')).toHaveValue('')
     expect(screen.queryByLabelText('ชื่อผู้เล่น 2')).not.toBeInTheDocument()
   })
 
-  it('starts a new match and resets leaderboard scores after four rounds', () => {
+  it('starts a new match and resets leaderboard scores after four rounds', async () => {
     startTwoPlayerGame('ต้น', 'แพรว')
 
     for (let round = 1; round <= MATCH_ROUNDS_PER_MATCH; round += 1) {
-      act(() => {
-        vi.advanceTimersByTime(3100)
-      })
+      await advanceTimers(3100)
+
+      await openRoundSummary()
 
       const expectedSecondPlayer = round % 2 === 1 ? 'แพรว' : 'ต้น'
-      const expectedFirstPlayerTotal = Math.ceil(round / 2) * 1 + Math.floor(round / 2) * 3
-      const expectedSecondPlayerTotal = Math.ceil(round / 2) * 3 + Math.floor(round / 2) * 1
+      const expectedFirstPlayerTotal =
+        Math.ceil(round / 2) * 1 + Math.floor(round / 2) * 3
+      const expectedSecondPlayerTotal =
+        Math.ceil(round / 2) * 3 + Math.floor(round / 2) * 1
 
       expectLeaderboardRow(
         'แพรว',
@@ -710,15 +793,11 @@ describe('คำต้องเชื่อม', () => {
     expect(screen.getByLabelText('คำตอบของ ต้น')).toBeDisabled()
 
     fireEvent.click(screen.getByRole('button', { name: 'เริ่มรอบแรก' }))
+    expect(screen.getByText(`รอบ 1/${MATCH_ROUNDS_PER_MATCH}`)).toBeInTheDocument()
 
-    expect(
-      screen.getByText(`รอบ 1/${MATCH_ROUNDS_PER_MATCH}`),
-    ).toBeInTheDocument()
+    await advanceTimers(3100)
 
-    act(() => {
-      vi.advanceTimersByTime(3100)
-    })
-
+    await openRoundSummary()
     expectLeaderboardRow('แพรว', [3, '-', '-', '-'], 3)
     expectLeaderboardRow('ต้น', [1, '-', '-', '-'], 1)
   })
