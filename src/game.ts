@@ -269,7 +269,9 @@ export function startActiveTurn(
   if (
     state.phase !== 'playing' ||
     state.activePlayerId === null ||
-    !state.isAwaitingFirstTurnStart
+    state.turnStartedAt !== null ||
+    state.turnDeadlineAt !== null ||
+    state.isSafeToFinish
   ) {
     return state
   }
@@ -286,7 +288,11 @@ export function applyInputChange(
   nextValue: string,
   now = Date.now(),
 ): GameState {
-  if (state.phase !== 'playing' || state.isAwaitingFirstTurnStart) {
+  if (
+    state.phase !== 'playing' ||
+    state.isAwaitingFirstTurnStart ||
+    state.turnStartedAt === null
+  ) {
     return state
   }
 

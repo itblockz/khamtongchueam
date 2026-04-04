@@ -383,6 +383,8 @@ describe('คำต้องเชื่อม', () => {
       vi.advanceTimersByTime(3100)
     })
 
+    fireEvent.click(screen.getByRole('button', { name: 'เริ่มตาถัดไป' }))
+
     fireEvent.change(screen.getByLabelText('คำตอบของ ซี'), {
       target: { value: 'คำสอง' },
     })
@@ -433,6 +435,9 @@ describe('คำต้องเชื่อม', () => {
     ).not.toHaveClass('is-empty-collapsed')
     expectPlayerListOrder('ผู้เล่นที่ยังไม่ตกรอบ', ['เอ', 'ซี'])
     expectCurrentTurnPlayer('ผู้เล่นที่ยังไม่ตกรอบ', 'ซี')
+    expect(screen.getByRole('button', { name: 'เริ่มตาถัดไป' })).toHaveFocus()
+    expect(screen.getByRole('button', { name: 'เริ่มตาถัดไป' })).toBeInTheDocument()
+    expect(screen.getByLabelText('คำตอบของ ซี')).toBeDisabled()
 
     act(() => {
       vi.advanceTimersByTime(5000)
@@ -442,6 +447,11 @@ describe('คำต้องเชื่อม', () => {
       screen.getByRole('heading', { name: 'ถึงตา ซี' }),
     ).toBeInTheDocument()
     expect(screen.getByText('ยังไม่เริ่มจับเวลา')).toBeInTheDocument()
+    expect(screen.getByLabelText('คำตอบของ ซี')).toBeDisabled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'เริ่มตาถัดไป' }))
+
+    expect(screen.getByLabelText('คำตอบของ ซี')).toBeEnabled()
 
     fireEvent.change(screen.getByLabelText('คำตอบของ ซี'), {
       target: { value: 'คำต่อไป' },
@@ -470,6 +480,8 @@ describe('คำต้องเชื่อม', () => {
       vi.advanceTimersByTime(3100)
     })
 
+    fireEvent.click(screen.getByRole('button', { name: 'เริ่มตาถัดไป' }))
+
     fireEvent.change(screen.getByLabelText('คำตอบของ ซี'), {
       target: { value: 'คำสอง' },
     })
@@ -478,6 +490,8 @@ describe('คำต้องเชื่อม', () => {
     act(() => {
       vi.advanceTimersByTime(3100)
     })
+
+    fireEvent.click(screen.getByRole('button', { name: 'เริ่มตาถัดไป' }))
 
     fireEvent.change(screen.getByLabelText('คำตอบของ เอ'), {
       target: { value: 'คำสาม' },
@@ -519,6 +533,8 @@ describe('คำต้องเชื่อม', () => {
     act(() => {
       vi.advanceTimersByTime(3100)
     })
+
+    fireEvent.click(screen.getByRole('button', { name: 'เริ่มตาถัดไป' }))
 
     fireEvent.change(screen.getByLabelText('คำตอบของ ดี'), {
       target: { value: 'คำสาม' },

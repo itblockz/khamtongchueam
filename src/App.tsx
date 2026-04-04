@@ -252,9 +252,11 @@ function App() {
     gameState.activePlayerId !== null &&
     gameState.turnStartedAt === null &&
     !gameState.isSafeToFinish
+  const requiresManualTurnStart =
+    gameState.phase === 'playing' && (isAwaitingFirstTurnStart || isPausedTurn)
   const canSubmitCurrentTurn =
     gameState.phase === 'playing' &&
-    !gameState.isAwaitingFirstTurnStart &&
+    !requiresManualTurnStart &&
     gameState.currentInput.trim().length > 0 &&
     (gameState.isSafeToFinish || gameState.timeLeftMs > 0)
   const timerTone =
@@ -268,7 +270,7 @@ function App() {
           ? 'is-urgent'
           : ''
   const timerValue =
-    gameState.phase === 'playing' && (isAwaitingFirstTurnStart || isPausedTurn)
+    requiresManualTurnStart
       ? 'รอเริ่ม'
       : gameState.phase === 'playing' && gameState.isSafeToFinish
         ? 'ผ่านแล้ว'
@@ -276,7 +278,7 @@ function App() {
           ? `${formatSeconds(gameState.timeLeftMs)}s`
           : ''
   const timerAriaLabel =
-    gameState.phase === 'playing' && (isAwaitingFirstTurnStart || isPausedTurn)
+    requiresManualTurnStart
       ? 'เวลา รอเริ่ม'
       : gameState.phase === 'playing' && gameState.isSafeToFinish
         ? 'เวลา ผ่านแล้ว'
@@ -344,19 +346,21 @@ function App() {
       return
     }
 
-    if (gameState.isAwaitingFirstTurnStart) {
+    if (isAwaitingFirstTurnStart || isPausedTurn) {
       startFirstTurnButtonRef.current?.focus()
       return
     }
 
-    if (!gameState.isAwaitingFirstTurnStart) {
+    if (!isAwaitingFirstTurnStart && !isPausedTurn) {
       answerInputRef.current?.focus()
     }
   }, [
     gameState.phase,
     gameState.activePlayerId,
     gameState.turnStartedAt,
+    isAwaitingFirstTurnStart,
     gameState.isAwaitingFirstTurnStart,
+    isPausedTurn,
   ])
 
   useEffect(() => {
@@ -621,7 +625,11 @@ function App() {
     const { value } = event.target
 
     updateGameState((current) => {
-      if (current.phase !== 'playing' || current.isAwaitingFirstTurnStart) {
+      if (
+        current.phase !== 'playing' ||
+        current.isAwaitingFirstTurnStart ||
+        current.turnStartedAt === null
+      ) {
         return current
       }
 
@@ -633,7 +641,11 @@ function App() {
     event.preventDefault()
 
     updateGameState((current) => {
-      if (current.phase !== 'playing') {
+      if (
+        current.phase !== 'playing' ||
+        current.isAwaitingFirstTurnStart ||
+        current.turnStartedAt === null
+      ) {
         return current
       }
 
@@ -834,10 +846,10 @@ function App() {
                 {isAwaitingFirstTurnStart
                   ? `ยืนยันผู้เล่นแล้ว กดเริ่มรอบแรกเพื่อเริ่มจับเวลา ${activePlayer.name}`
                   : isPausedTurn
-                    ? `ยังไม่เริ่มจับเวลา คนก่อนหน้าเพิ่งตกรอบ พอส่งคำของ ${activePlayer.name} แล้วระบบจะเริ่มนับเวลาของคนถัดไป`
+                    ? `ยังไม่เริ่มจับเวลา คนก่อนหน้าเพิ่งตกรอบ กดเริ่มเพื่อเริ่มจับเวลาของ ${activePlayer.name}`
                     : 'เมื่อเริ่มพิมพ์ตัวแรกทันเวลาแล้ว ระบบจะล็อกคิวไว้ให้ผู้เล่นคนนี้จนกว่าจะส่งคำ'}
               </p>
-              {(isAwaitingFirstTurnStart || isPausedTurn) && (
+              {requiresManualTurnStart && (
                 <span className="sr-only">ยังไม่เริ่มจับเวลา</span>
               )}
             </div>
@@ -852,7 +864,7 @@ function App() {
                 onChange={handleAnswerChange}
                 placeholder="พิมพ์คำตอบของผู้เล่น"
                 autoComplete="off"
-                disabled={isAwaitingFirstTurnStart}
+                disabled={requiresManualTurnStart}
               />
               <div
                 className={`turn-timer-pill ${timerTone}`}
@@ -862,20 +874,22 @@ function App() {
                 <span>เวลา</span>
                 <strong>{timerValue}</strong>
               </div>
-              {isAwaitingFirstTurnStart ? (
+              {requiresManualTurnStart ? (
                 <button
                   ref={startFirstTurnButtonRef}
                   type="button"
                   className="primary-button symbol-button start-turn-button"
                   onClick={handleStartFirstTurn}
                   onKeyDown={handleStartFirstTurnKeyDown}
-                  aria-label="เริ่มรอบแรก"
-                  title="เริ่มรอบแรก"
+                  aria-label={isAwaitingFirstTurnStart ? 'เริ่มรอบแรก' : 'เริ่มตาถัดไป'}
+                  title={isAwaitingFirstTurnStart ? 'เริ่มรอบแรก' : 'เริ่มตาถัดไป'}
                 >
                   <span className="button-symbol" aria-hidden="true">
                     ▶
                   </span>
-                  <span className="button-copy">เริ่มรอบแรก</span>
+                  <span className="button-copy">
+                    {isAwaitingFirstTurnStart ? 'เริ่มรอบแรก' : 'เริ่มตาถัดไป'}
+                  </span>
                 </button>
               ) : (
                 <button
