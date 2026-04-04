@@ -860,16 +860,18 @@ function App() {
           <form className="surface-card answer-panel" onSubmit={handleSubmitTurn}>
             <div className="form-copy">
               <h1 className="sr-only">ถึงตา {activePlayer.name}</h1>
-              <p className="eyebrow">บันทึกคำตอบ</p>
-              <label htmlFor="current-answer">คำตอบของ {activePlayer.name}</label>
-              <p className="support-text">
-                {`รอบ ${currentMatchRound}/${MATCH_ROUNDS_PER_MATCH} ของแมตช์นี้ • ${
-                  isAwaitingFirstTurnStart
-                    ? `ยืนยันผู้เล่นแล้ว กดเริ่มรอบแรกเพื่อเริ่มจับเวลา ${activePlayer.name}`
-                    : isPausedTurn
-                      ? `ยังไม่เริ่มจับเวลา คนก่อนหน้าเพิ่งตกรอบ พอส่งคำของ ${activePlayer.name} แล้วระบบจะเริ่มนับเวลาของคนถัดไป`
-                      : 'เมื่อเริ่มพิมพ์ตัวแรกทันเวลาแล้ว ระบบจะล็อกคิวไว้ให้ผู้เล่นคนนี้จนกว่าจะส่งคำ'
-                }`}
+              <p className="round-indicator">
+                รอบ {currentMatchRound}/{MATCH_ROUNDS_PER_MATCH}
+              </p>
+              <label htmlFor="current-answer" className="sr-only">
+                คำตอบของ {activePlayer.name}
+              </label>
+              <p className="sr-only">
+                {isAwaitingFirstTurnStart
+                  ? `ยืนยันผู้เล่นแล้ว กดเริ่มรอบแรกเพื่อเริ่มจับเวลา ${activePlayer.name}`
+                  : isPausedTurn
+                    ? `ยังไม่เริ่มจับเวลา คนก่อนหน้าเพิ่งตกรอบ พอส่งคำของ ${activePlayer.name} แล้วระบบจะเริ่มนับเวลาของคนถัดไป`
+                    : 'เมื่อเริ่มพิมพ์ตัวแรกทันเวลาแล้ว ระบบจะล็อกคิวไว้ให้ผู้เล่นคนนี้จนกว่าจะส่งคำ'}
               </p>
               {(isAwaitingFirstTurnStart || isPausedTurn) && (
                 <span className="sr-only">ยังไม่เริ่มจับเวลา</span>

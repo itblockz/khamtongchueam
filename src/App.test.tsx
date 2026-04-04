@@ -316,11 +316,7 @@ describe('คำต้องเชื่อม', () => {
     expect(
       screen.getByRole('heading', { name: 'ถึงตา ก้อย' }),
     ).toBeInTheDocument()
-    expect(
-      screen.getByText(
-        'รอบ 1/4 ของแมตช์นี้ • เมื่อเริ่มพิมพ์ตัวแรกทันเวลาแล้ว ระบบจะล็อกคิวไว้ให้ผู้เล่นคนนี้จนกว่าจะส่งคำ',
-      ),
-    ).toBeInTheDocument()
+    expect(screen.getByText('รอบ 1/4')).toBeInTheDocument()
 
     fireEvent.change(answerInput, { target: { value: 'กาแฟ' } })
     fireEvent.submit(answerInput.closest('form')!)
@@ -588,9 +584,7 @@ describe('คำต้องเชื่อม', () => {
     fireEvent.click(screen.getByRole('button', { name: 'เริ่มรอบแรก' }))
 
     expect(
-      screen.getByText(
-        `รอบ 1/${MATCH_ROUNDS_PER_MATCH} ของแมตช์นี้ • เมื่อเริ่มพิมพ์ตัวแรกทันเวลาแล้ว ระบบจะล็อกคิวไว้ให้ผู้เล่นคนนี้จนกว่าจะส่งคำ`,
-      ),
+      screen.getByText(`รอบ 1/${MATCH_ROUNDS_PER_MATCH}`),
     ).toBeInTheDocument()
 
     act(() => {

@@ -415,6 +415,34 @@ button:disabled {
 .answer-panel .form-copy {
   gap: 6px;
   max-width: 36rem;
+  align-self: center;
+}
+
+.answer-panel .round-indicator {
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: flex-start;
+  min-height: 52px;
+  padding: 0 18px;
+  color: #5d391f;
+  font-family: var(--display);
+  font-size: clamp(1.1rem, 2vw, 1.35rem);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.03em;
+  font-variant-numeric: tabular-nums;
+  border: 1px solid rgba(176, 126, 82, 0.18);
+  border-radius: 999px;
+  background: linear-gradient(
+    180deg,
+    rgba(248, 239, 225, 0.96) 0%,
+    rgba(243, 231, 213, 0.92) 100%
+  );
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.34),
+    0 8px 18px rgba(189, 137, 92, 0.12);
 }
 
 .answer-panel .eyebrow {
@@ -922,12 +950,13 @@ button:disabled {
 
   .answer-panel .form-copy {
     gap: 8px;
+    align-self: stretch;
   }
 
-  .answer-panel .support-text {
-    max-width: none;
-    font-size: 1rem;
-    line-height: 1.55;
+  .answer-panel .round-indicator {
+    min-height: 48px;
+    padding: 0 16px;
+    font-size: 1.02rem;
   }
 
   .answer-controls {
