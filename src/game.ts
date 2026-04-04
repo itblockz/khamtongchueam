@@ -2,6 +2,7 @@ export const TURN_DURATION_MS = 3000
 
 export type PlayerStatus = 'active' | 'eliminated' | 'winner'
 export type GamePhase = 'setup' | 'playing' | 'finished'
+export type TurnDirection = 1 | -1
 
 export interface PlayerDraft {
   id: string
@@ -27,6 +28,7 @@ export interface GameState {
   players: Player[]
   activePlayerId: string | null
   round: number
+  turnDirection: TurnDirection
   currentInput: string
   turnStartedAt: number | null
   turnDeadlineAt: number | null
@@ -77,16 +79,69 @@ function buildPausedTurnState(durationMs: number) {
   }
 }
 
-function findNextActiveIndex(players: Player[], currentIndex: number) {
-  for (let offset = 1; offset <= players.length; offset += 1) {
-    const nextIndex = (currentIndex + offset) % players.length
-
+function findNextActiveIndexInDirection(
+  players: Player[],
+  currentIndex: number,
+  direction: TurnDirection,
+) {
+  for (
+    let nextIndex = currentIndex + direction;
+    nextIndex >= 0 && nextIndex < players.length;
+    nextIndex += direction
+  ) {
     if (players[nextIndex].status === 'active') {
       return nextIndex
     }
   }
 
   return -1
+}
+
+function findBoundaryActiveIndex(
+  players: Player[],
+  direction: TurnDirection,
+) {
+  return direction === 1
+    ? findNextActiveIndexInDirection(players, -1, direction)
+    : findNextActiveIndexInDirection(players, players.length, direction)
+}
+
+function getActivePlayerIdForDirection(
+  players: Player[],
+  direction: TurnDirection,
+) {
+  const boundaryIndex = findBoundaryActiveIndex(players, direction)
+
+  if (boundaryIndex === -1) {
+    return null
+  }
+
+  return players[boundaryIndex].id
+}
+
+function getNextTurn(
+  players: Player[],
+  currentIndex: number,
+  round: number,
+  turnDirection: TurnDirection,
+) {
+  const nextIndex = findNextActiveIndexInDirection(
+    players,
+    currentIndex,
+    turnDirection,
+  )
+
+  if (nextIndex !== -1) {
+    return {
+      nextIndex,
+      nextRound: round,
+    }
+  }
+
+  return {
+    nextIndex: findBoundaryActiveIndex(players, turnDirection),
+    nextRound: round + 1,
+  }
 }
 
 function markWinner(players: Player[], winnerId: string) {
@@ -131,6 +186,7 @@ export function createSetupState(): GameState {
     players: [],
     activePlayerId: null,
     round: 1,
+    turnDirection: 1,
     currentInput: '',
     turnStartedAt: null,
     turnDeadlineAt: null,
@@ -170,14 +226,16 @@ export function createGameState(
   playerSeeds: PlayerSeed[],
   now = Date.now(),
   durationMs = TURN_DURATION_MS,
+  turnDirection: TurnDirection = 1,
 ): GameState {
   const players = createPlayers(playerSeeds)
 
   return {
     phase: 'playing',
     players,
-    activePlayerId: players[0]?.id ?? null,
+    activePlayerId: getActivePlayerIdForDirection(players, turnDirection),
     round: 1,
+    turnDirection,
     winnerId: null,
     isAwaitingFirstTurnStart: false,
     ...buildTurnState(now, durationMs),
@@ -187,14 +245,16 @@ export function createGameState(
 export function createConfirmedGameState(
   playerSeeds: PlayerSeed[],
   durationMs = TURN_DURATION_MS,
+  turnDirection: TurnDirection = 1,
 ): GameState {
   const players = createPlayers(playerSeeds)
 
   return {
     phase: 'playing',
     players,
-    activePlayerId: players[0]?.id ?? null,
+    activePlayerId: getActivePlayerIdForDirection(players, turnDirection),
     round: 1,
+    turnDirection,
     winnerId: null,
     isAwaitingFirstTurnStart: true,
     ...buildPausedTurnState(durationMs),
@@ -397,7 +457,12 @@ export function advanceTurn(
     }
   }
 
-  const nextIndex = findNextActiveIndex(nextPlayers, currentIndex)
+  const { nextIndex, nextRound } = getNextTurn(
+    nextPlayers,
+    currentIndex,
+    state.round,
+    state.turnDirection,
+  )
 
   if (nextIndex === -1) {
     return createSetupState()
@@ -407,7 +472,7 @@ export function advanceTurn(
     ...state,
     players: nextPlayers,
     activePlayerId: nextPlayers[nextIndex].id,
-    round: nextIndex <= currentIndex ? state.round + 1 : state.round,
+    round: nextRound,
     winnerId: null,
     isAwaitingFirstTurnStart: false,
     ...(shouldPauseNextTurn

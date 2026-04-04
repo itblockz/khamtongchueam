@@ -14,7 +14,6 @@ import {
   advanceTurn,
   applyInputChange,
   createConfirmedGameState,
-  createGameState,
   createInitialDrafts,
   createPlayerDraft,
   createSetupState,
@@ -25,8 +24,15 @@ import {
   type GameState,
   type Player,
   type PlayerDraft,
+  type TurnDirection,
 } from './game'
 import { useTurnTimer } from './useTurnTimer'
+
+const MATCH_ROUNDS_PER_MATCH = 4
+
+function getTurnDirectionForMatchRound(matchRound: number): TurnDirection {
+  return matchRound % 2 === 1 ? 1 : -1
+}
 
 function formatSeconds(timeLeftMs: number) {
   return (timeLeftMs / 1000).toFixed(1)
@@ -133,16 +139,32 @@ function getPlayerCardClass(player: Player, activePlayerId: string | null) {
 interface SessionState {
   gameState: GameState
   leaderboardScores: Record<string, number>
+  roundScoresInMatch: Array<Record<string, number>>
+  completedRoundsInMatch: number
 }
 
 function createInitialSessionState(): SessionState {
   return {
     gameState: createSetupState(),
     leaderboardScores: {},
+    roundScoresInMatch: [],
+    completedRoundsInMatch: 0,
   }
 }
 
-function applyFinishedLeaderboardScores(
+function createRoundScoreMap(
+  gameState: GameState,
+): Record<string, number> {
+  return getScoreAwards(gameState).reduce<Record<string, number>>(
+    (scoreMap, award) => ({
+      ...scoreMap,
+      [award.playerId]: award.points,
+    }),
+    {},
+  )
+}
+
+function applyFinishedSessionState(
   currentSession: SessionState,
   nextGameState: GameState,
 ): SessionState {
@@ -156,11 +178,21 @@ function applyFinishedLeaderboardScores(
     }
   }
 
+  const roundAwards = getScoreAwards(nextGameState)
+
   return {
     gameState: nextGameState,
     leaderboardScores: applyScoreAwards(
       currentSession.leaderboardScores,
-      getScoreAwards(nextGameState),
+      roundAwards,
+    ),
+    roundScoresInMatch: [
+      ...currentSession.roundScoresInMatch,
+      createRoundScoreMap(nextGameState),
+    ],
+    completedRoundsInMatch: Math.min(
+      currentSession.completedRoundsInMatch + 1,
+      MATCH_ROUNDS_PER_MATCH,
     ),
   }
 }
@@ -174,9 +206,23 @@ function App() {
   )
   const answerInputRef = useRef<HTMLInputElement>(null)
   const startFirstTurnButtonRef = useRef<HTMLButtonElement>(null)
+  const leaderboardActionButtonRef = useRef<HTMLButtonElement>(null)
   const playerInputRefs = useRef<Record<string, HTMLInputElement | null>>({})
   const pendingSetupFocusIdRef = useRef<string | null>(null)
-  const { gameState, leaderboardScores } = sessionState
+  const { gameState, leaderboardScores, roundScoresInMatch } = sessionState
+  const currentMatchRound =
+    gameState.phase === 'finished'
+      ? Math.max(sessionState.completedRoundsInMatch, 1)
+      : Math.min(
+          sessionState.completedRoundsInMatch + 1,
+          MATCH_ROUNDS_PER_MATCH,
+        )
+  const isMatchComplete =
+    sessionState.completedRoundsInMatch >= MATCH_ROUNDS_PER_MATCH
+  const replayButtonLabel = isMatchComplete
+    ? 'เริ่มแมตช์ใหม่ด้วยรายชื่อเดิม'
+    : 'เล่นรอบถัดไปด้วยรายชื่อเดิม'
+  const replayButtonCopy = isMatchComplete ? 'แมตช์ใหม่' : 'รอบถัดไป'
 
   const validation = getSetupValidation(playerDrafts)
   const activePlayer =
@@ -201,6 +247,16 @@ function App() {
           .map((player, index) => ({
             player,
             score: leaderboardScores[player.id] ?? 0,
+            roundScores: Array.from(
+              { length: MATCH_ROUNDS_PER_MATCH },
+              (_, roundIndex) => {
+                if (roundIndex >= sessionState.completedRoundsInMatch) {
+                  return null
+                }
+
+                return roundScoresInMatch[roundIndex]?.[player.id] ?? 0
+              },
+            ),
             roundPoints: roundAwardMap.get(player.id)?.points ?? 0,
             placement: roundAwardMap.get(player.id)?.placement ?? null,
             initialIndex: index,
@@ -266,7 +322,7 @@ function App() {
 
   function replaceGameState(nextGameState: GameState) {
     setSessionState((current) =>
-      applyFinishedLeaderboardScores(current, nextGameState),
+      applyFinishedSessionState(current, nextGameState),
     )
   }
 
@@ -280,7 +336,7 @@ function App() {
         return current
       }
 
-      return applyFinishedLeaderboardScores(current, nextGameState)
+      return applyFinishedSessionState(current, nextGameState)
     })
   }
 
@@ -338,6 +394,14 @@ function App() {
     gameState.turnStartedAt,
     gameState.isAwaitingFirstTurnStart,
   ])
+
+  useEffect(() => {
+    if (gameState.phase !== 'finished') {
+      return
+    }
+
+    leaderboardActionButtonRef.current?.focus()
+  }, [gameState.phase, sessionState.completedRoundsInMatch])
 
   useEffect(() => {
     if (gameState.phase !== 'setup') {
@@ -565,7 +629,13 @@ function App() {
       return
     }
 
-    replaceGameState(createConfirmedGameState(prepareRoster(playerDrafts)))
+    replaceGameState(
+      createConfirmedGameState(
+        prepareRoster(playerDrafts),
+        TURN_DURATION_MS,
+        getTurnDirectionForMatchRound(1),
+      ),
+    )
   }
 
   function handleStartFirstTurn() {
@@ -615,7 +685,30 @@ function App() {
       return
     }
 
-    replaceGameState(createGameState(prepareRoster(playerDrafts)))
+    setSessionState((current) => {
+      const shouldStartNewMatch =
+        current.completedRoundsInMatch >= MATCH_ROUNDS_PER_MATCH
+      const nextMatchRound = shouldStartNewMatch
+        ? 1
+        : current.completedRoundsInMatch + 1
+
+      return {
+        gameState: createConfirmedGameState(
+          prepareRoster(playerDrafts),
+          TURN_DURATION_MS,
+          getTurnDirectionForMatchRound(nextMatchRound),
+        ),
+        leaderboardScores: shouldStartNewMatch
+          ? {}
+          : current.leaderboardScores,
+        roundScoresInMatch: shouldStartNewMatch
+          ? []
+          : current.roundScoresInMatch,
+        completedRoundsInMatch: shouldStartNewMatch
+          ? 0
+          : current.completedRoundsInMatch,
+      }
+    })
   }
 
   function handleResetAll() {
@@ -770,11 +863,13 @@ function App() {
               <p className="eyebrow">บันทึกคำตอบ</p>
               <label htmlFor="current-answer">คำตอบของ {activePlayer.name}</label>
               <p className="support-text">
-                {isAwaitingFirstTurnStart
-                  ? `ยืนยันผู้เล่นแล้ว กดเริ่มรอบแรกเพื่อเริ่มจับเวลา ${activePlayer.name}`
-                  : isPausedTurn
-                  ? `ยังไม่เริ่มจับเวลา คนก่อนหน้าเพิ่งตกรอบ พอส่งคำของ ${activePlayer.name} แล้วระบบจะเริ่มนับเวลาของคนถัดไป`
-                  : 'เมื่อเริ่มพิมพ์ตัวแรกทันเวลาแล้ว ระบบจะล็อกคิวไว้ให้ผู้เล่นคนนี้จนกว่าจะส่งคำ'}
+                {`รอบ ${currentMatchRound}/${MATCH_ROUNDS_PER_MATCH} ของแมตช์นี้ • ${
+                  isAwaitingFirstTurnStart
+                    ? `ยืนยันผู้เล่นแล้ว กดเริ่มรอบแรกเพื่อเริ่มจับเวลา ${activePlayer.name}`
+                    : isPausedTurn
+                      ? `ยังไม่เริ่มจับเวลา คนก่อนหน้าเพิ่งตกรอบ พอส่งคำของ ${activePlayer.name} แล้วระบบจะเริ่มนับเวลาของคนถัดไป`
+                      : 'เมื่อเริ่มพิมพ์ตัวแรกทันเวลาแล้ว ระบบจะล็อกคิวไว้ให้ผู้เล่นคนนี้จนกว่าจะส่งคำ'
+                }`}
               </p>
               {(isAwaitingFirstTurnStart || isPausedTurn) && (
                 <span className="sr-only">ยังไม่เริ่มจับเวลา</span>
@@ -933,86 +1028,76 @@ function App() {
           <section className="surface-card leaderboard-card result-leaderboard-card">
             <div className="panel-header compact">
               <div>
-                <h2>Leaderboard</h2>
+                <h2>ตารางคะแนน</h2>
               </div>
-              <span className="count-badge">{leaderboardEntries.length} คน</span>
             </div>
 
-            <p className="support-text leaderboard-note">
-              3 คนสุดท้ายได้คนละ 1 คะแนน และผู้ชนะได้โบนัสเพิ่มอีก 2 คะแนน
-            </p>
-
-            <ol className="leaderboard-list" aria-label="ตารางคะแนนสะสม">
-              {leaderboardEntries.map((entry, index) => (
-                <li
-                  className={`leaderboard-row ${
-                    entry.player.status === 'winner' ? 'is-winner' : ''
-                  } ${entry.roundPoints > 0 ? 'is-awarded' : ''}`.trim()}
-                  key={entry.player.id}
-                  aria-label={`อันดับ ${index + 1} ${entry.player.name} ${entry.score} คะแนน${
-                    entry.roundPoints > 0
-                      ? ` ได้เพิ่ม ${entry.roundPoints} คะแนนรอบนี้`
-                      : ''
-                  }`}
-                >
-                  <div className="leaderboard-copy">
-                    <span className="leaderboard-rank" aria-hidden="true">
-                      {index + 1}
-                    </span>
-                    <div>
-                      <strong>{entry.player.name}</strong>
-                      <span>
-                        {entry.player.status === 'winner'
-                          ? 'ชนะรอบนี้'
-                          : entry.player.eliminatedAtRound !== null
-                            ? `ตกรอบในรอบ ${entry.player.eliminatedAtRound}`
-                            : entry.placement !== null
-                              ? `จบรอบนี้อันดับ ${entry.placement}`
-                              : 'รอบนี้ยังไม่ได้คะแนน'}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="leaderboard-score">
-                    {entry.roundPoints > 0 ? (
-                      <span className="leaderboard-delta">
-                        +{entry.roundPoints} รอบนี้
-                      </span>
-                    ) : (
-                      <span className="leaderboard-delta is-muted">
-                        ยังไม่ได้คะแนน
-                      </span>
-                    )}
-                    <strong>{entry.score} คะแนน</strong>
-                  </div>
-                </li>
-              ))}
-            </ol>
+            <div className="leaderboard-table-wrap">
+              <table className="leaderboard-table" aria-label="ตารางคะแนนสะสม">
+                <thead>
+                  <tr>
+                    <th scope="col">ผู้เล่น</th>
+                    <th scope="col">รอบที่ 1</th>
+                    <th scope="col">รอบที่ 2</th>
+                    <th scope="col">รอบที่ 3</th>
+                    <th scope="col">รอบที่ 4</th>
+                    <th scope="col">คะแนนรวม</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {leaderboardEntries.map((entry) => (
+                    <tr
+                      key={entry.player.id}
+                      className={`${entry.player.status === 'winner' ? 'is-winner' : ''} ${
+                        entry.roundPoints > 0 ? 'is-awarded' : ''
+                      }`.trim()}
+                      aria-label={`คะแนนสะสมของ ${entry.player.name}`}
+                    >
+                      <th scope="row">
+                        <div className="leaderboard-player-cell">
+                          <strong>{entry.player.name}</strong>
+                        </div>
+                      </th>
+                      {entry.roundScores.map((roundScore, roundIndex) => (
+                        <td
+                          key={`${entry.player.id}-round-${roundIndex + 1}`}
+                          className={
+                            roundIndex + 1 === sessionState.completedRoundsInMatch
+                              ? 'is-current-round'
+                              : ''
+                          }
+                        >
+                          {roundScore === null ? '-' : roundScore}
+                        </td>
+                      ))}
+                      <td className="leaderboard-total-cell">
+                        <strong>{entry.score}</strong>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
 
             <div className="action-row">
               <button
+                ref={leaderboardActionButtonRef}
                 type="button"
                 className="primary-button symbol-button"
                 onClick={handleReplaySamePlayers}
-                aria-label="เล่นใหม่ด้วยรายชื่อเดิม"
-                title="เล่นใหม่ด้วยรายชื่อเดิม"
+                aria-label={replayButtonLabel}
+                title={replayButtonLabel}
               >
-                <span className="button-symbol" aria-hidden="true">
-                  ↺
-                </span>
-                <span className="button-copy">เดิม</span>
+                <span className="button-copy">{replayButtonCopy}</span>
               </button>
               <button
                 type="button"
                 className="secondary-button symbol-button"
                 onClick={handleResetAll}
-                aria-label="เริ่มใหม่ทั้งหมด"
-                title="เริ่มใหม่ทั้งหมด"
+                aria-label="เริ่มใหม่"
+                title="เริ่มใหม่"
               >
-                <span className="button-symbol" aria-hidden="true">
-                  ⌂
-                </span>
-                <span className="button-copy">ใหม่</span>
+                <span className="button-copy">เริ่มใหม่</span>
               </button>
             </div>
           </section>

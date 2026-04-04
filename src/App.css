@@ -736,109 +736,100 @@ button:disabled {
   line-height: 1.5;
 }
 
-.leaderboard-list {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px 12px;
-  padding: 0;
-  margin: 0;
-  list-style: none;
-}
-
-.leaderboard-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  min-width: 0;
-  padding: 12px 14px;
+.leaderboard-table-wrap {
+  overflow-x: auto;
   border: 1px solid rgba(176, 126, 82, 0.14);
-  border-radius: 18px;
+  border-radius: 22px;
   background: rgba(255, 255, 255, 0.72);
 }
 
-.leaderboard-row.is-awarded {
-  border-color: rgba(210, 106, 58, 0.2);
+.leaderboard-table {
+  width: 100%;
+  min-width: 760px;
+  border-collapse: separate;
+  border-spacing: 0;
 }
 
-.leaderboard-row.is-winner {
+.leaderboard-table thead th {
+  padding: 13px 14px;
+  border-bottom: 1px solid rgba(176, 126, 82, 0.14);
+  background: rgba(244, 231, 215, 0.64);
+  color: var(--accent-strong);
+  font-size: 0.9rem;
+  font-weight: 700;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.leaderboard-table thead th:first-child {
+  text-align: left;
+}
+
+.leaderboard-table tbody th,
+.leaderboard-table tbody td {
+  padding: 14px;
+  border-bottom: 1px solid rgba(176, 126, 82, 0.1);
+  background: transparent;
+  vertical-align: middle;
+}
+
+.leaderboard-table tbody tr:last-child th,
+.leaderboard-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.leaderboard-table tbody tr.is-awarded th,
+.leaderboard-table tbody tr.is-awarded td {
+  background: rgba(255, 247, 242, 0.92);
+}
+
+.leaderboard-table tbody tr.is-winner th,
+.leaderboard-table tbody tr.is-winner td {
   background: linear-gradient(180deg, #f2fbf7 0%, #e0f2ea 100%);
-  border-color: rgba(74, 134, 108, 0.18);
 }
 
-.leaderboard-copy {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-width: 0;
+.leaderboard-table tbody th[scope='row'] {
+  min-width: 200px;
+  text-align: left;
 }
 
-.leaderboard-copy strong,
-.leaderboard-score strong {
-  display: block;
+.leaderboard-table tbody td {
+  width: 110px;
+  color: var(--ink);
+  font-weight: 700;
+  text-align: center;
 }
 
-.leaderboard-copy div {
+.leaderboard-player-cell {
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  min-width: 0;
+  gap: 4px;
 }
 
-.leaderboard-copy strong {
+.leaderboard-player-cell strong {
   font-size: 0.98rem;
   line-height: 1.08;
 }
 
-.leaderboard-copy div span:last-child {
+.leaderboard-player-cell span {
   color: var(--muted);
   font-size: 0.88rem;
   line-height: 1.35;
 }
 
-.leaderboard-rank {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 2.4rem;
-  height: 2.4rem;
-  border-radius: 999px;
-  background: var(--accent-soft);
+.leaderboard-table td.is-current-round {
   color: var(--accent-strong);
+}
+
+.leaderboard-total-cell strong {
+  display: block;
   font-family: var(--display);
-  font-size: 1.1rem;
-  line-height: 1;
-}
-
-.leaderboard-score {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 4px;
-  text-align: right;
-}
-
-.leaderboard-delta {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 2rem;
-  padding: 0 10px;
-  border-radius: 999px;
-  background: rgba(210, 106, 58, 0.12);
-  color: var(--accent-strong);
-  font-size: 0.82rem;
-  font-weight: 700;
+  font-size: 1rem;
 }
 
 .result-leaderboard-card .action-row {
   justify-content: flex-end;
   gap: 10px;
-}
-
-.leaderboard-delta.is-muted {
-  background: rgba(133, 92, 59, 0.08);
-  color: var(--muted);
 }
 
 .summary-card {
@@ -978,8 +969,8 @@ button:disabled {
     font-size: 0.92rem;
   }
 
-  .leaderboard-list {
-    grid-template-columns: 1fr;
+  .leaderboard-table {
+    min-width: 640px;
   }
 }
 
@@ -1011,15 +1002,18 @@ button:disabled {
     align-items: stretch;
   }
 
-  .leaderboard-row,
-  .leaderboard-copy,
-  .leaderboard-score {
-    align-items: flex-start;
-    text-align: left;
+  .leaderboard-table {
+    min-width: 560px;
   }
 
-  .leaderboard-row {
-    flex-direction: column;
+  .leaderboard-table thead th,
+  .leaderboard-table tbody th,
+  .leaderboard-table tbody td {
+    padding: 12px;
+  }
+
+  .leaderboard-table tbody th[scope='row'] {
+    min-width: 150px;
   }
 
   .draft-actions > button,

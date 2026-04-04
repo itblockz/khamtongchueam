@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import App from './App'
 
+const MATCH_ROUNDS_PER_MATCH = 4
+
 function fillSetupNames(playerNames: string[]) {
   playerNames.forEach((playerName, index) => {
     fireEvent.change(screen.getByLabelText(`ชื่อผู้เล่น ${index + 1}`), {
@@ -16,6 +18,23 @@ function startTwoPlayerGame(firstPlayer: string, secondPlayer: string) {
   fillSetupNames([firstPlayer, secondPlayer])
   fireEvent.click(screen.getByRole('button', { name: 'ยืนยันผู้เล่น' }))
   fireEvent.click(screen.getByRole('button', { name: 'เริ่มรอบแรก' }))
+}
+
+function expectLeaderboardRow(
+  playerName: string,
+  expectedRoundScores: Array<number | '-'>,
+  expectedTotal: number,
+) {
+  const leaderboard = within(screen.getByLabelText('ตารางคะแนนสะสม'))
+  const row = leaderboard.getByLabelText(`คะแนนสะสมของ ${playerName}`)
+  const cells = within(row)
+    .getAllByRole('cell')
+    .map((cell) => cell.textContent?.trim())
+
+  expect(cells).toEqual([
+    ...expectedRoundScores.map((score) => String(score)),
+    String(expectedTotal),
+  ])
 }
 
 describe('คำต้องเชื่อม', () => {
@@ -235,7 +254,48 @@ describe('คำต้องเชื่อม', () => {
     })
 
     expect(screen.getByLabelText('ตารางคะแนนสะสม')).toBeInTheDocument()
-    expect(screen.getByText('ตกรอบในรอบ 1')).toBeInTheDocument()
+    expectLeaderboardRow('บีม', [3, '-', '-', '-'], 3)
+    expectLeaderboardRow('ออย', [1, '-', '-', '-'], 1)
+  })
+
+  it('focuses the primary action button when the leaderboard screen opens', () => {
+    startTwoPlayerGame('ออย', 'บีม')
+
+    act(() => {
+      vi.advanceTimersByTime(3100)
+    })
+
+    expect(
+      screen.getByRole('button', { name: 'เล่นรอบถัดไปด้วยรายชื่อเดิม' }),
+    ).toHaveFocus()
+  })
+
+  it('starts the second match round from the last player and the third from the first again', () => {
+    startTwoPlayerGame('ออย', 'บีม')
+
+    act(() => {
+      vi.advanceTimersByTime(3100)
+    })
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'เล่นรอบถัดไปด้วยรายชื่อเดิม' }),
+    )
+
+    expect(screen.getByRole('heading', { name: 'ถึงตา บีม' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'เริ่มรอบแรก' })).toHaveFocus()
+
+    fireEvent.click(screen.getByRole('button', { name: 'เริ่มรอบแรก' }))
+
+    act(() => {
+      vi.advanceTimersByTime(3100)
+    })
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'เล่นรอบถัดไปด้วยรายชื่อเดิม' }),
+    )
+
+    expect(screen.getByRole('heading', { name: 'ถึงตา ออย' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'เริ่มรอบแรก' })).toHaveFocus()
   })
 
   it('keeps the same player active after typing starts in time until the host submits', () => {
@@ -258,7 +318,7 @@ describe('คำต้องเชื่อม', () => {
     ).toBeInTheDocument()
     expect(
       screen.getByText(
-        'เมื่อเริ่มพิมพ์ตัวแรกทันเวลาแล้ว ระบบจะล็อกคิวไว้ให้ผู้เล่นคนนี้จนกว่าจะส่งคำ',
+        'รอบ 1/4 ของแมตช์นี้ • เมื่อเริ่มพิมพ์ตัวแรกทันเวลาแล้ว ระบบจะล็อกคิวไว้ให้ผู้เล่นคนนี้จนกว่าจะส่งคำ',
       ),
     ).toBeInTheDocument()
 
@@ -356,21 +416,15 @@ describe('คำต้องเชื่อม', () => {
     })
 
     expect(screen.getByLabelText('ตารางคะแนนสะสม')).toBeInTheDocument()
-
-    const leaderboard = within(screen.getByLabelText('ตารางคะแนนสะสม'))
-
-    expect(
-      leaderboard.getByLabelText('อันดับ 1 เอ 3 คะแนน ได้เพิ่ม 3 คะแนนรอบนี้'),
-    ).toBeInTheDocument()
-    expect(
-      leaderboard.getByLabelText('อันดับ 2 ซี 1 คะแนน ได้เพิ่ม 1 คะแนนรอบนี้'),
-    ).toBeInTheDocument()
-    expect(
-      leaderboard.getByLabelText('อันดับ 3 ดี 1 คะแนน ได้เพิ่ม 1 คะแนนรอบนี้'),
-    ).toBeInTheDocument()
-    expect(
-      leaderboard.getByLabelText('อันดับ 4 บี 0 คะแนน'),
-    ).toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: 'รอบที่ 1' })).toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: 'รอบที่ 2' })).toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: 'รอบที่ 3' })).toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: 'รอบที่ 4' })).toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: 'คะแนนรวม' })).toBeInTheDocument()
+    expectLeaderboardRow('เอ', [3, '-', '-', '-'], 3)
+    expectLeaderboardRow('ซี', [1, '-', '-', '-'], 1)
+    expectLeaderboardRow('ดี', [1, '-', '-', '-'], 1)
+    expectLeaderboardRow('บี', [0, '-', '-', '-'], 0)
   })
 
   it('switches the eliminated board to two columns after two players are out', () => {
@@ -409,21 +463,18 @@ describe('คำต้องเชื่อม', () => {
       vi.advanceTimersByTime(3100)
     })
 
-    let leaderboard = within(screen.getByLabelText('ตารางคะแนนสะสม'))
+    expectLeaderboardRow('แพรว', [3, '-', '-', '-'], 3)
+    expectLeaderboardRow('ต้น', [1, '-', '-', '-'], 1)
 
-    expect(
-      leaderboard.getByLabelText('อันดับ 1 แพรว 3 คะแนน ได้เพิ่ม 3 คะแนนรอบนี้'),
-    ).toBeInTheDocument()
-    expect(
-      leaderboard.getByLabelText('อันดับ 2 ต้น 1 คะแนน ได้เพิ่ม 1 คะแนนรอบนี้'),
-    ).toBeInTheDocument()
+    fireEvent.click(
+      screen.getByRole('button', { name: 'เล่นรอบถัดไปด้วยรายชื่อเดิม' }),
+    )
 
-    fireEvent.click(screen.getByRole('button', { name: 'เล่นใหม่ด้วยรายชื่อเดิม' }))
+    expect(screen.getByRole('heading', { name: 'ถึงตา แพรว' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'เริ่มรอบแรก' })).toHaveFocus()
+    expect(screen.getByLabelText('คำตอบของ แพรว')).toBeDisabled()
 
-    fireEvent.change(screen.getByLabelText('คำตอบของ ต้น'), {
-      target: { value: 'กล้วย' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: 'ถัดไป' }))
+    fireEvent.click(screen.getByRole('button', { name: 'เริ่มรอบแรก' }))
 
     act(() => {
       vi.advanceTimersByTime(3100)
@@ -431,14 +482,8 @@ describe('คำต้องเชื่อม', () => {
 
     expect(screen.getByLabelText('ตารางคะแนนสะสม')).toBeInTheDocument()
 
-    leaderboard = within(screen.getByLabelText('ตารางคะแนนสะสม'))
-
-    expect(
-      leaderboard.getByLabelText('อันดับ 1 ต้น 4 คะแนน ได้เพิ่ม 3 คะแนนรอบนี้'),
-    ).toBeInTheDocument()
-    expect(
-      leaderboard.getByLabelText('อันดับ 2 แพรว 4 คะแนน ได้เพิ่ม 1 คะแนนรอบนี้'),
-    ).toBeInTheDocument()
+    expectLeaderboardRow('ต้น', [1, 3, '-', '-'], 4)
+    expectLeaderboardRow('แพรว', [3, 1, '-', '-'], 4)
   })
 
   it('supports replaying with the same roster and resetting everything', () => {
@@ -450,19 +495,27 @@ describe('คำต้องเชื่อม', () => {
 
     expect(screen.getByLabelText('ตารางคะแนนสะสม')).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'เล่นใหม่ด้วยรายชื่อเดิม' }))
+    fireEvent.click(
+      screen.getByRole('button', { name: 'เล่นรอบถัดไปด้วยรายชื่อเดิม' }),
+    )
+
+    expect(screen.getByRole('heading', { name: 'ถึงตา แพรว' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'เริ่มรอบแรก' })).toHaveFocus()
+    expect(screen.getByLabelText('คำตอบของ แพรว')).toBeDisabled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'เริ่มรอบแรก' }))
 
     expect(
-      screen.getByRole('heading', { name: 'ถึงตา ต้น' }),
+      screen.getByRole('heading', { name: 'ถึงตา แพรว' }),
     ).toBeInTheDocument()
 
-    fireEvent.change(screen.getByLabelText('คำตอบของ ต้น'), {
+    fireEvent.change(screen.getByLabelText('คำตอบของ แพรว'), {
       target: { value: 'กล้วย' },
     })
     fireEvent.click(screen.getByRole('button', { name: 'ถัดไป' }))
 
     expect(
-      screen.getByRole('heading', { name: 'ถึงตา แพรว' }),
+      screen.getByRole('heading', { name: 'ถึงตา ต้น' }),
     ).toBeInTheDocument()
 
     act(() => {
@@ -471,12 +524,80 @@ describe('คำต้องเชื่อม', () => {
 
     expect(screen.getByLabelText('ตารางคะแนนสะสม')).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'เริ่มใหม่ทั้งหมด' }))
+    fireEvent.click(screen.getByRole('button', { name: 'เริ่มใหม่' }))
 
     expect(
       screen.getByRole('heading', { name: 'จัดรายชื่อผู้เล่น' }),
     ).toBeInTheDocument()
     expect(screen.getByLabelText('ชื่อผู้เล่น 1')).toHaveValue('')
     expect(screen.queryByLabelText('ชื่อผู้เล่น 2')).not.toBeInTheDocument()
+  })
+
+  it('starts a new match and resets leaderboard scores after four rounds', () => {
+    startTwoPlayerGame('ต้น', 'แพรว')
+
+    for (let round = 1; round <= MATCH_ROUNDS_PER_MATCH; round += 1) {
+      act(() => {
+        vi.advanceTimersByTime(3100)
+      })
+
+      const expectedSecondPlayer = round % 2 === 1 ? 'แพรว' : 'ต้น'
+      const expectedFirstPlayerTotal = Math.ceil(round / 2) * 1 + Math.floor(round / 2) * 3
+      const expectedSecondPlayerTotal = Math.ceil(round / 2) * 3 + Math.floor(round / 2) * 1
+
+      expectLeaderboardRow(
+        'แพรว',
+        Array.from({ length: MATCH_ROUNDS_PER_MATCH }, (_, index) =>
+          index < round ? (index % 2 === 0 ? 3 : 1) : '-',
+        ),
+        expectedSecondPlayerTotal,
+      )
+      expectLeaderboardRow(
+        'ต้น',
+        Array.from({ length: MATCH_ROUNDS_PER_MATCH }, (_, index) =>
+          index < round ? (index % 2 === 0 ? 1 : 3) : '-',
+        ),
+        expectedFirstPlayerTotal,
+      )
+
+      if (round < MATCH_ROUNDS_PER_MATCH) {
+        fireEvent.click(
+          screen.getByRole('button', { name: 'เล่นรอบถัดไปด้วยรายชื่อเดิม' }),
+        )
+
+        expect(
+          screen.getByRole('heading', { name: `ถึงตา ${expectedSecondPlayer}` }),
+        ).toBeInTheDocument()
+        expect(screen.getByRole('button', { name: 'เริ่มรอบแรก' })).toHaveFocus()
+        expect(
+          screen.getByLabelText(`คำตอบของ ${expectedSecondPlayer}`),
+        ).toBeDisabled()
+
+        fireEvent.click(screen.getByRole('button', { name: 'เริ่มรอบแรก' }))
+      }
+    }
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'เริ่มแมตช์ใหม่ด้วยรายชื่อเดิม' }),
+    )
+
+    expect(screen.getByRole('heading', { name: 'ถึงตา ต้น' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'เริ่มรอบแรก' })).toHaveFocus()
+    expect(screen.getByLabelText('คำตอบของ ต้น')).toBeDisabled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'เริ่มรอบแรก' }))
+
+    expect(
+      screen.getByText(
+        `รอบ 1/${MATCH_ROUNDS_PER_MATCH} ของแมตช์นี้ • เมื่อเริ่มพิมพ์ตัวแรกทันเวลาแล้ว ระบบจะล็อกคิวไว้ให้ผู้เล่นคนนี้จนกว่าจะส่งคำ`,
+      ),
+    ).toBeInTheDocument()
+
+    act(() => {
+      vi.advanceTimersByTime(3100)
+    })
+
+    expectLeaderboardRow('แพรว', [3, '-', '-', '-'], 3)
+    expectLeaderboardRow('ต้น', [1, '-', '-', '-'], 1)
   })
 })
