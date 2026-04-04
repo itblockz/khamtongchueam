@@ -2,6 +2,7 @@ import {
   type ClipboardEvent,
   type DragEvent,
   type ReactNode,
+  useCallback,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -13,18 +14,29 @@ import {
 import './App.css'
 import {
   acknowledgeRoundSummary,
+  beginChallengeSelection,
+  cancelChallenge,
+  CHALLENGE_DEBATE_SEGMENT_COUNT,
+  CHALLENGE_DEBATE_SEGMENT_DURATION_MS,
   TURN_DURATION_MS,
   applyScoreAwards,
+  advanceChallengeDebate,
   advanceTurn,
   applyInputChange,
   createConfirmedGameState,
   createInitialDrafts,
   createPlayerDraft,
   createSetupState,
+  getChallengeableAnswers,
   getScoreAwards,
   getSetupValidation,
   prepareRoster,
+  resolveChallenge,
   startActiveTurn,
+  startChallengeDebate,
+  tickChallengeDebate,
+  updateChallengeSelection,
+  type AnswerRecord,
   type GameState,
   type PlayerDraft,
   type TurnDirection,
@@ -47,6 +59,10 @@ function getTurnDirectionForMatchRound(matchRound: number): TurnDirection {
 
 function formatSeconds(timeLeftMs: number) {
   return (timeLeftMs / 1000).toFixed(1)
+}
+
+function normalizeChallengeTypeaheadText(text: string) {
+  return text.trim().toLocaleLowerCase()
 }
 
 function getInitialSyllableDebugVisibility() {
@@ -100,6 +116,22 @@ function getEliminatedPlayerSummary(
 
   if (player.eliminationReason === 'timeout') {
     return `${player.name} ตกรอบเพราะไม่ทันเวลา`
+  }
+
+  if (player.eliminationReason === 'failed_challenge') {
+    if (player.challengeTargetAnswer) {
+      return `${player.name} ตกรอบเพราะชาเล้นจ์คำ "${player.challengeTargetAnswer}" ไม่สำเร็จ`
+    }
+
+    return `${player.name} ตกรอบเพราะชาเล้นจ์ไม่สำเร็จ`
+  }
+
+  if (player.eliminationReason === 'invalid_connection') {
+    if (player.challengeTargetAnswer && player.challengeSourceAnswer) {
+      return `${player.name} ตกรอบเพราะคำ "${player.challengeTargetAnswer}" ไม่เชื่อมกับคำ "${player.challengeSourceAnswer}"`
+    }
+
+    return `${player.name} ตกรอบเพราะคำไม่เชื่อมกัน`
   }
 
   return `${player.name} ตกรอบ`
@@ -380,6 +412,10 @@ function App() {
   const answerInputRef = useRef<HTMLInputElement>(null)
   const startFirstTurnButtonRef = useRef<HTMLButtonElement>(null)
   const leaderboardActionButtonRef = useRef<HTMLButtonElement>(null)
+  const challengeChallengerInputRef = useRef<HTMLInputElement>(null)
+  const challengeChallengerSelectRef = useRef<HTMLSelectElement>(null)
+  const challengeChallengedAnswerSelectRef = useRef<HTMLSelectElement>(null)
+  const challengeDecisionButtonRef = useRef<HTMLButtonElement>(null)
   const playerInputRefs = useRef<Record<string, HTMLInputElement | null>>({})
   const draftItemRefs = useRef<Record<string, HTMLLIElement | null>>({})
   const draftItemPositionSnapshotRef = useRef<Record<string, number>>({})
@@ -394,6 +430,8 @@ function App() {
   const [segmentationError, setSegmentationError] = useState<string | null>(null)
   const [isSegmentingCurrentInput, setIsSegmentingCurrentInput] = useState(false)
   const [isSubmittingTurn, setIsSubmittingTurn] = useState(false)
+  const [challengeChallengerSearchValue, setChallengeChallengerSearchValue] =
+    useState('')
   const [isSyllableDebugVisible, setIsSyllableDebugVisible] = useState(() =>
     getInitialSyllableDebugVisibility(),
   )
@@ -413,6 +451,9 @@ function App() {
   const replayButtonCopy = isMatchComplete ? 'แมตช์ใหม่' : 'รอบถัดไป'
 
   const validation = getSetupValidation(playerDrafts)
+  const playerById = new Map(
+    gameState.players.map((player) => [player.id, player]),
+  )
   const activePlayer =
     gameState.players.find((player) => player.id === gameState.activePlayerId) ??
     null
@@ -431,12 +472,83 @@ function App() {
   const activePlayers = gameState.players.filter(
     (player) => player.status === 'active',
   )
+  const answerRecordById = new Map(
+    gameState.answerHistory.map((answerRecord) => [answerRecord.id, answerRecord]),
+  )
+  const challengeableAnswers =
+    gameState.phase === 'playing' ? getChallengeableAnswers(gameState) : []
+  const challengeState =
+    gameState.phase === 'playing' ? gameState.challenge : null
+  const isChallengeSelecting = challengeState?.status === 'selecting'
+  const isChallengeDebating = challengeState?.status === 'debating'
+  const isChallengeJudging = challengeState?.status === 'judging'
+  const isChallengeActive =
+    gameState.phase === 'playing' && challengeState?.status !== 'idle'
+  const selectedChallengedAnswer =
+    challengeState?.challengedAnswerId
+      ? (answerRecordById.get(challengeState.challengedAnswerId) ?? null)
+      : null
+  const selectedChallengePreviousAnswer =
+    challengeState?.previousValidAnswerId
+      ? (answerRecordById.get(challengeState.previousValidAnswerId) ?? null)
+      : null
+  const selectedChallenger =
+    challengeState?.challengerPlayerId
+      ? (playerById.get(challengeState.challengerPlayerId) ?? null)
+      : null
+  const selectedChallengedPlayer =
+    challengeState?.challengedPlayerId
+      ? (playerById.get(challengeState.challengedPlayerId) ?? null)
+      : null
+  const challengeChallengerOptions = activePlayers.filter(
+    (player) => player.id !== selectedChallengedPlayer?.id,
+  )
+  const normalizedChallengeChallengerSearch = normalizeChallengeTypeaheadText(
+    challengeChallengerSearchValue,
+  )
+  const filteredChallengeChallengerOptions =
+    normalizedChallengeChallengerSearch.length > 0
+      ? challengeChallengerOptions.filter((player) =>
+          normalizeChallengeTypeaheadText(player.name).startsWith(
+            normalizedChallengeChallengerSearch,
+          ),
+        )
+      : challengeChallengerOptions
+  const bestMatchedChallengeChallengerId =
+    filteredChallengeChallengerOptions[0]?.id ?? ''
+  const visibleChallengeChallengerId =
+    challengeState?.challengerPlayerId !== undefined &&
+    challengeState?.challengerPlayerId !== null &&
+    filteredChallengeChallengerOptions.some(
+      (player) => player.id === challengeState.challengerPlayerId,
+    )
+      ? challengeState.challengerPlayerId
+      : normalizedChallengeChallengerSearch.length > 0
+        ? bestMatchedChallengeChallengerId
+        : ''
+  const canOpenChallenge =
+    gameState.phase === 'playing' &&
+    challengeState?.status === 'idle' &&
+    activePlayers.length > 1 &&
+    challengeableAnswers.length > 0 &&
+    !isSubmittingTurn
+  const canStartSelectedChallenge =
+    isChallengeSelecting &&
+    selectedChallenger !== null &&
+    selectedChallengedAnswer !== null &&
+    selectedChallengePreviousAnswer !== null
+  const canStartVisibleChallenge =
+    isChallengeSelecting &&
+    visibleChallengeChallengerId.length > 0 &&
+    selectedChallengedAnswer !== null &&
+    selectedChallengePreviousAnswer !== null
   const visiblePlayers =
     isAwaitingRoundSummary && winner !== null ? [winner] : activePlayers
   const displayedActivePlayers =
     currentMatchRound % 2 === 0 && !isAwaitingRoundSummary
       ? [...visiblePlayers].reverse()
       : visiblePlayers
+  const displayedActivePlayerId = isChallengeActive ? null : gameState.activePlayerId
   const eliminatedPlayers = gameState.players.filter(
     (player) => player.status === 'eliminated',
   )
@@ -501,6 +613,7 @@ function App() {
     gameState.phase === 'playing' && gameState.isAwaitingFirstTurnStart
   const isPausedTurn =
     gameState.phase === 'playing' &&
+    !isChallengeActive &&
     !gameState.isAwaitingFirstTurnStart &&
     gameState.activePlayerId !== null &&
     gameState.turnStartedAt === null &&
@@ -511,13 +624,31 @@ function App() {
     requiresManualTurnStart || isAwaitingRoundSummary
   const canSubmitCurrentTurn =
     gameState.phase === 'playing' &&
+    !isChallengeActive &&
     !requiresPrimaryAction &&
     !isSubmittingTurn &&
     gameState.currentInput.trim().length > 0 &&
     (gameState.isSafeToFinish || gameState.timeLeftMs > 0)
+  const challengeSpeakerName =
+    challengeState?.currentSpeaker === 'challenger'
+      ? selectedChallenger?.name ?? 'ผู้ชาเล้นจ์'
+      : challengeState?.currentSpeaker === 'challenged'
+        ? selectedChallengedPlayer?.name ?? 'ผู้ถูกชาเล้นจ์'
+        : null
+  const challengeTimeLeftMs =
+    challengeState?.timeLeftMs ?? CHALLENGE_DEBATE_SEGMENT_DURATION_MS
+  const challengeSegmentIndex = challengeState?.segmentIndex ?? 0
   const timerTone =
     isAwaitingRoundSummary
       ? 'is-safe'
+      : isChallengeSelecting
+        ? 'is-pending'
+      : isChallengeDebating
+        ? challengeTimeLeftMs <= 3000
+          ? 'is-urgent'
+          : ''
+      : isChallengeJudging
+        ? 'is-safe'
       : gameState.phase === 'playing' && isAwaitingFirstTurnStart
       ? 'is-pending'
       : gameState.phase === 'playing' && isPausedTurn
@@ -529,6 +660,12 @@ function App() {
           : ''
   const timerValue = isAwaitingRoundSummary
     ? 'สรุปรอบ'
+    : isChallengeSelecting
+      ? 'เลือกท้า'
+    : isChallengeDebating
+      ? `${formatSeconds(challengeTimeLeftMs)}s`
+    : isChallengeJudging
+      ? 'ตัดสิน'
     : requiresManualTurnStart
       ? 'รอเริ่ม'
       : gameState.phase === 'playing' && gameState.isSafeToFinish
@@ -538,6 +675,14 @@ function App() {
           : ''
   const timerAriaLabel = isAwaitingRoundSummary
     ? 'เวลา สรุปรอบ'
+    : isChallengeSelecting
+      ? 'เวลา เลือกการชาเล้นจ์'
+    : isChallengeDebating
+      ? `เวลาโต้วาทีเหลือ ${formatSeconds(
+          challengeTimeLeftMs,
+        )} วินาที`
+    : isChallengeJudging
+      ? 'เวลา ตัดสินการชาเล้นจ์'
     : requiresManualTurnStart
       ? 'เวลา รอเริ่ม'
       : gameState.phase === 'playing' && gameState.isSafeToFinish
@@ -545,10 +690,22 @@ function App() {
         : gameState.phase === 'playing'
           ? `เวลาเหลือ ${formatSeconds(gameState.timeLeftMs)} วินาที`
           : 'เวลา'
+  const challengeNote =
+    isChallengeSelecting
+      ? 'เลือกผู้ชาเล้นจ์และคำที่ต้องการชาเล้นจ์'
+      : isChallengeDebating
+        ? `ช่วงโต้วาที ${challengeSegmentIndex + 1}/${CHALLENGE_DEBATE_SEGMENT_COUNT} ตอนนี้ ${challengeSpeakerName} กำลังพูด`
+        : isChallengeJudging
+          ? 'ครบสองรอบโต้วาทีแล้ว เลือกผลตัดสิน'
+          : null
   const currentInputSyllables = currentInputSegmentation?.syllables ?? []
   const currentInputSegmentationMeta = currentInputSegmentation
     ? `${currentInputSegmentation.engine} · ${currentInputSegmentation.modelVersion}`
     : null
+
+  const resetChallengeChallengerTypeahead = useCallback(() => {
+    setChallengeChallengerSearchValue('')
+  }, [])
 
   async function getSyllableSegmentation(
     text: string,
@@ -587,19 +744,20 @@ function App() {
     )
   }
 
-  function updateGameState(
-    updater: (currentGameState: GameState) => GameState,
-  ) {
-    setSessionState((current) => {
-      const nextGameState = updater(current.gameState)
+  const updateGameState = useCallback(
+    (updater: (currentGameState: GameState) => GameState) => {
+      setSessionState((current) => {
+        const nextGameState = updater(current.gameState)
 
-      if (nextGameState === current.gameState) {
-        return current
-      }
+        if (nextGameState === current.gameState) {
+          return current
+        }
 
-      return applyFinishedSessionState(current, nextGameState)
-    })
-  }
+        return applyFinishedSessionState(current, nextGameState)
+      })
+    },
+    [],
+  )
 
   useTurnTimer({
     durationMs: TURN_DURATION_MS,
@@ -636,8 +794,42 @@ function App() {
     },
   })
 
+  useTurnTimer({
+    durationMs: CHALLENGE_DEBATE_SEGMENT_DURATION_MS,
+    active: gameState.phase === 'playing' && isChallengeDebating,
+    safeToFinish: false,
+    startedAt:
+      gameState.phase === 'playing' && isChallengeDebating
+        ? challengeState?.segmentStartedAt ?? null
+        : null,
+    onTick: (timeLeftMs, startedAt) => {
+      updateGameState((current) =>
+        tickChallengeDebate(current, timeLeftMs, startedAt),
+      )
+    },
+    onExpire: (startedAt) => {
+      updateGameState((current) =>
+        advanceChallengeDebate(current, startedAt),
+      )
+    },
+  })
+
   useEffect(() => {
     if (gameState.phase !== 'playing') {
+      return
+    }
+
+    if (isChallengeSelecting) {
+      challengeChallengerInputRef.current?.focus()
+      return
+    }
+
+    if (isChallengeJudging) {
+      challengeDecisionButtonRef.current?.focus()
+      return
+    }
+
+    if (isChallengeDebating) {
       return
     }
 
@@ -656,6 +848,77 @@ function App() {
     isAwaitingFirstTurnStart,
     gameState.isAwaitingFirstTurnStart,
     isPausedTurn,
+    isChallengeSelecting,
+    isChallengeJudging,
+    isChallengeDebating,
+  ])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    function handleWindowKeyDown(event: globalThis.KeyboardEvent) {
+      if (event.altKey || event.ctrlKey || event.metaKey) {
+        return
+      }
+
+      if (event.key === 'F2') {
+        if (!canOpenChallenge) {
+          return
+        }
+
+        event.preventDefault()
+        setCurrentInputSegmentation(null)
+        setSegmentationError(null)
+        setIsSegmentingCurrentInput(false)
+        setIsSubmittingTurn(false)
+
+        updateGameState((current) => beginChallengeSelection(current))
+        return
+      }
+
+      if (event.key === 'Escape') {
+        if (!isChallengeSelecting) {
+          return
+        }
+
+        event.preventDefault()
+        updateGameState((current) => cancelChallenge(current))
+        return
+      }
+
+      if (event.key !== 'Enter' || !isChallengeDebating) {
+        return
+      }
+
+      event.preventDefault()
+      updateGameState((current) => {
+        if (
+          current.phase !== 'playing' ||
+          current.challenge.status !== 'debating' ||
+          current.challenge.segmentStartedAt === null
+        ) {
+          return current
+        }
+
+        return advanceChallengeDebate(
+          current,
+          current.challenge.segmentStartedAt,
+        )
+      })
+    }
+
+    window.addEventListener('keydown', handleWindowKeyDown)
+
+    return () => {
+      window.removeEventListener('keydown', handleWindowKeyDown)
+    }
+  }, [
+    canOpenChallenge,
+    isChallengeSelecting,
+    isChallengeDebating,
+    updateGameState,
   ])
 
   useEffect(() => {
@@ -665,6 +928,44 @@ function App() {
 
     startFirstTurnButtonRef.current?.focus()
   }, [isAwaitingRoundSummary])
+
+  useEffect(() => {
+    if (isChallengeSelecting) {
+      return
+    }
+
+    resetChallengeChallengerTypeahead()
+  }, [isChallengeSelecting, resetChallengeChallengerTypeahead])
+
+  useEffect(() => {
+    if (!isChallengeSelecting || normalizedChallengeChallengerSearch.length === 0) {
+      return
+    }
+
+    const nextChallengerId = filteredChallengeChallengerOptions[0]?.id ?? null
+    const currentChallengerId = challengeState?.challengerPlayerId ?? null
+    const currentSelectionStillVisible =
+      currentChallengerId !== null &&
+      filteredChallengeChallengerOptions.some(
+        (player) => player.id === currentChallengerId,
+      )
+
+    if (currentSelectionStillVisible || currentChallengerId === nextChallengerId) {
+      return
+    }
+
+    updateGameState((current) =>
+      updateChallengeSelection(current, {
+        challengerPlayerId: nextChallengerId,
+      }),
+    )
+  }, [
+    isChallengeSelecting,
+    normalizedChallengeChallengerSearch,
+    filteredChallengeChallengerOptions,
+    challengeState?.challengerPlayerId,
+    updateGameState,
+  ])
 
   useEffect(() => {
     try {
@@ -718,7 +1019,7 @@ function App() {
       return
     }
 
-    if (requiresManualTurnStart) {
+    if (requiresManualTurnStart || isChallengeActive) {
       setCurrentInputSegmentation(null)
       setIsSegmentingCurrentInput(false)
       return
@@ -776,6 +1077,7 @@ function App() {
     gameState.phase,
     gameState.currentInput,
     requiresManualTurnStart,
+    isChallengeActive,
   ])
 
   useLayoutEffect(() => {
@@ -1169,6 +1471,208 @@ function App() {
     }
   }
 
+  function handleOpenChallenge() {
+    if (gameState.phase !== 'playing') {
+      return
+    }
+
+    resetChallengeChallengerTypeahead()
+    setCurrentInputSegmentation(null)
+    setSegmentationError(null)
+    setIsSegmentingCurrentInput(false)
+    setIsSubmittingTurn(false)
+
+    updateGameState((current) => beginChallengeSelection(current))
+  }
+
+  function handleCancelChallenge() {
+    resetChallengeChallengerTypeahead()
+    updateGameState((current) => cancelChallenge(current))
+  }
+
+  function handleChallengeChallengerChange(
+    event: ChangeEvent<HTMLSelectElement>,
+  ) {
+    const nextValue = event.target.value.trim()
+    updateGameState((current) =>
+      updateChallengeSelection(current, {
+        challengerPlayerId: nextValue || null,
+      }),
+    )
+  }
+
+  function handleChallengeChallengerSearchChange(
+    event: ChangeEvent<HTMLInputElement>,
+  ) {
+    const nextValue = event.target.value
+    const normalizedNextValue = normalizeChallengeTypeaheadText(nextValue)
+    setChallengeChallengerSearchValue(nextValue)
+
+    if (!isChallengeSelecting || normalizedNextValue.length === 0) {
+      return
+    }
+
+    const nextFilteredOptions = challengeChallengerOptions.filter((player) =>
+      normalizeChallengeTypeaheadText(player.name).startsWith(
+        normalizedNextValue,
+      ),
+    )
+    const currentChallengerId = challengeState?.challengerPlayerId ?? null
+    const currentSelectionStillVisible =
+      currentChallengerId !== null &&
+      nextFilteredOptions.some((player) => player.id === currentChallengerId)
+    const nextChallengerId = currentSelectionStillVisible
+      ? currentChallengerId
+      : nextFilteredOptions[0]?.id ?? null
+
+    if (nextChallengerId === currentChallengerId) {
+      return
+    }
+
+    updateGameState((current) =>
+      updateChallengeSelection(current, {
+        challengerPlayerId: nextChallengerId,
+      }),
+    )
+  }
+
+  function handleChallengeChallengerInputKeyDown(
+    event: KeyboardEvent<HTMLInputElement>,
+  ) {
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault()
+      challengeChallengerSelectRef.current?.focus()
+      return
+    }
+
+    if (event.key !== 'Enter') {
+      return
+    }
+
+    event.preventDefault()
+    const nextChallengerId =
+      (selectedChallenger?.id ?? visibleChallengeChallengerId) || null
+
+    if (!nextChallengerId) {
+      challengeChallengerSelectRef.current?.focus()
+      return
+    }
+
+    if (
+      selectedChallengedAnswer !== null &&
+      selectedChallengePreviousAnswer !== null
+    ) {
+      handleStartChallenge(nextChallengerId)
+      return
+    }
+
+    if (challengeState?.challengerPlayerId !== nextChallengerId) {
+      updateGameState((current) =>
+        updateChallengeSelection(current, {
+          challengerPlayerId: nextChallengerId,
+        }),
+      )
+    }
+
+    challengeChallengedAnswerSelectRef.current?.focus()
+  }
+
+  function handleChallengeChallengerKeyDown(
+    event: KeyboardEvent<HTMLSelectElement>,
+  ) {
+    if (event.key !== 'Enter') {
+      return
+    }
+
+    event.preventDefault()
+    const nextChallengerId =
+      (selectedChallenger?.id ?? visibleChallengeChallengerId) || null
+
+    if (!nextChallengerId) {
+      return
+    }
+
+    if (
+      selectedChallengedAnswer !== null &&
+      selectedChallengePreviousAnswer !== null
+    ) {
+      handleStartChallenge(nextChallengerId)
+      return
+    }
+
+    challengeChallengedAnswerSelectRef.current?.focus()
+  }
+
+  function handleChallengeAnswerChange(event: ChangeEvent<HTMLSelectElement>) {
+    const nextValue = event.target.value.trim()
+
+    updateGameState((current) =>
+      updateChallengeSelection(current, {
+        challengedAnswerId: nextValue || null,
+      }),
+    )
+  }
+
+  function handleChallengeAnswerKeyDown(
+    event: KeyboardEvent<HTMLSelectElement>,
+  ) {
+    if (event.key !== 'Enter') {
+      return
+    }
+
+    event.preventDefault()
+
+    if (!selectedChallenger) {
+      challengeChallengerSelectRef.current?.focus()
+      return
+    }
+
+    if (canStartSelectedChallenge) {
+      handleStartChallenge()
+    }
+  }
+
+  function handleStartChallenge(challengerPlayerId?: string) {
+    const nextChallengerId =
+      challengerPlayerId ?? challengeState?.challengerPlayerId ?? null
+
+    if (!nextChallengerId) {
+      return
+    }
+
+    resetChallengeChallengerTypeahead()
+    updateGameState((current) => {
+      if (current.phase !== 'playing' || current.challenge.status !== 'selecting') {
+        return current
+      }
+
+      const nextState =
+        current.challenge.challengerPlayerId === nextChallengerId
+          ? current
+          : updateChallengeSelection(current, {
+              challengerPlayerId: nextChallengerId,
+            })
+
+      return startChallengeDebate(nextState)
+    })
+  }
+
+  function handleChallengeDecision(decision: 'connects' | 'not_connects') {
+    updateGameState((current) => resolveChallenge(current, decision))
+  }
+
+  function handleChallengeDecisionKeyDown(
+    decision: 'connects' | 'not_connects',
+    event: KeyboardEvent<HTMLButtonElement>,
+  ) {
+    if (event.key !== 'Enter') {
+      return
+    }
+
+    event.preventDefault()
+    handleChallengeDecision(decision)
+  }
+
   function handleReplaySamePlayers() {
     if (!validation.canStart) {
       return
@@ -1367,6 +1871,18 @@ function App() {
                 <p className="round-indicator">
                   รอบ {currentMatchRound}/{MATCH_ROUNDS_PER_MATCH}
                 </p>
+                {gameState.phase === 'playing' && (
+                  <button
+                    type="button"
+                    className="ghost-button challenge-open-button"
+                    onClick={handleOpenChallenge}
+                    disabled={!canOpenChallenge}
+                    aria-label="ชาเล้นจ์"
+                    title="ชาเล้นจ์"
+                  >
+                    ชาเล้นจ์
+                  </button>
+                )}
                 <button
                   type="button"
                   className="ghost-button debug-toggle-button"
@@ -1390,6 +1906,11 @@ function App() {
                     : 'แสดงการแยกพยางค์'}
                 </button>
               </div>
+              {challengeNote && (
+                <p className="challenge-note" role="status" aria-live="polite">
+                  {challengeNote}
+                </p>
+              )}
               {isAwaitingRoundSummary && (
                 <p className="pause-note" role="status" aria-live="polite">
                   {eliminatedPlayerSummaryContent}
@@ -1409,7 +1930,13 @@ function App() {
                 คำตอบของ {playScreenPlayer.name}
               </label>
               <p className="sr-only">
-                {isAwaitingRoundSummary
+                {isChallengeSelecting
+                  ? 'เลือกผู้ชาเล้นจ์และคำที่ต้องการชาเล้นจ์'
+                  : isChallengeDebating
+                    ? challengeNote
+                    : isChallengeJudging
+                      ? 'ครบสองรอบโต้วาทีแล้ว เลือกผลตัดสิน'
+                  : isAwaitingRoundSummary
                   ? `${eliminatedPlayerSummary} กดสรุปรอบเพื่อดูตารางคะแนนของ ${playScreenPlayer.name}`
                   : isAwaitingFirstTurnStart
                   ? `ยืนยันผู้เล่นแล้ว กดเริ่มรอบแรกเพื่อเริ่มจับเวลา ${playScreenPlayer.name}`
@@ -1420,6 +1947,19 @@ function App() {
                       )
                     : 'เมื่อเริ่มพิมพ์ตัวแรกทันเวลาแล้ว ระบบจะล็อกคิวไว้ให้ผู้เล่นคนนี้จนกว่าจะส่งคำ'}
               </p>
+              {gameState.phase === 'playing' &&
+                canOpenChallenge &&
+                !isChallengeActive && (
+                  <p className="sr-only">F2 เพื่อเปิดชาเล้นจ์</p>
+                )}
+              {isChallengeSelecting && (
+                <p className="sr-only">
+                  พิมพ์ชื่อเพื่อกรองและเลือกผู้ชาเล้นจ์ กดลูกศรลงเพื่อไปที่รายการ Enter เพื่อเริ่มทันที Esc เพื่อยกเลิก
+                </p>
+              )}
+              {isChallengeDebating && (
+                <p className="sr-only">Enter เพื่อข้ามช่วงโต้วาที</p>
+              )}
               {requiresPrimaryAction && (
                 <span className="sr-only">ยังไม่เริ่มจับเวลา</span>
               )}
@@ -1435,7 +1975,7 @@ function App() {
                 onChange={handleAnswerChange}
                 placeholder="พิมพ์คำตอบของผู้เล่น"
                 autoComplete="off"
-                disabled={requiresPrimaryAction || isSubmittingTurn}
+                disabled={requiresPrimaryAction || isSubmittingTurn || isChallengeActive}
               />
               <div
                 className={`turn-timer-pill ${timerTone}`}
@@ -1445,7 +1985,17 @@ function App() {
                 <span>เวลา</span>
                 <strong>{timerValue}</strong>
               </div>
-              {requiresPrimaryAction ? (
+              {isChallengeActive ? (
+                <button
+                  type="button"
+                  className="secondary-button symbol-button start-turn-button"
+                  disabled
+                  aria-label="กำลังชาเล้นจ์"
+                  title="กำลังชาเล้นจ์"
+                >
+                  <span className="button-copy">กำลังชาเล้นจ์</span>
+                </button>
+              ) : requiresPrimaryAction ? (
                 <button
                   ref={startFirstTurnButtonRef}
                   type="button"
@@ -1497,6 +2047,215 @@ function App() {
               )}
             </div>
           </form>
+
+          {isChallengeActive && (
+            <section
+              className="surface-card challenge-card"
+              aria-label="การชาเล้นจ์คำไม่เชื่อม"
+            >
+              <div className="panel-header compact challenge-header">
+                <div>
+                  <p className="eyebrow">ชาเล้นจ์</p>
+                  <h2>คำไม่เชื่อมกัน</h2>
+                </div>
+              </div>
+
+              {isChallengeSelecting && (
+                <div className="challenge-content">
+                  <div className="challenge-field-grid">
+                    <div className="challenge-field">
+                      <label htmlFor="challenge-challenger-search">
+                        พิมพ์ชื่อผู้ชาเล้นจ์
+                      </label>
+                      <input
+                        ref={challengeChallengerInputRef}
+                        id="challenge-challenger-search"
+                        className="text-input challenge-search-input"
+                        type="text"
+                        value={challengeChallengerSearchValue}
+                        onChange={handleChallengeChallengerSearchChange}
+                        onKeyDown={handleChallengeChallengerInputKeyDown}
+                        placeholder="พิมพ์ชื่อผู้ชาเล้นจ์"
+                        autoComplete="off"
+                      />
+                      <label htmlFor="challenge-challenger">ผู้ชาเล้นจ์</label>
+                      <select
+                        ref={challengeChallengerSelectRef}
+                        id="challenge-challenger"
+                        className="text-input challenge-select"
+                        value={visibleChallengeChallengerId}
+                        onChange={handleChallengeChallengerChange}
+                        onKeyDown={handleChallengeChallengerKeyDown}
+                      >
+                        {normalizedChallengeChallengerSearch.length === 0 ? (
+                          <option value="">เลือกผู้ชาเล้นจ์</option>
+                        ) : null}
+                        {filteredChallengeChallengerOptions.length > 0 ? (
+                          filteredChallengeChallengerOptions.map((player) => (
+                            <option key={player.id} value={player.id}>
+                              {player.name}
+                            </option>
+                          ))
+                        ) : (
+                          <option value="" disabled>
+                            ไม่พบผู้ชาเล้นจ์ที่ตรงกัน
+                          </option>
+                        )}
+                      </select>
+                    </div>
+
+                    <div className="challenge-field">
+                      <label htmlFor="challenged-answer">คำที่ถูกชาเล้นจ์</label>
+                      <select
+                        ref={challengeChallengedAnswerSelectRef}
+                        id="challenged-answer"
+                        className="text-input challenge-select"
+                        value={challengeState?.challengedAnswerId ?? ''}
+                        onChange={handleChallengeAnswerChange}
+                        onKeyDown={handleChallengeAnswerKeyDown}
+                      >
+                        <option value="">เลือกคำที่ต้องการชาเล้นจ์</option>
+                        {challengeableAnswers.map((answerRecord: AnswerRecord) => {
+                          const answerOwner =
+                            playerById.get(answerRecord.playerId)?.name ?? 'ไม่ทราบชื่อ'
+                          const previousAnswer =
+                            answerRecord.previousValidAnswerId
+                              ? answerRecordById.get(answerRecord.previousValidAnswerId)
+                                  ?.answer ?? 'ไม่ทราบคำก่อนหน้า'
+                              : 'ไม่ทราบคำก่อนหน้า'
+
+                          return (
+                            <option key={answerRecord.id} value={answerRecord.id}>
+                              {`"${answerRecord.answer}" ของ ${answerOwner} · ต่อจาก "${previousAnswer}"`}
+                            </option>
+                          )
+                        })}
+                      </select>
+                    </div>
+                  </div>
+
+                  {selectedChallengedAnswer && selectedChallengePreviousAnswer && (
+                    <div className="challenge-summary">
+                      <p>
+                        <strong>คำที่ถูกท้า:</strong> {selectedChallengedAnswer.answer}
+                      </p>
+                      <p>
+                        <strong>ผู้ถูกชาเล้นจ์:</strong>{' '}
+                        {selectedChallengedPlayer?.name ?? '-'}
+                      </p>
+                      <p>
+                        <strong>คำก่อนหน้า:</strong> {selectedChallengePreviousAnswer.answer}
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="action-row challenge-actions">
+                    <button
+                      type="button"
+                      className="primary-button symbol-button"
+                      onClick={() =>
+                        handleStartChallenge(
+                          visibleChallengeChallengerId || undefined,
+                        )
+                      }
+                      disabled={!canStartVisibleChallenge}
+                      aria-label="เริ่มการชาเล้นจ์"
+                      title="เริ่มการชาเล้นจ์"
+                    >
+                      <span className="button-copy">เริ่มการชาเล้นจ์</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="secondary-button symbol-button"
+                      onClick={handleCancelChallenge}
+                      aria-label="ยกเลิกการชาเล้นจ์"
+                      title="ยกเลิกการชาเล้นจ์"
+                    >
+                      <span className="button-copy">ยกเลิก</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {isChallengeDebating && (
+                <div className="challenge-content">
+                  <div className="challenge-summary">
+                    <p>
+                      <strong>ผู้ชาเล้นจ์:</strong> {selectedChallenger?.name ?? '-'}
+                    </p>
+                    <p>
+                      <strong>ผู้ถูกชาเล้นจ์:</strong>{' '}
+                      {selectedChallengedPlayer?.name ?? '-'}
+                    </p>
+                    <p>
+                      <strong>คำที่ถูกท้า:</strong> {selectedChallengedAnswer?.answer ?? '-'}
+                    </p>
+                    <p>
+                      <strong>คำก่อนหน้า:</strong>{' '}
+                      {selectedChallengePreviousAnswer?.answer ?? '-'}
+                    </p>
+                  </div>
+                  <div className="challenge-debate-status">
+                    <p className="challenge-debate-round">
+                      รอบโต้วาที {Math.floor(challengeSegmentIndex / 2) + 1}/2
+                    </p>
+                    <p className="challenge-debate-speaker">
+                      ตอนนี้ <strong>{challengeSpeakerName}</strong> กำลังพูด
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {isChallengeJudging && (
+                <div className="challenge-content">
+                  <div className="challenge-summary">
+                    <p>
+                      <strong>ผู้ชาเล้นจ์:</strong> {selectedChallenger?.name ?? '-'}
+                    </p>
+                    <p>
+                      <strong>ผู้ถูกชาเล้นจ์:</strong>{' '}
+                      {selectedChallengedPlayer?.name ?? '-'}
+                    </p>
+                    <p>
+                      <strong>คำที่ถูกท้า:</strong> {selectedChallengedAnswer?.answer ?? '-'}
+                    </p>
+                    <p>
+                      <strong>คำก่อนหน้า:</strong>{' '}
+                      {selectedChallengePreviousAnswer?.answer ?? '-'}
+                    </p>
+                  </div>
+
+                  <div className="action-row challenge-actions">
+                    <button
+                      ref={challengeDecisionButtonRef}
+                      type="button"
+                      className="primary-button symbol-button"
+                      onClick={() => handleChallengeDecision('connects')}
+                      onKeyDown={(event) =>
+                        handleChallengeDecisionKeyDown('connects', event)
+                      }
+                      aria-label="ตัดสินว่าเชื่อม"
+                      title="ตัดสินว่าเชื่อม"
+                    >
+                      <span className="button-copy">เชื่อม</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="secondary-button symbol-button"
+                      onClick={() => handleChallengeDecision('not_connects')}
+                      onKeyDown={(event) =>
+                        handleChallengeDecisionKeyDown('not_connects', event)
+                      }
+                      aria-label="ตัดสินว่าไม่เชื่อม"
+                      title="ตัดสินว่าไม่เชื่อม"
+                    >
+                      <span className="button-copy">ไม่เชื่อม</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </section>
+          )}
 
           {isSyllableDebugVisible && (
             <section
@@ -1581,12 +2340,12 @@ function App() {
                   <li
                     className={getActivePlayerCardClass(
                       player.id,
-                      gameState.activePlayerId,
+                      displayedActivePlayerId,
                     )}
                     key={player.id}
                   >
                     <strong>{player.name}</strong>
-                    {player.id === gameState.activePlayerId && (
+                    {player.id === displayedActivePlayerId && (
                       <span className="player-chip-current">ตอนนี้</span>
                     )}
                   </li>

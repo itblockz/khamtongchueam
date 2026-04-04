@@ -1,14 +1,21 @@
 import { describe, expect, it } from 'vitest'
 import {
+  beginChallengeSelection,
+  CHALLENGE_DEBATE_SEGMENT_COUNT,
   TURN_DURATION_MS,
   acknowledgeRoundSummary,
   applyScoreAwards,
+  advanceChallengeDebate,
   advanceTurn,
   createConfirmedGameState,
   createGameState,
+  getChallengeableAnswers,
   getFinalPlacements,
   getScoreAwards,
+  resolveChallenge,
   startActiveTurn,
+  startChallengeDebate,
+  updateChallengeSelection,
 } from './game'
 
 function submit(
@@ -22,6 +29,22 @@ function submit(
     syllables,
     now,
   }
+}
+
+function advanceDebateToJudging(state: ReturnType<typeof startChallengeDebate>) {
+  let nextState = state
+  let now = 2000
+
+  for (let segment = 0; segment < CHALLENGE_DEBATE_SEGMENT_COUNT; segment += 1) {
+    nextState = advanceChallengeDebate(
+      nextState,
+      nextState.challenge.segmentStartedAt ?? 0,
+      now,
+    )
+    now += 1000
+  }
+
+  return nextState
 }
 
 describe('advanceTurn', () => {
@@ -306,6 +329,188 @@ describe('advanceTurn', () => {
       afterDifferentTextSubmit.players.find((player) => player.id === 'b')
         ?.status,
     ).toBe('active')
+  })
+
+  it('returns only the latest three valid answers for challenge selection', () => {
+    const initialState = createGameState(
+      [
+        { id: 'a', name: 'A' },
+        { id: 'b', name: 'B' },
+        { id: 'c', name: 'C' },
+        { id: 'd', name: 'D' },
+      ],
+      0,
+    )
+
+    const afterA = advanceTurn(initialState, submit('alpha', 100, ['a']))
+    const afterB = advanceTurn(afterA, submit('bravo', 200, ['b']))
+    const afterC = advanceTurn(afterB, submit('charlie', 300, ['c']))
+    const afterD = advanceTurn(afterC, submit('delta', 400, ['d']))
+
+    expect(getChallengeableAnswers(afterD).map((answerRecord) => answerRecord.answer)).toEqual([
+      'delta',
+      'charlie',
+      'bravo',
+    ])
+  })
+
+  it('preselects the latest valid answer when challenge selection opens', () => {
+    const initialState = createGameState(
+      [
+        { id: 'a', name: 'A' },
+        { id: 'b', name: 'B' },
+        { id: 'c', name: 'C' },
+      ],
+      0,
+    )
+
+    const afterA = advanceTurn(initialState, submit('alpha', 100, ['a']))
+    const afterB = advanceTurn(afterA, submit('bravo', 200, ['b']))
+    const afterC = advanceTurn(afterB, submit('charlie', 300, ['c']))
+    const selectingState = beginChallengeSelection(afterC)
+
+    expect(selectingState.challenge.status).toBe('selecting')
+    expect(
+      selectingState.answerHistory.find(
+        (answerRecord) => answerRecord.id === selectingState.challenge.challengedAnswerId,
+      )?.answer,
+    ).toBe('charlie')
+    expect(selectingState.challenge.challengedPlayerId).toBe('c')
+    expect(selectingState.challenge.previousValidAnswerId).not.toBeNull()
+  })
+
+  it('can invalidate a challenged chain, award bonus points, and move to the next player after the eliminated one', () => {
+    const initialState = createGameState(
+      [
+        { id: 'a', name: 'A' },
+        { id: 'b', name: 'B' },
+        { id: 'c', name: 'C' },
+      ],
+      0,
+    )
+
+    const afterA = advanceTurn(initialState, submit('alpha', 100, ['a']))
+    const afterB = advanceTurn(afterA, submit('bravo', 200, ['b']))
+    const afterC = advanceTurn(afterB, submit('charlie', 300, ['c']))
+    const challengedAnswer = getChallengeableAnswers(afterC).find(
+      (answerRecord) => answerRecord.answer === 'bravo',
+    )
+
+    expect(challengedAnswer).toBeDefined()
+
+    const selectingState = beginChallengeSelection(afterC)
+    const selectedState = updateChallengeSelection(selectingState, {
+      challengerPlayerId: 'a',
+      challengedAnswerId: challengedAnswer?.id ?? null,
+    })
+    const debatingState = startChallengeDebate(selectedState, 1000)
+    const judgingState = advanceDebateToJudging(debatingState)
+    const resolvedState = resolveChallenge(judgingState, 'not_connects', 7000)
+
+    expect(
+      resolvedState.players.find((player) => player.id === 'b')?.status,
+    ).toBe('eliminated')
+    expect(
+      resolvedState.players.find((player) => player.id === 'b')
+        ?.eliminationReason,
+    ).toBe('invalid_connection')
+    expect(resolvedState.activePlayerId).toBe('c')
+    expect(resolvedState.turnStartedAt).toBeNull()
+    expect(resolvedState.usedSyllablesInRound).toEqual(['a'])
+    expect(
+      resolvedState.answerHistory
+        .filter((answerRecord) => !answerRecord.invalidatedByChallenge)
+        .map((answerRecord) => answerRecord.answer),
+    ).toEqual(['alpha'])
+    expect(resolvedState.challengeBonusPointsByPlayerId).toEqual({ a: 2 })
+  })
+
+  it('eliminates the challenger when the challenge fails and marks the challenged answer as already resolved', () => {
+    const initialState = createGameState(
+      [
+        { id: 'a', name: 'A' },
+        { id: 'b', name: 'B' },
+        { id: 'c', name: 'C' },
+      ],
+      0,
+    )
+
+    const afterA = advanceTurn(initialState, submit('alpha', 100, ['a']))
+    const afterB = advanceTurn(afterA, submit('bravo', 200, ['b']))
+    const challengedAnswer = getChallengeableAnswers(afterB).find(
+      (answerRecord) => answerRecord.answer === 'bravo',
+    )
+    const selectingState = beginChallengeSelection(afterB)
+    const selectedState = updateChallengeSelection(selectingState, {
+      challengerPlayerId: 'c',
+      challengedAnswerId: challengedAnswer?.id ?? null,
+    })
+    const debatingState = startChallengeDebate(selectedState, 1000)
+    const judgingState = advanceDebateToJudging(debatingState)
+    const resolvedState = resolveChallenge(judgingState, 'connects', 7000)
+
+    expect(
+      resolvedState.players.find((player) => player.id === 'c')?.status,
+    ).toBe('eliminated')
+    expect(
+      resolvedState.players.find((player) => player.id === 'c')
+        ?.eliminationReason,
+    ).toBe('failed_challenge')
+    expect(resolvedState.activePlayerId).toBe('a')
+    expect(resolvedState.turnCycle).toBe(2)
+    expect(
+      resolvedState.answerHistory.find(
+        (answerRecord) => answerRecord.id === challengedAnswer?.id,
+      )?.challengeResolved,
+    ).toBe(true)
+    expect(getChallengeableAnswers(resolvedState)).toEqual([])
+    expect(resolvedState.usedSyllablesInRound).toEqual(['a', 'b'])
+  })
+
+  it('adds challenge bonus points to final score awards and can finish immediately after a successful challenge', () => {
+    const initialState = createGameState(
+      [
+        { id: 'a', name: 'A' },
+        { id: 'b', name: 'B' },
+      ],
+      0,
+    )
+
+    const afterA = advanceTurn(initialState, submit('alpha', 100, ['a']))
+    const afterB = advanceTurn(afterA, submit('bravo', 200, ['b']))
+    const challengedAnswer = getChallengeableAnswers(afterB)[0]
+    const selectingState = beginChallengeSelection(afterB)
+    const selectedState = updateChallengeSelection(selectingState, {
+      challengerPlayerId: 'a',
+      challengedAnswerId: challengedAnswer.id,
+    })
+    const debatingState = startChallengeDebate(selectedState, 1000)
+    const judgingState = advanceDebateToJudging(debatingState)
+    const finishedState = resolveChallenge(judgingState, 'not_connects', 7000)
+
+    expect(finishedState.phase).toBe('finished')
+    expect(finishedState.isAwaitingRoundSummary).toBe(true)
+
+    expect(getScoreAwards(finishedState)).toEqual([
+      {
+        playerId: 'a',
+        playerName: 'A',
+        placement: 1,
+        standingPoints: 1,
+        winnerBonus: 2,
+        challengeBonus: 2,
+        points: 5,
+      },
+      {
+        playerId: 'b',
+        playerName: 'B',
+        placement: 2,
+        standingPoints: 1,
+        winnerBonus: 0,
+        challengeBonus: 0,
+        points: 1,
+      },
+    ])
   })
 
   it('marks a late submit with the correct elimination reason', () => {

@@ -534,6 +534,16 @@ button:disabled {
   background: rgba(248, 231, 212, 0.9);
 }
 
+.challenge-open-button {
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  white-space: nowrap;
+  box-shadow: none;
+}
+
 .answer-panel .pause-note {
   margin: 0;
   display: inline-flex;
@@ -551,6 +561,15 @@ button:disabled {
   border: 1px solid rgba(189, 87, 66, 0.18);
   border-radius: 18px;
   background: rgba(249, 221, 212, 0.92);
+}
+
+.challenge-note {
+  margin: 0;
+  align-self: flex-start;
+  color: #7a5230;
+  font-size: 0.74rem;
+  font-weight: 700;
+  line-height: 1.4;
 }
 
 .duplicate-answer-text {
@@ -679,6 +698,103 @@ button:disabled {
 
 .start-turn-button .button-copy {
   font-size: 0.84rem;
+}
+
+.challenge-card {
+  padding: 14px 16px;
+  border-radius: 24px;
+}
+
+.challenge-header {
+  padding-bottom: 8px;
+  border-bottom: 1px dashed rgba(176, 126, 82, 0.2);
+}
+
+.challenge-header h2 {
+  font-size: clamp(1.08rem, 1.8vw, 1.45rem);
+  line-height: 1;
+}
+
+.challenge-header .eyebrow {
+  font-size: 0.72rem;
+  letter-spacing: 0.09em;
+}
+
+.challenge-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.challenge-field-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.challenge-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.challenge-field label {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.challenge-select {
+  min-height: 48px;
+  padding: 0 14px;
+  font-size: 0.9rem;
+}
+
+.challenge-search-input {
+  min-height: 44px;
+  padding: 0 14px;
+  font-size: 0.88rem;
+}
+
+.challenge-summary {
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(176, 126, 82, 0.14);
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.challenge-summary p,
+.challenge-debate-status p {
+  margin: 0;
+}
+
+.challenge-summary strong,
+.challenge-debate-status strong {
+  color: var(--ink);
+}
+
+.challenge-actions {
+  justify-content: flex-start;
+}
+
+.challenge-debate-status {
+  display: grid;
+  gap: 6px;
+}
+
+.challenge-debate-round {
+  color: var(--accent-strong);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.challenge-debate-speaker {
+  color: var(--muted);
+  font-size: 0.92rem;
+  line-height: 1.4;
 }
 
 .board-card .panel-header {
@@ -1151,6 +1267,15 @@ button:disabled {
   .debug-toggle-button {
     min-height: 38px;
     padding: 0 14px;
+  }
+
+  .challenge-open-button {
+    min-height: 38px;
+    padding: 0 14px;
+  }
+
+  .challenge-field-grid {
+    grid-template-columns: 1fr;
   }
 
   .answer-controls {

@@ -1,12 +1,20 @@
 export const TURN_DURATION_MS = 3000
+export const CHALLENGE_DEBATE_SEGMENT_DURATION_MS = 15000
+export const CHALLENGE_DEBATE_SEGMENT_COUNT = 4
+const CHALLENGE_BONUS_POINTS = 2
 
 export type PlayerStatus = 'active' | 'eliminated' | 'winner'
 export type GamePhase = 'setup' | 'playing' | 'finished'
 export type TurnDirection = 1 | -1
+export type ChallengeStatus = 'idle' | 'selecting' | 'debating' | 'judging'
+export type ChallengeSpeaker = 'challenger' | 'challenged'
+export type ChallengeDecision = 'connects' | 'not_connects'
 export type EliminationReason =
   | 'timeout'
   | 'late_submit'
   | 'duplicate_syllable'
+  | 'failed_challenge'
+  | 'invalid_connection'
 
 export interface PlayerDraft {
   id: string
@@ -29,11 +37,36 @@ export interface Player {
   duplicateSyllable: string | null
   duplicateSourceAnswer: string | null
   duplicateSubmittedAnswer: string | null
+  challengeSourceAnswer: string | null
+  challengeTargetAnswer: string | null
 }
 
 interface UsedSyllableEntry {
   syllable: string
   answer: string
+}
+
+export interface AnswerRecord {
+  id: string
+  playerId: string
+  answer: string
+  syllables: string[]
+  previousValidAnswerId: string | null
+  invalidatedByChallenge: boolean
+  challengeResolved: boolean
+}
+
+export interface ChallengeState {
+  status: ChallengeStatus
+  challengerPlayerId: string | null
+  challengedAnswerId: string | null
+  challengedPlayerId: string | null
+  previousValidAnswerId: string | null
+  currentSpeaker: ChallengeSpeaker | null
+  segmentIndex: number
+  segmentStartedAt: number | null
+  segmentDeadlineAt: number | null
+  timeLeftMs: number
 }
 
 export interface GameState {
@@ -52,14 +85,18 @@ export interface GameState {
   isAwaitingRoundSummary: boolean
   usedSyllablesInRound: string[]
   usedSyllableEntriesInRound: UsedSyllableEntry[]
+  answerHistory: AnswerRecord[]
+  challenge: ChallengeState
+  challengeBonusPointsByPlayerId: Record<string, number>
 }
 
 export interface LeaderboardAward {
   playerId: string
   playerName: string
-  placement: number
+  placement: number | null
   standingPoints: number
   winnerBonus: number
+  challengeBonus: number
   points: number
 }
 
@@ -92,6 +129,21 @@ function buildPausedTurnState(durationMs: number) {
     turnDeadlineAt: null,
     timeLeftMs: durationMs,
     isSafeToFinish: false,
+  }
+}
+
+function createIdleChallengeState(): ChallengeState {
+  return {
+    status: 'idle',
+    challengerPlayerId: null,
+    challengedAnswerId: null,
+    challengedPlayerId: null,
+    previousValidAnswerId: null,
+    currentSpeaker: null,
+    segmentIndex: 0,
+    segmentStartedAt: null,
+    segmentDeadlineAt: null,
+    timeLeftMs: CHALLENGE_DEBATE_SEGMENT_DURATION_MS,
   }
 }
 
@@ -212,6 +264,8 @@ function createPlayers(playerSeeds: PlayerSeed[]): Player[] {
     duplicateSyllable: null,
     duplicateSourceAnswer: null,
     duplicateSubmittedAnswer: null,
+    challengeSourceAnswer: null,
+    challengeTargetAnswer: null,
   }))
 }
 
@@ -221,6 +275,294 @@ function getPlacementValue(player: Player) {
   }
 
   return player.eliminatedOrder ?? Number.MIN_SAFE_INTEGER
+}
+
+function getValidAnswerHistory(answerHistory: AnswerRecord[]) {
+  return answerHistory.filter((record) => !record.invalidatedByChallenge)
+}
+
+function getAnswerRecordById(
+  answerHistory: AnswerRecord[],
+  answerId: string | null,
+) {
+  if (!answerId) {
+    return null
+  }
+
+  return answerHistory.find((record) => record.id === answerId) ?? null
+}
+
+function buildUsedSyllableStateFromAnswerHistory(answerHistory: AnswerRecord[]) {
+  const entries = getValidAnswerHistory(answerHistory).flatMap((record) =>
+    record.syllables.map((syllable) => ({
+      syllable,
+      answer: record.answer,
+    })),
+  )
+
+  return {
+    usedSyllablesInRound: entries.map((entry) => entry.syllable),
+    usedSyllableEntriesInRound: entries,
+  }
+}
+
+function getChallengeSpeakerForSegmentIndex(
+  segmentIndex: number,
+): ChallengeSpeaker {
+  return segmentIndex % 2 === 0 ? 'challenger' : 'challenged'
+}
+
+function buildDebatingChallengeState(
+  challenge: ChallengeState,
+  now: number,
+  durationMs: number,
+  segmentIndex: number,
+): ChallengeState {
+  return {
+    ...challenge,
+    status: 'debating',
+    currentSpeaker: getChallengeSpeakerForSegmentIndex(segmentIndex),
+    segmentIndex,
+    segmentStartedAt: now,
+    segmentDeadlineAt: now + durationMs,
+    timeLeftMs: durationMs,
+  }
+}
+
+function buildJudgingChallengeState(challenge: ChallengeState): ChallengeState {
+  return {
+    ...challenge,
+    status: 'judging',
+    currentSpeaker: null,
+    segmentStartedAt: null,
+    segmentDeadlineAt: null,
+    timeLeftMs: 0,
+  }
+}
+
+function getNextEliminatedOrder(players: Player[]) {
+  return players.filter((player) => player.status === 'eliminated').length + 1
+}
+
+function getNextTurnAfterPlayer(
+  players: Player[],
+  currentPlayerId: string,
+  turnCycle: number,
+  turnDirection: TurnDirection,
+) {
+  const currentIndex = players.findIndex((player) => player.id === currentPlayerId)
+
+  if (currentIndex === -1) {
+    return {
+      nextIndex: -1,
+      nextTurnCycle: turnCycle,
+    }
+  }
+
+  return getNextTurn(players, currentIndex, turnCycle, turnDirection)
+}
+
+function finalizePlayingState(
+  state: GameState,
+  {
+    nextPlayers,
+    currentPlayerIdForNextTurn,
+    nextAnswerHistory,
+    nextChallengeBonusPointsByPlayerId,
+    nextUsedSyllablesInRound,
+    nextUsedSyllableEntriesInRound,
+    shouldPauseNextTurn,
+    now,
+  }: {
+    nextPlayers: Player[]
+    currentPlayerIdForNextTurn: string
+    nextAnswerHistory: AnswerRecord[]
+    nextChallengeBonusPointsByPlayerId: Record<string, number>
+    nextUsedSyllablesInRound: string[]
+    nextUsedSyllableEntriesInRound: UsedSyllableEntry[]
+    shouldPauseNextTurn: boolean
+    now: number
+  },
+  durationMs = TURN_DURATION_MS,
+): GameState {
+  const activePlayers = nextPlayers.filter((player) => player.status === 'active')
+
+  if (activePlayers.length === 1) {
+    const winnerId = activePlayers[0].id
+
+    return {
+      ...state,
+      phase: 'finished',
+      players: markWinner(nextPlayers, winnerId),
+      activePlayerId: winnerId,
+      currentInput: '',
+      turnStartedAt: null,
+      turnDeadlineAt: null,
+      timeLeftMs: 0,
+      isSafeToFinish: false,
+      winnerId,
+      isAwaitingFirstTurnStart: false,
+      isAwaitingRoundSummary: true,
+      usedSyllablesInRound: nextUsedSyllablesInRound,
+      usedSyllableEntriesInRound: nextUsedSyllableEntriesInRound,
+      answerHistory: nextAnswerHistory,
+      challenge: createIdleChallengeState(),
+      challengeBonusPointsByPlayerId: nextChallengeBonusPointsByPlayerId,
+    }
+  }
+
+  const { nextIndex, nextTurnCycle } = getNextTurnAfterPlayer(
+    nextPlayers,
+    currentPlayerIdForNextTurn,
+    state.turnCycle,
+    state.turnDirection,
+  )
+
+  if (nextIndex === -1) {
+    return createSetupState()
+  }
+
+  return {
+    ...state,
+    players: nextPlayers,
+    activePlayerId: nextPlayers[nextIndex].id,
+    turnCycle: nextTurnCycle,
+    winnerId: null,
+    isAwaitingFirstTurnStart: false,
+    isAwaitingRoundSummary: false,
+    usedSyllablesInRound: nextUsedSyllablesInRound,
+    usedSyllableEntriesInRound: nextUsedSyllableEntriesInRound,
+    answerHistory: nextAnswerHistory,
+    challenge: createIdleChallengeState(),
+    challengeBonusPointsByPlayerId: nextChallengeBonusPointsByPlayerId,
+    ...(shouldPauseNextTurn
+      ? buildPausedTurnState(durationMs)
+      : buildTurnState(now, durationMs)),
+  }
+}
+
+function createAnswerRecord(
+  playerId: string,
+  answer: string,
+  syllables: string[],
+  previousValidAnswerId: string | null,
+): AnswerRecord {
+  return {
+    id: createId(),
+    playerId,
+    answer,
+    syllables,
+    previousValidAnswerId,
+    invalidatedByChallenge: false,
+    challengeResolved: false,
+  }
+}
+
+function markChallengeResolved(
+  answerHistory: AnswerRecord[],
+  challengedAnswerId: string,
+) {
+  return answerHistory.map((record) =>
+    record.id === challengedAnswerId
+      ? {
+          ...record,
+          challengeResolved: true,
+        }
+      : record,
+  )
+}
+
+function invalidateAnswerHistoryFrom(
+  answerHistory: AnswerRecord[],
+  challengedAnswerId: string,
+) {
+  let shouldInvalidate = false
+
+  return answerHistory.map((record) => {
+    if (record.id === challengedAnswerId) {
+      shouldInvalidate = true
+    }
+
+    if (!shouldInvalidate) {
+      return record
+    }
+
+    return {
+      ...record,
+      invalidatedByChallenge: true,
+      challengeResolved:
+        record.id === challengedAnswerId ? true : record.challengeResolved,
+    }
+  })
+}
+
+function buildChallengeSelectionState(
+  currentChallenge: ChallengeState,
+  answerHistory: AnswerRecord[],
+  players: Player[],
+  challengerPlayerId: string | null,
+  challengedAnswerId: string | null,
+): ChallengeState {
+  const activePlayerIds = new Set(
+    players
+      .filter((player) => player.status === 'active')
+      .map((player) => player.id),
+  )
+  const challengeableAnswerIds = new Set(
+    getChallengeableAnswers({
+      phase: 'playing',
+      players,
+      activePlayerId: null,
+      turnCycle: 1,
+      turnDirection: 1,
+      currentInput: '',
+      turnStartedAt: null,
+      turnDeadlineAt: null,
+      timeLeftMs: TURN_DURATION_MS,
+      isSafeToFinish: false,
+      winnerId: null,
+      isAwaitingFirstTurnStart: false,
+      isAwaitingRoundSummary: false,
+      usedSyllablesInRound: [],
+      usedSyllableEntriesInRound: [],
+      answerHistory,
+      challenge: createIdleChallengeState(),
+      challengeBonusPointsByPlayerId: {},
+    }).map((answerRecord) => answerRecord.id),
+  )
+
+  const nextChallengedAnswerId =
+    challengedAnswerId && challengeableAnswerIds.has(challengedAnswerId)
+      ? challengedAnswerId
+      : null
+  const challengedAnswerRecord = getAnswerRecordById(
+    answerHistory,
+    nextChallengedAnswerId,
+  )
+  const nextChallengedPlayerId = challengedAnswerRecord?.playerId ?? null
+  const nextPreviousValidAnswerId =
+    challengedAnswerRecord?.previousValidAnswerId ?? null
+
+  const nextChallengerPlayerId =
+    challengerPlayerId &&
+    activePlayerIds.has(challengerPlayerId) &&
+    challengerPlayerId !== nextChallengedPlayerId
+      ? challengerPlayerId
+      : null
+
+  return {
+    ...currentChallenge,
+    status: 'selecting',
+    challengerPlayerId: nextChallengerPlayerId,
+    challengedAnswerId: nextChallengedAnswerId,
+    challengedPlayerId: nextChallengedPlayerId,
+    previousValidAnswerId: nextPreviousValidAnswerId,
+    currentSpeaker: null,
+    segmentIndex: 0,
+    segmentStartedAt: null,
+    segmentDeadlineAt: null,
+    timeLeftMs: CHALLENGE_DEBATE_SEGMENT_DURATION_MS,
+  }
 }
 
 export function createPlayerDraft(name = ''): PlayerDraft {
@@ -251,6 +593,9 @@ export function createSetupState(): GameState {
     isAwaitingRoundSummary: false,
     usedSyllablesInRound: [],
     usedSyllableEntriesInRound: [],
+    answerHistory: [],
+    challenge: createIdleChallengeState(),
+    challengeBonusPointsByPlayerId: {},
   }
 }
 
@@ -298,6 +643,9 @@ export function createGameState(
     isAwaitingRoundSummary: false,
     usedSyllablesInRound: [],
     usedSyllableEntriesInRound: [],
+    answerHistory: [],
+    challenge: createIdleChallengeState(),
+    challengeBonusPointsByPlayerId: {},
     ...buildTurnState(now, durationMs),
   }
 }
@@ -320,6 +668,9 @@ export function createConfirmedGameState(
     isAwaitingRoundSummary: false,
     usedSyllablesInRound: [],
     usedSyllableEntriesInRound: [],
+    answerHistory: [],
+    challenge: createIdleChallengeState(),
+    challengeBonusPointsByPlayerId: {},
     ...buildPausedTurnState(durationMs),
   }
 }
@@ -334,7 +685,8 @@ export function startActiveTurn(
     state.activePlayerId === null ||
     state.turnStartedAt !== null ||
     state.turnDeadlineAt !== null ||
-    state.isSafeToFinish
+    state.isSafeToFinish ||
+    state.challenge.status !== 'idle'
   ) {
     return state
   }
@@ -365,7 +717,8 @@ export function applyInputChange(
   if (
     state.phase !== 'playing' ||
     state.isAwaitingFirstTurnStart ||
-    state.turnStartedAt === null
+    state.turnStartedAt === null ||
+    state.challenge.status !== 'idle'
   ) {
     return state
   }
@@ -405,21 +758,37 @@ export function getFinalPlacements(state: GameState) {
 }
 
 export function getScoreAwards(state: GameState): LeaderboardAward[] {
-  return getFinalPlacements(state)
+  const placementAwards = getFinalPlacements(state)
     .slice(0, 3)
-    .map((player, index) => {
-      const standingPoints = 1
-      const winnerBonus = index === 0 ? 2 : 0
+    .map((player, index) => ({
+      playerId: player.id,
+      playerName: player.name,
+      placement: index + 1,
+      standingPoints: 1,
+      winnerBonus: index === 0 ? 2 : 0,
+      challengeBonus: state.challengeBonusPointsByPlayerId[player.id] ?? 0,
+    }))
 
-      return {
-        playerId: player.id,
-        playerName: player.name,
-        placement: index + 1,
-        standingPoints,
-        winnerBonus,
-        points: standingPoints + winnerBonus,
-      }
-    })
+  const bonusOnlyAwards = state.players
+    .filter(
+      (player) =>
+        !placementAwards.some((award) => award.playerId === player.id) &&
+        (state.challengeBonusPointsByPlayerId[player.id] ?? 0) > 0,
+    )
+    .map((player) => ({
+      playerId: player.id,
+      playerName: player.name,
+      placement: null,
+      standingPoints: 0,
+      winnerBonus: 0,
+      challengeBonus: state.challengeBonusPointsByPlayerId[player.id] ?? 0,
+    }))
+
+  return [...placementAwards, ...bonusOnlyAwards].map((award) => ({
+    ...award,
+    points:
+      award.standingPoints + award.winnerBonus + award.challengeBonus,
+  }))
 }
 
 export function applyScoreAwards(
@@ -439,6 +808,265 @@ export function applyScoreAwards(
   )
 }
 
+export function getChallengeableAnswers(state: GameState) {
+  if (state.phase !== 'playing') {
+    return []
+  }
+
+  const activePlayerIds = new Set(
+    state.players
+      .filter((player) => player.status === 'active')
+      .map((player) => player.id),
+  )
+
+  return getValidAnswerHistory(state.answerHistory)
+    .filter(
+      (record) =>
+        record.previousValidAnswerId !== null &&
+        !record.challengeResolved &&
+        activePlayerIds.has(record.playerId),
+    )
+    .slice(-3)
+    .reverse()
+}
+
+export function beginChallengeSelection(
+  state: GameState,
+  durationMs = TURN_DURATION_MS,
+): GameState {
+  const challengeableAnswers = getChallengeableAnswers(state)
+
+  if (
+    state.phase !== 'playing' ||
+    state.activePlayerId === null ||
+    state.challenge.status !== 'idle' ||
+    state.players.filter((player) => player.status === 'active').length < 2 ||
+    challengeableAnswers.length === 0
+  ) {
+    return state
+  }
+
+  return {
+    ...state,
+    challenge: buildChallengeSelectionState(
+      createIdleChallengeState(),
+      state.answerHistory,
+      state.players,
+      null,
+      challengeableAnswers[0]?.id ?? null,
+    ),
+    ...buildPausedTurnState(durationMs),
+  }
+}
+
+export function cancelChallenge(
+  state: GameState,
+  durationMs = TURN_DURATION_MS,
+): GameState {
+  if (state.phase !== 'playing' || state.challenge.status !== 'selecting') {
+    return state
+  }
+
+  return {
+    ...state,
+    challenge: createIdleChallengeState(),
+    ...buildPausedTurnState(durationMs),
+  }
+}
+
+export function updateChallengeSelection(
+  state: GameState,
+  selection: {
+    challengerPlayerId?: string | null
+    challengedAnswerId?: string | null
+  },
+) {
+  if (state.phase !== 'playing' || state.challenge.status !== 'selecting') {
+    return state
+  }
+
+  const nextChallenge = buildChallengeSelectionState(
+    state.challenge,
+    state.answerHistory,
+    state.players,
+    selection.challengerPlayerId ?? state.challenge.challengerPlayerId,
+    selection.challengedAnswerId ?? state.challenge.challengedAnswerId,
+  )
+
+  return {
+    ...state,
+    challenge: nextChallenge,
+  }
+}
+
+export function startChallengeDebate(
+  state: GameState,
+  now = Date.now(),
+  durationMs = CHALLENGE_DEBATE_SEGMENT_DURATION_MS,
+) {
+  if (
+    state.phase !== 'playing' ||
+    state.challenge.status !== 'selecting' ||
+    !state.challenge.challengerPlayerId ||
+    !state.challenge.challengedAnswerId ||
+    !state.challenge.challengedPlayerId ||
+    !state.challenge.previousValidAnswerId
+  ) {
+    return state
+  }
+
+  return {
+    ...state,
+    challenge: buildDebatingChallengeState(state.challenge, now, durationMs, 0),
+  }
+}
+
+export function tickChallengeDebate(
+  state: GameState,
+  timeLeftMs: number,
+  startedAt: number,
+) {
+  if (
+    state.phase !== 'playing' ||
+    state.challenge.status !== 'debating' ||
+    state.challenge.segmentStartedAt !== startedAt
+  ) {
+    return state
+  }
+
+  return {
+    ...state,
+    challenge: {
+      ...state.challenge,
+      timeLeftMs,
+    },
+  }
+}
+
+export function advanceChallengeDebate(
+  state: GameState,
+  startedAt: number,
+  now = Date.now(),
+  durationMs = CHALLENGE_DEBATE_SEGMENT_DURATION_MS,
+) {
+  if (
+    state.phase !== 'playing' ||
+    state.challenge.status !== 'debating' ||
+    state.challenge.segmentStartedAt !== startedAt
+  ) {
+    return state
+  }
+
+  const nextSegmentIndex = state.challenge.segmentIndex + 1
+
+  return {
+    ...state,
+    challenge:
+      nextSegmentIndex >= CHALLENGE_DEBATE_SEGMENT_COUNT
+        ? buildJudgingChallengeState(state.challenge)
+        : buildDebatingChallengeState(
+            state.challenge,
+            now,
+            durationMs,
+            nextSegmentIndex,
+          ),
+  }
+}
+
+export function resolveChallenge(
+  state: GameState,
+  decision: ChallengeDecision,
+  now = Date.now(),
+  durationMs = TURN_DURATION_MS,
+): GameState {
+  if (state.phase !== 'playing' || state.challenge.status !== 'judging') {
+    return state
+  }
+
+  const challengedAnswer = getAnswerRecordById(
+    state.answerHistory,
+    state.challenge.challengedAnswerId,
+  )
+  const previousValidAnswer = getAnswerRecordById(
+    state.answerHistory,
+    state.challenge.previousValidAnswerId,
+  )
+  const challengerPlayerId = state.challenge.challengerPlayerId
+  const challengedPlayerId = state.challenge.challengedPlayerId
+
+  if (
+    !challengedAnswer ||
+    !previousValidAnswer ||
+    !challengerPlayerId ||
+    !challengedPlayerId
+  ) {
+    return state
+  }
+
+  const eliminatedPlayerId =
+    decision === 'not_connects' ? challengedPlayerId : challengerPlayerId
+  const eliminatedOrder = getNextEliminatedOrder(state.players)
+
+  const nextPlayers = state.players.map((player) => {
+    if (player.id !== eliminatedPlayerId) {
+      return player
+    }
+
+    return {
+      ...player,
+      status: 'eliminated' as const,
+      eliminatedAtTurnCycle: state.turnCycle,
+      eliminatedOrder,
+      eliminationReason:
+        decision === 'not_connects'
+          ? ('invalid_connection' as const)
+          : ('failed_challenge' as const),
+      duplicateSyllable: null,
+      duplicateSourceAnswer: null,
+      duplicateSubmittedAnswer: null,
+      challengeSourceAnswer: previousValidAnswer.answer,
+      challengeTargetAnswer: challengedAnswer.answer,
+    }
+  })
+
+  const nextAnswerHistory =
+    decision === 'not_connects'
+      ? invalidateAnswerHistoryFrom(state.answerHistory, challengedAnswer.id)
+      : markChallengeResolved(state.answerHistory, challengedAnswer.id)
+  const nextUsedSyllableState =
+    decision === 'not_connects'
+      ? buildUsedSyllableStateFromAnswerHistory(nextAnswerHistory)
+      : {
+          usedSyllablesInRound: state.usedSyllablesInRound,
+          usedSyllableEntriesInRound: state.usedSyllableEntriesInRound,
+        }
+  const nextChallengeBonusPointsByPlayerId =
+    decision === 'not_connects'
+      ? {
+          ...state.challengeBonusPointsByPlayerId,
+          [challengerPlayerId]:
+            (state.challengeBonusPointsByPlayerId[challengerPlayerId] ?? 0) +
+            CHALLENGE_BONUS_POINTS,
+        }
+      : state.challengeBonusPointsByPlayerId
+
+  return finalizePlayingState(
+    state,
+    {
+      nextPlayers,
+      currentPlayerIdForNextTurn: eliminatedPlayerId,
+      nextAnswerHistory,
+      nextChallengeBonusPointsByPlayerId,
+      nextUsedSyllablesInRound: nextUsedSyllableState.usedSyllablesInRound,
+      nextUsedSyllableEntriesInRound:
+        nextUsedSyllableState.usedSyllableEntriesInRound,
+      shouldPauseNextTurn: true,
+      now,
+    },
+    durationMs,
+  )
+}
+
 export function advanceTurn(
   state: GameState,
   action: AdvanceTurnAction,
@@ -447,7 +1075,8 @@ export function advanceTurn(
   if (
     state.phase !== 'playing' ||
     state.activePlayerId === null ||
-    state.isAwaitingFirstTurnStart
+    state.isAwaitingFirstTurnStart ||
+    state.challenge.status !== 'idle'
   ) {
     return state
   }
@@ -466,11 +1095,11 @@ export function advanceTurn(
   }
 
   let nextPlayers = state.players
+  let nextAnswerHistory = state.answerHistory
   let shouldPauseNextTurn = false
   let nextUsedSyllablesInRound = state.usedSyllablesInRound
   let nextUsedSyllableEntriesInRound = state.usedSyllableEntriesInRound
-  const nextEliminatedOrder =
-    state.players.filter((player) => player.status === 'eliminated').length + 1
+  const nextEliminatedOrder = getNextEliminatedOrder(state.players)
 
   if (action.type === 'submit') {
     const answer = action.answer.trim()
@@ -496,6 +1125,8 @@ export function advanceTurn(
               duplicateSyllable: null,
               duplicateSourceAnswer: null,
               duplicateSubmittedAnswer: null,
+              challengeSourceAnswer: null,
+              challengeTargetAnswer: null,
             }
           : player,
       )
@@ -524,6 +1155,8 @@ export function advanceTurn(
                 duplicateSyllable: duplicateSyllableEntry.syllable,
                 duplicateSourceAnswer: duplicateSyllableEntry.answer,
                 duplicateSubmittedAnswer: answer,
+                challengeSourceAnswer: null,
+                challengeTargetAnswer: null,
               }
             : player,
         )
@@ -547,6 +1180,15 @@ export function advanceTurn(
               }
             : player,
         )
+        nextAnswerHistory = [
+          ...state.answerHistory,
+          createAnswerRecord(
+            state.activePlayerId,
+            answer,
+            nextSyllables,
+            getValidAnswerHistory(state.answerHistory).at(-1)?.id ?? null,
+          ),
+        ]
       }
     }
   } else {
@@ -562,57 +1204,25 @@ export function advanceTurn(
             duplicateSyllable: null,
             duplicateSourceAnswer: null,
             duplicateSubmittedAnswer: null,
+            challengeSourceAnswer: null,
+            challengeTargetAnswer: null,
           }
         : player,
     )
   }
 
-  const activePlayers = nextPlayers.filter((player) => player.status === 'active')
-
-  if (activePlayers.length === 1) {
-    const winnerId = activePlayers[0].id
-
-    return {
-      ...state,
-      phase: 'finished',
-      players: markWinner(nextPlayers, winnerId),
-      activePlayerId: winnerId,
-      currentInput: '',
-      turnStartedAt: null,
-      turnDeadlineAt: null,
-      timeLeftMs: 0,
-      isSafeToFinish: false,
-      winnerId,
-      isAwaitingFirstTurnStart: false,
-      isAwaitingRoundSummary: true,
-      usedSyllablesInRound: nextUsedSyllablesInRound,
-      usedSyllableEntriesInRound: nextUsedSyllableEntriesInRound,
-    }
-  }
-
-  const { nextIndex, nextTurnCycle } = getNextTurn(
-    nextPlayers,
-    currentIndex,
-    state.turnCycle,
-    state.turnDirection,
+  return finalizePlayingState(
+    state,
+    {
+      nextPlayers,
+      currentPlayerIdForNextTurn: state.activePlayerId,
+      nextAnswerHistory,
+      nextChallengeBonusPointsByPlayerId: state.challengeBonusPointsByPlayerId,
+      nextUsedSyllablesInRound,
+      nextUsedSyllableEntriesInRound,
+      shouldPauseNextTurn,
+      now,
+    },
+    durationMs,
   )
-
-  if (nextIndex === -1) {
-    return createSetupState()
-  }
-
-  return {
-    ...state,
-    players: nextPlayers,
-    activePlayerId: nextPlayers[nextIndex].id,
-    turnCycle: nextTurnCycle,
-    winnerId: null,
-    isAwaitingFirstTurnStart: false,
-    isAwaitingRoundSummary: false,
-    usedSyllablesInRound: nextUsedSyllablesInRound,
-    usedSyllableEntriesInRound: nextUsedSyllableEntriesInRound,
-    ...(shouldPauseNextTurn
-      ? buildPausedTurnState(durationMs)
-      : buildTurnState(now, durationMs)),
-  }
 }
