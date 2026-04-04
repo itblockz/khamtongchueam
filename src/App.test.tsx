@@ -51,6 +51,15 @@ function startTwoPlayerGame(firstPlayer: string, secondPlayer: string) {
   fireEvent.click(screen.getByRole('button', { name: 'เริ่มรอบแรก' }))
 }
 
+function toggleSyllableDebug() {
+  const toggleButton =
+    screen.queryByRole('button', { name: 'แสดงการแยกพยางค์' }) ??
+    screen.queryByRole('button', { name: 'ซ่อนการแยกพยางค์' })
+
+  expect(toggleButton).not.toBeNull()
+  fireEvent.click(toggleButton!)
+}
+
 function expectLeaderboardRow(
   playerName: string,
   expectedRoundScores: Array<number | '-'>,
@@ -146,6 +155,7 @@ describe('คำต้องเชื่อม', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-04-03T12:00:00.000Z'))
+    window.localStorage.clear()
 
     vi.stubGlobal(
       'fetch',
@@ -462,9 +472,11 @@ describe('คำต้องเชื่อม', () => {
       screen.getByRole('heading', { name: 'ถึงตา ก้อย' }),
     ).toBeInTheDocument()
     expect(screen.getByText('รอบ 1/4')).toBeInTheDocument()
+    expect(screen.queryByLabelText('การแยกพยางค์')).not.toBeInTheDocument()
 
     fireEvent.change(answerInput, { target: { value: 'กาแฟ' } })
     await flushSegmentationDebounce()
+    toggleSyllableDebug()
 
     const currentInputDebug = within(
       screen.getByLabelText('พยางค์ของคำปัจจุบัน'),
@@ -492,6 +504,7 @@ describe('คำต้องเชื่อม', () => {
       target: { value: 'กล้วย' },
     })
     await flushSegmentationDebounce()
+    toggleSyllableDebug()
 
     const currentInputDebug = within(
       screen.getByLabelText('พยางค์ของคำปัจจุบัน'),
@@ -500,6 +513,61 @@ describe('คำต้องเชื่อม', () => {
     expect(currentInputDebug.getByText('กล้วย')).toBeInTheDocument()
     expect(currentInputDebug.queryByText('กล้ว')).not.toBeInTheDocument()
     expect(currentInputDebug.queryByText('ย')).not.toBeInTheDocument()
+  })
+
+  it('keeps the syllable debug panel hidden by default and toggles it on demand', () => {
+    startTwoPlayerGame('ต้น', 'แพรว')
+
+    const showButton = screen.getByRole('button', {
+      name: 'แสดงการแยกพยางค์',
+    })
+
+    expect(showButton).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.queryByLabelText('การแยกพยางค์')).not.toBeInTheDocument()
+
+    fireEvent.click(showButton)
+
+    expect(
+      screen.getByRole('button', { name: 'ซ่อนการแยกพยางค์' }),
+    ).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByLabelText('การแยกพยางค์')).toBeInTheDocument()
+    expect(
+      window.localStorage.getItem('khamtongchueam:show-syllable-debug'),
+    ).toBe('true')
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'ซ่อนการแยกพยางค์' }),
+    )
+
+    expect(
+      screen.getByRole('button', { name: 'แสดงการแยกพยางค์' }),
+    ).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.queryByLabelText('การแยกพยางค์')).not.toBeInTheDocument()
+    expect(
+      window.localStorage.getItem('khamtongchueam:show-syllable-debug'),
+    ).toBe('false')
+  })
+
+  it('restores the syllable debug visibility preference from localStorage', () => {
+    window.localStorage.setItem('khamtongchueam:show-syllable-debug', 'true')
+
+    startTwoPlayerGame('ต้น', 'แพรว')
+
+    expect(
+      screen.getByRole('button', { name: 'ซ่อนการแยกพยางค์' }),
+    ).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByLabelText('การแยกพยางค์')).toBeInTheDocument()
+  })
+
+  it('falls back to hidden when the saved syllable debug preference is false', () => {
+    window.localStorage.setItem('khamtongchueam:show-syllable-debug', 'false')
+
+    startTwoPlayerGame('ต้น', 'แพรว')
+
+    expect(
+      screen.getByRole('button', { name: 'แสดงการแยกพยางค์' }),
+    ).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.queryByLabelText('การแยกพยางค์')).not.toBeInTheDocument()
   })
 
   it('reverses active player order on even-numbered match rounds', async () => {

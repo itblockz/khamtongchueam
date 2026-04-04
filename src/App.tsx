@@ -39,6 +39,7 @@ import { useTurnTimer } from './useTurnTimer'
 
 const MATCH_ROUNDS_PER_MATCH = 4
 const SYLLABLE_REQUEST_DEBOUNCE_MS = 250
+const SYLLABLE_DEBUG_STORAGE_KEY = 'khamtongchueam:show-syllable-debug'
 
 function getTurnDirectionForMatchRound(matchRound: number): TurnDirection {
   return matchRound % 2 === 1 ? 1 : -1
@@ -46,6 +47,18 @@ function getTurnDirectionForMatchRound(matchRound: number): TurnDirection {
 
 function formatSeconds(timeLeftMs: number) {
   return (timeLeftMs / 1000).toFixed(1)
+}
+
+function getInitialSyllableDebugVisibility() {
+  if (typeof window === 'undefined') {
+    return false
+  }
+
+  try {
+    return window.localStorage.getItem(SYLLABLE_DEBUG_STORAGE_KEY) === 'true'
+  } catch {
+    return false
+  }
 }
 
 function getSetupMessage(
@@ -381,6 +394,9 @@ function App() {
   const [segmentationError, setSegmentationError] = useState<string | null>(null)
   const [isSegmentingCurrentInput, setIsSegmentingCurrentInput] = useState(false)
   const [isSubmittingTurn, setIsSubmittingTurn] = useState(false)
+  const [isSyllableDebugVisible, setIsSyllableDebugVisible] = useState(() =>
+    getInitialSyllableDebugVisibility(),
+  )
   const { gameState, leaderboardScores, roundScoresInMatch } = sessionState
   const currentMatchRound =
     gameState.phase === 'finished'
@@ -649,6 +665,17 @@ function App() {
 
     startFirstTurnButtonRef.current?.focus()
   }, [isAwaitingRoundSummary])
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        SYLLABLE_DEBUG_STORAGE_KEY,
+        String(isSyllableDebugVisible),
+      )
+    } catch {
+      return
+    }
+  }, [isSyllableDebugVisible])
 
   useEffect(() => {
     if (gameState.phase !== 'finished' || gameState.isAwaitingRoundSummary) {
@@ -1336,9 +1363,33 @@ function App() {
           <form className="surface-card answer-panel" onSubmit={handleSubmitTurn}>
             <div className="form-copy">
               <h1 className="sr-only">ถึงตา {playScreenPlayer.name}</h1>
-              <p className="round-indicator">
-                รอบ {currentMatchRound}/{MATCH_ROUNDS_PER_MATCH}
-              </p>
+              <div className="answer-meta">
+                <p className="round-indicator">
+                  รอบ {currentMatchRound}/{MATCH_ROUNDS_PER_MATCH}
+                </p>
+                <button
+                  type="button"
+                  className="ghost-button debug-toggle-button"
+                  onClick={() =>
+                    setIsSyllableDebugVisible((current) => !current)
+                  }
+                  aria-pressed={isSyllableDebugVisible}
+                  aria-label={
+                    isSyllableDebugVisible
+                      ? 'ซ่อนการแยกพยางค์'
+                      : 'แสดงการแยกพยางค์'
+                  }
+                  title={
+                    isSyllableDebugVisible
+                      ? 'ซ่อนการแยกพยางค์'
+                      : 'แสดงการแยกพยางค์'
+                  }
+                >
+                  {isSyllableDebugVisible
+                    ? 'ซ่อนการแยกพยางค์'
+                    : 'แสดงการแยกพยางค์'}
+                </button>
+              </div>
               {isAwaitingRoundSummary && (
                 <p className="pause-note" role="status" aria-live="polite">
                   {eliminatedPlayerSummaryContent}
@@ -1447,60 +1498,65 @@ function App() {
             </div>
           </form>
 
-          <section className="surface-card syllable-debug-card" aria-label="ดีบักพยางค์">
-            <div className="panel-header compact debug-header">
-              <div>
-                <p className="eyebrow">debug</p>
-                <h2>พยางค์ที่ระบบใช้จริง</h2>
+          {isSyllableDebugVisible && (
+            <section
+              className="surface-card syllable-debug-card"
+              aria-label="การแยกพยางค์"
+            >
+              <div className="panel-header compact debug-header">
+                <div>
+                  <p className="eyebrow">รายละเอียด</p>
+                  <h2>การแยกพยางค์ของระบบ</h2>
+                </div>
               </div>
-            </div>
 
-            <div className="syllable-debug-grid">
-              <section className="syllable-debug-group" aria-label="พยางค์ของคำปัจจุบัน">
-                <h3>คำที่กำลังพิมพ์</h3>
-                {currentInputSegmentationMeta && (
-                  <p className="syllable-meta">{currentInputSegmentationMeta}</p>
-                )}
-                <div className="syllable-chip-list">
-                  {isSegmentingCurrentInput ? (
-                    <span className="syllable-empty">กำลังแยกพยางค์...</span>
-                  ) : currentInputSyllables.length > 0 ? (
-                    currentInputSyllables.map((syllable, index) => (
-                      <span
-                        className="syllable-chip is-current"
-                        key={`${syllable}-${index}`}
-                      >
-                        {syllable}
-                      </span>
-                    ))
-                  ) : (
-                    <span className="syllable-empty">ยังไม่มีพยางค์</span>
+              <div className="syllable-debug-grid">
+                <section className="syllable-debug-group" aria-label="พยางค์ของคำปัจจุบัน">
+                  <h3>คำที่กำลังพิมพ์</h3>
+                  {currentInputSegmentationMeta && (
+                    <p className="syllable-meta">{currentInputSegmentationMeta}</p>
                   )}
-                </div>
-              </section>
+                  <div className="syllable-chip-list">
+                    {isSegmentingCurrentInput ? (
+                      <span className="syllable-empty">กำลังแยกพยางค์...</span>
+                    ) : currentInputSyllables.length > 0 ? (
+                      currentInputSyllables.map((syllable, index) => (
+                        <span
+                          className="syllable-chip is-current"
+                          key={`${syllable}-${index}`}
+                        >
+                          {syllable}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="syllable-empty">ยังไม่มีพยางค์</span>
+                    )}
+                  </div>
+                </section>
 
-              <section
-                className="syllable-debug-group"
-                aria-label="พยางค์ที่บันทึกในรอบนี้"
-              >
-                <h3>พยางค์ที่บันทึกในรอบนี้</h3>
-                <div className="syllable-chip-list">
-                  {gameState.usedSyllablesInRound.length > 0 ? (
-                    gameState.usedSyllablesInRound.map((syllable, index) => (
-                      <span
-                        className="syllable-chip"
-                        key={`${syllable}-${index}`}
-                      >
-                        {syllable}
-                      </span>
-                    ))
-                  ) : (
-                    <span className="syllable-empty">ยังไม่มีพยางค์</span>
-                  )}
-                </div>
-              </section>
-            </div>
-          </section>
+                <section
+                  className="syllable-debug-group"
+                  aria-label="พยางค์ที่บันทึกในรอบนี้"
+                >
+                  <h3>พยางค์ที่บันทึกในรอบนี้</h3>
+                  <div className="syllable-chip-list">
+                    {gameState.usedSyllablesInRound.length > 0 ? (
+                      gameState.usedSyllablesInRound.map((syllable, index) => (
+                        <span
+                          className="syllable-chip"
+                          key={`${syllable}-${index}`}
+                        >
+                          {syllable}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="syllable-empty">ยังไม่มีพยางค์</span>
+                    )}
+                  </div>
+                </section>
+              </div>
+            </section>
+          )}
 
           <section className="board-grid">
             <section className="surface-card board-card active-board-card">

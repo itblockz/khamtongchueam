@@ -483,12 +483,19 @@ button:disabled {
   align-self: center;
 }
 
+.answer-panel .answer-meta {
+  display: flex;
+  align-items: center;
+  align-self: flex-start;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .answer-panel .round-indicator {
   margin: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  align-self: flex-start;
   min-height: 42px;
   padding: 0 14px;
   color: #5d391f;
@@ -508,6 +515,23 @@ button:disabled {
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.34),
     0 8px 18px rgba(189, 137, 92, 0.12);
+}
+
+.debug-toggle-button {
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  box-shadow: none;
+}
+
+.debug-toggle-button[aria-pressed='true'] {
+  color: var(--accent-strong);
+  border-color: rgba(201, 101, 57, 0.24);
+  background: rgba(248, 231, 212, 0.9);
 }
 
 .answer-panel .pause-note {
@@ -1114,10 +1138,19 @@ button:disabled {
     align-self: stretch;
   }
 
+  .answer-panel .answer-meta {
+    gap: 10px;
+  }
+
   .answer-panel .round-indicator {
     min-height: 44px;
     padding: 0 14px;
     font-size: 0.98rem;
+  }
+
+  .debug-toggle-button {
+    min-height: 38px;
+    padding: 0 14px;
   }
 
   .answer-controls {
