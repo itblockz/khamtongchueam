@@ -662,6 +662,28 @@ describe('คำต้องเชื่อม', () => {
     expect(screen.getByLabelText('คำตอบของ ซี')).toBeDisabled()
   })
 
+  it('keeps duplicate-syllable tracking across a full player cycle within the same match round', async () => {
+    render(<App />)
+    fillSetupNames(['เอ', 'บี', 'ซี'])
+    fireEvent.click(screen.getByRole('button', { name: 'ยืนยันผู้เล่น' }))
+    fireEvent.click(screen.getByRole('button', { name: 'เริ่มรอบแรก' }))
+
+    await submitAnswer('เอ', 'กาแฟ')
+    await waitForTurn('บี')
+
+    await submitAnswer('บี', 'สับปะรด')
+    await waitForTurn('ซี')
+
+    await submitAnswer('ซี', 'ลำไย')
+    await waitForTurn('เอ')
+
+    await submitAnswer('เอ', 'กากี')
+    await waitForTurn('บี')
+
+    expect(screen.getByText('เอ ตกรอบเพราะใช้พยางค์ซ้ำ')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'เริ่มตาถัดไป' })).toBeInTheDocument()
+  })
+
   it('shows a backend segmentation error and does not silently fall back', async () => {
     startTwoPlayerGame('เอ', 'บี')
 

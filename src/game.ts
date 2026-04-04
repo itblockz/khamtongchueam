@@ -23,7 +23,7 @@ export interface Player {
   name: string
   status: PlayerStatus
   answers: string[]
-  eliminatedAtRound: number | null
+  eliminatedAtTurnCycle: number | null
   eliminatedOrder: number | null
   eliminationReason: EliminationReason | null
 }
@@ -32,7 +32,7 @@ export interface GameState {
   phase: GamePhase
   players: Player[]
   activePlayerId: string | null
-  round: number
+  turnCycle: number
   turnDirection: TurnDirection
   currentInput: string
   turnStartedAt: number | null
@@ -156,7 +156,7 @@ function getActivePlayerIdForDirection(
 function getNextTurn(
   players: Player[],
   currentIndex: number,
-  round: number,
+  turnCycle: number,
   turnDirection: TurnDirection,
 ) {
   const nextIndex = findNextActiveIndexInDirection(
@@ -168,13 +168,13 @@ function getNextTurn(
   if (nextIndex !== -1) {
     return {
       nextIndex,
-      nextRound: round,
+      nextTurnCycle: turnCycle,
     }
   }
 
   return {
     nextIndex: findBoundaryActiveIndex(players, turnDirection),
-    nextRound: round + 1,
+    nextTurnCycle: turnCycle + 1,
   }
 }
 
@@ -190,7 +190,7 @@ function createPlayers(playerSeeds: PlayerSeed[]): Player[] {
     name: seed.name,
     status: 'active' as const,
     answers: [],
-    eliminatedAtRound: null,
+    eliminatedAtTurnCycle: null,
     eliminatedOrder: null,
     eliminationReason: null,
   }))
@@ -220,7 +220,7 @@ export function createSetupState(): GameState {
     phase: 'setup',
     players: [],
     activePlayerId: null,
-    round: 1,
+    turnCycle: 1,
     turnDirection: 1,
     currentInput: '',
     turnStartedAt: null,
@@ -271,7 +271,7 @@ export function createGameState(
     phase: 'playing',
     players,
     activePlayerId: getActivePlayerIdForDirection(players, turnDirection),
-    round: 1,
+    turnCycle: 1,
     turnDirection,
     winnerId: null,
     isAwaitingFirstTurnStart: false,
@@ -292,7 +292,7 @@ export function createConfirmedGameState(
     phase: 'playing',
     players,
     activePlayerId: getActivePlayerIdForDirection(players, turnDirection),
-    round: 1,
+    turnCycle: 1,
     turnDirection,
     winnerId: null,
     isAwaitingFirstTurnStart: true,
@@ -467,7 +467,7 @@ export function advanceTurn(
           ? {
               ...player,
               status: 'eliminated' as const,
-              eliminatedAtRound: state.round,
+              eliminatedAtTurnCycle: state.turnCycle,
               eliminatedOrder: nextEliminatedOrder,
               eliminationReason: 'late_submit' as const,
             }
@@ -492,7 +492,7 @@ export function advanceTurn(
             ? {
                 ...player,
                 status: 'eliminated' as const,
-                eliminatedAtRound: state.round,
+                eliminatedAtTurnCycle: state.turnCycle,
                 eliminatedOrder: nextEliminatedOrder,
                 eliminationReason: 'duplicate_syllable' as const,
               }
@@ -520,7 +520,7 @@ export function advanceTurn(
         ? {
             ...player,
             status: 'eliminated' as const,
-            eliminatedAtRound: state.round,
+            eliminatedAtTurnCycle: state.turnCycle,
             eliminatedOrder: nextEliminatedOrder,
             eliminationReason: 'timeout' as const,
           }
@@ -550,10 +550,10 @@ export function advanceTurn(
     }
   }
 
-  const { nextIndex, nextRound } = getNextTurn(
+  const { nextIndex, nextTurnCycle } = getNextTurn(
     nextPlayers,
     currentIndex,
-    state.round,
+    state.turnCycle,
     state.turnDirection,
   )
 
@@ -561,19 +561,15 @@ export function advanceTurn(
     return createSetupState()
   }
 
-  const shouldResetUsedSyllables = nextRound !== state.round
-
   return {
     ...state,
     players: nextPlayers,
     activePlayerId: nextPlayers[nextIndex].id,
-    round: nextRound,
+    turnCycle: nextTurnCycle,
     winnerId: null,
     isAwaitingFirstTurnStart: false,
     isAwaitingRoundSummary: false,
-    usedSyllablesInRound: shouldResetUsedSyllables
-      ? []
-      : nextUsedSyllablesInRound,
+    usedSyllablesInRound: nextUsedSyllablesInRound,
     ...(shouldPauseNextTurn
       ? buildPausedTurnState(durationMs)
       : buildTurnState(now, durationMs)),

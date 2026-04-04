@@ -64,7 +64,7 @@ describe('advanceTurn', () => {
     expect(confirmedState.turnDirection).toBe(-1)
   })
 
-  it('pauses the next turn after an elimination and keeps moving forward across round wraps', () => {
+  it('pauses the next turn after an elimination and keeps moving forward across cycle wraps', () => {
     const initialState = createGameState(
       [
         { id: 'a', name: 'A' },
@@ -83,22 +83,22 @@ describe('advanceTurn', () => {
     const afterForwardContinue = advanceTurn(afterRoundWrap, submit('three', 400))
 
     expect(afterFirstSubmit.activePlayerId).toBe('b')
-    expect(afterFirstSubmit.round).toBe(1)
+    expect(afterFirstSubmit.turnCycle).toBe(1)
     expect(afterFirstSubmit.turnStartedAt).toBe(100)
 
     expect(afterTimeout.activePlayerId).toBe('c')
-    expect(afterTimeout.round).toBe(1)
+    expect(afterTimeout.turnCycle).toBe(1)
     expect(afterTimeout.turnStartedAt).toBeNull()
     expect(afterTimeout.turnDeadlineAt).toBeNull()
     expect(afterTimeout.turnDirection).toBe(1)
 
     expect(afterRoundWrap.activePlayerId).toBe('a')
-    expect(afterRoundWrap.round).toBe(2)
+    expect(afterRoundWrap.turnCycle).toBe(2)
     expect(afterRoundWrap.turnStartedAt).toBe(300)
     expect(afterRoundWrap.turnDirection).toBe(1)
 
     expect(afterForwardContinue.activePlayerId).toBe('c')
-    expect(afterForwardContinue.round).toBe(2)
+    expect(afterForwardContinue.turnCycle).toBe(2)
   })
 
   it('keeps moving backward for the whole game when the turn direction is reversed', () => {
@@ -120,11 +120,11 @@ describe('advanceTurn', () => {
     expect(initialState.activePlayerId).toBe('c')
     expect(initialState.turnDirection).toBe(-1)
     expect(afterC.activePlayerId).toBe('b')
-    expect(afterC.round).toBe(1)
+    expect(afterC.turnCycle).toBe(1)
     expect(afterB.activePlayerId).toBe('a')
-    expect(afterB.round).toBe(1)
+    expect(afterB.turnCycle).toBe(1)
     expect(afterWrap.activePlayerId).toBe('c')
-    expect(afterWrap.round).toBe(2)
+    expect(afterWrap.turnCycle).toBe(2)
     expect(afterWrap.turnDirection).toBe(-1)
   })
 
@@ -146,9 +146,9 @@ describe('advanceTurn', () => {
     })
 
     expect(afterB.activePlayerId).toBe('c')
-    expect(afterB.round).toBe(1)
+    expect(afterB.turnCycle).toBe(1)
     expect(afterBoundaryTimeout.activePlayerId).toBe('a')
-    expect(afterBoundaryTimeout.round).toBe(2)
+    expect(afterBoundaryTimeout.turnCycle).toBe(2)
     expect(afterBoundaryTimeout.turnStartedAt).toBeNull()
     expect(afterBoundaryTimeout.turnDeadlineAt).toBeNull()
     expect(
@@ -157,7 +157,7 @@ describe('advanceTurn', () => {
     ).toBe('timeout')
   })
 
-  it('tracks provided syllables used in the current round for multi-syllable answers', () => {
+  it('tracks provided syllables used in the current match round for multi-syllable answers', () => {
     const initialState = createGameState(
       [
         { id: 'a', name: 'A' },
@@ -205,7 +205,7 @@ describe('advanceTurn', () => {
     expect(afterSubmit.usedSyllablesInRound).toEqual(['ต้น', 'ไม้'])
   })
 
-  it('eliminates a player immediately when they reuse a syllable in the same round', () => {
+  it('eliminates a player immediately when they reuse a syllable in the same match round', () => {
     const initialState = createGameState(
       [
         { id: 'a', name: 'A' },
@@ -237,7 +237,7 @@ describe('advanceTurn', () => {
     ).toBe('duplicate_syllable')
   })
 
-  it('resets used syllables when the in-game round wraps', () => {
+  it('keeps used syllables across in-game cycle wraps within the same match round', () => {
     const initialState = createGameState(
       [
         { id: 'a', name: 'A' },
@@ -247,18 +247,23 @@ describe('advanceTurn', () => {
     )
 
     const afterFirstSubmit = advanceTurn(initialState, submit('กา', 100, ['กา']))
-    const afterRoundWrap = advanceTurn(afterFirstSubmit, submit('แฟ', 200, ['แฟ']))
-    const afterNewRoundSubmit = advanceTurn(
-      afterRoundWrap,
+    const afterCycleWrap = advanceTurn(afterFirstSubmit, submit('แฟ', 200, ['แฟ']))
+    const afterDuplicateAcrossCycle = advanceTurn(
+      afterCycleWrap,
       submit('กา', 300, ['กา']),
     )
 
-    expect(afterRoundWrap.round).toBe(2)
-    expect(afterRoundWrap.usedSyllablesInRound).toEqual([])
-    expect(afterNewRoundSubmit.usedSyllablesInRound).toEqual(['กา'])
+    expect(afterCycleWrap.turnCycle).toBe(2)
+    expect(afterCycleWrap.usedSyllablesInRound).toEqual(['กา', 'แฟ'])
+    expect(afterDuplicateAcrossCycle.usedSyllablesInRound).toEqual([
+      'กา',
+      'แฟ',
+    ])
     expect(
-      afterNewRoundSubmit.players.find((player) => player.id === 'a')?.status,
-    ).toBe('active')
+      afterDuplicateAcrossCycle.players.find((player) => player.id === 'a')
+        ?.status,
+    ).toBe('eliminated')
+    expect(afterDuplicateAcrossCycle.phase).toBe('finished')
   })
 
   it('does not treat different provided syllable text as duplicates', () => {
