@@ -18,7 +18,6 @@ import {
   createInitialDrafts,
   createPlayerDraft,
   createSetupState,
-  getFinalPlacements,
   getScoreAwards,
   getSetupValidation,
   prepareRoster,
@@ -191,8 +190,6 @@ function App() {
   )
   const winner =
     gameState.players.find((player) => player.id === gameState.winnerId) ?? null
-  const finalPlacements =
-    gameState.phase === 'finished' ? getFinalPlacements(gameState) : []
   const roundAwards =
     gameState.phase === 'finished' ? getScoreAwards(gameState) : []
   const roundAwardMap = new Map(
@@ -227,10 +224,6 @@ function App() {
             return left.initialIndex - right.initialIndex
           })
       : []
-  const totalAnswers = gameState.players.reduce(
-    (sum, player) => sum + player.answers.length,
-    0,
-  )
   const isAwaitingFirstTurnStart =
     gameState.phase === 'playing' && gameState.isAwaitingFirstTurnStart
   const isPausedTurn =
@@ -937,92 +930,64 @@ function App() {
 
       {gameState.phase === 'finished' && winner && (
         <section className="phase-screen result-screen">
-          <section className="surface-card winner-card">
-            <div className="winner-copy">
-              <p className="eyebrow">เกมจบแล้ว</p>
-              <h1>
-                <span className="headline-symbol" aria-hidden="true">
-                  ★
-                </span>
-                ผู้ชนะคือ {winner.name}
-              </h1>
-              <p className="support-text">
-                เหลือรอดเป็นผู้เล่นคนสุดท้ายจากทั้งหมด {gameState.players.length}{' '}
-                คน
-              </p>
-            </div>
-
-            <div className="winner-stats" aria-label="ข้อมูลสรุปเกม">
-              <article className="stat-tile">
-                <span>จำนวนคำทั้งหมด</span>
-                <strong>{totalAnswers} คำ</strong>
-              </article>
-              <article className="stat-tile">
-                <span>รอบสุดท้าย</span>
-                <strong>รอบ {gameState.round}</strong>
-              </article>
-              <article className="stat-tile">
-                <span>ผู้เล่นเริ่มต้น</span>
-                <strong>{gameState.players.length} คน</strong>
-              </article>
-            </div>
-
-            <section className="surface-card leaderboard-card">
-              <div className="panel-header compact">
-                <div>
-                  <p className="eyebrow">คะแนนสะสม</p>
-                  <h2>Leaderboard</h2>
-                </div>
-                <span className="count-badge">{leaderboardEntries.length} คน</span>
+          <section className="surface-card leaderboard-card result-leaderboard-card">
+            <div className="panel-header compact">
+              <div>
+                <h2>Leaderboard</h2>
               </div>
+              <span className="count-badge">{leaderboardEntries.length} คน</span>
+            </div>
 
-              <p className="support-text leaderboard-note">
-                3 คนสุดท้ายได้คนละ 1 คะแนน และผู้ชนะได้โบนัสเพิ่มอีก 2 คะแนน
-              </p>
+            <p className="support-text leaderboard-note">
+              3 คนสุดท้ายได้คนละ 1 คะแนน และผู้ชนะได้โบนัสเพิ่มอีก 2 คะแนน
+            </p>
 
-              <ol className="leaderboard-list" aria-label="ตารางคะแนนสะสม">
-                {leaderboardEntries.map((entry, index) => (
-                  <li
-                    className={`leaderboard-row ${
-                      entry.player.status === 'winner' ? 'is-winner' : ''
-                    } ${entry.roundPoints > 0 ? 'is-awarded' : ''}`.trim()}
-                    key={entry.player.id}
-                    aria-label={`อันดับ ${index + 1} ${entry.player.name} ${entry.score} คะแนน${
-                      entry.roundPoints > 0
-                        ? ` ได้เพิ่ม ${entry.roundPoints} คะแนนรอบนี้`
-                        : ''
-                    }`}
-                  >
-                    <div className="leaderboard-copy">
-                      <span className="leaderboard-rank" aria-hidden="true">
-                        {index + 1}
+            <ol className="leaderboard-list" aria-label="ตารางคะแนนสะสม">
+              {leaderboardEntries.map((entry, index) => (
+                <li
+                  className={`leaderboard-row ${
+                    entry.player.status === 'winner' ? 'is-winner' : ''
+                  } ${entry.roundPoints > 0 ? 'is-awarded' : ''}`.trim()}
+                  key={entry.player.id}
+                  aria-label={`อันดับ ${index + 1} ${entry.player.name} ${entry.score} คะแนน${
+                    entry.roundPoints > 0
+                      ? ` ได้เพิ่ม ${entry.roundPoints} คะแนนรอบนี้`
+                      : ''
+                  }`}
+                >
+                  <div className="leaderboard-copy">
+                    <span className="leaderboard-rank" aria-hidden="true">
+                      {index + 1}
+                    </span>
+                    <div>
+                      <strong>{entry.player.name}</strong>
+                      <span>
+                        {entry.player.status === 'winner'
+                          ? 'ชนะรอบนี้'
+                          : entry.player.eliminatedAtRound !== null
+                            ? `ตกรอบในรอบ ${entry.player.eliminatedAtRound}`
+                            : entry.placement !== null
+                              ? `จบรอบนี้อันดับ ${entry.placement}`
+                              : 'รอบนี้ยังไม่ได้คะแนน'}
                       </span>
-                      <div>
-                        <strong>{entry.player.name}</strong>
-                        <span>
-                          {entry.placement !== null
-                            ? `จบรอบนี้อันดับ ${entry.placement}`
-                            : 'รอบนี้ยังไม่ได้คะแนน'}
-                        </span>
-                      </div>
                     </div>
+                  </div>
 
-                    <div className="leaderboard-score">
-                      {entry.roundPoints > 0 ? (
-                        <span className="leaderboard-delta">
-                          +{entry.roundPoints} รอบนี้
-                        </span>
-                      ) : (
-                        <span className="leaderboard-delta is-muted">
-                          ยังไม่ได้คะแนน
-                        </span>
-                      )}
-                      <strong>{entry.score} คะแนน</strong>
-                    </div>
-                  </li>
-                ))}
-              </ol>
-            </section>
+                  <div className="leaderboard-score">
+                    {entry.roundPoints > 0 ? (
+                      <span className="leaderboard-delta">
+                        +{entry.roundPoints} รอบนี้
+                      </span>
+                    ) : (
+                      <span className="leaderboard-delta is-muted">
+                        ยังไม่ได้คะแนน
+                      </span>
+                    )}
+                    <strong>{entry.score} คะแนน</strong>
+                  </div>
+                </li>
+              ))}
+            </ol>
 
             <div className="action-row">
               <button
@@ -1050,53 +1015,6 @@ function App() {
                 <span className="button-copy">ใหม่</span>
               </button>
             </div>
-          </section>
-
-          <section className="summary-grid">
-            {finalPlacements.map((player) => (
-              <article
-                className={`surface-card summary-card status-${player.status}`}
-                key={player.id}
-              >
-                <div className="panel-header compact">
-                  <div>
-                    <p className="eyebrow">
-                      {getPlayerStatusSymbol(player, null)}{' '}
-                      {getPlayerStatusLabel(player, null)}
-                    </p>
-                    <h2>{player.name}</h2>
-                  </div>
-                  <span className="count-badge">{player.answers.length} คำ</span>
-                </div>
-
-                <div className="summary-copy">
-                  {player.status === 'eliminated' ? (
-                    <p>ตกรอบในรอบ {player.eliminatedAtRound}</p>
-                  ) : (
-                    <p>อยู่รอดจนจบเกม</p>
-                  )}
-                  <p
-                    className={`summary-award ${
-                      roundAwardMap.has(player.id) ? '' : 'is-muted'
-                    }`.trim()}
-                  >
-                    {roundAwardMap.has(player.id)
-                      ? `รับ ${roundAwardMap.get(player.id)?.points} คะแนนรอบนี้`
-                      : 'รอบนี้ยังไม่ได้คะแนน'}
-                  </p>
-                </div>
-
-                {player.answers.length > 0 ? (
-                  <ul className="answer-list" aria-label={`คำตอบของ ${player.name}`}>
-                    {player.answers.map((answer, index) => (
-                      <li key={`${player.id}-${index}-${answer}`}>{answer}</li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="empty-note">ยังไม่มีคำตอบที่ถูกบันทึก</p>
-                )}
-              </article>
-            ))}
           </section>
         </section>
       )}

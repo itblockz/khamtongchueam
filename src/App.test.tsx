@@ -220,9 +220,7 @@ describe('คำต้องเชื่อม', () => {
       vi.advanceTimersByTime(3100)
     })
 
-    expect(
-      screen.getByRole('heading', { name: 'ผู้ชนะคือ บีม' }),
-    ).toBeInTheDocument()
+    expect(screen.getByLabelText('ตารางคะแนนสะสม')).toBeInTheDocument()
   })
 
   it('eliminates the current player when no input is started within 3 seconds', () => {
@@ -236,9 +234,7 @@ describe('คำต้องเชื่อม', () => {
       vi.advanceTimersByTime(3100)
     })
 
-    expect(
-      screen.getByRole('heading', { name: 'ผู้ชนะคือ บีม' }),
-    ).toBeInTheDocument()
+    expect(screen.getByLabelText('ตารางคะแนนสะสม')).toBeInTheDocument()
     expect(screen.getByText('ตกรอบในรอบ 1')).toBeInTheDocument()
   })
 
@@ -359,9 +355,7 @@ describe('คำต้องเชื่อม', () => {
       vi.advanceTimersByTime(3100)
     })
 
-    expect(
-      screen.getByRole('heading', { name: 'ผู้ชนะคือ เอ' }),
-    ).toBeInTheDocument()
+    expect(screen.getByLabelText('ตารางคะแนนสะสม')).toBeInTheDocument()
 
     const leaderboard = within(screen.getByLabelText('ตารางคะแนนสะสม'))
 
@@ -435,9 +429,7 @@ describe('คำต้องเชื่อม', () => {
       vi.advanceTimersByTime(3100)
     })
 
-    expect(
-      screen.getByRole('heading', { name: 'ผู้ชนะคือ ต้น' }),
-    ).toBeInTheDocument()
+    expect(screen.getByLabelText('ตารางคะแนนสะสม')).toBeInTheDocument()
 
     leaderboard = within(screen.getByLabelText('ตารางคะแนนสะสม'))
 
@@ -456,9 +448,7 @@ describe('คำต้องเชื่อม', () => {
       vi.advanceTimersByTime(3100)
     })
 
-    expect(
-      screen.getByRole('heading', { name: 'ผู้ชนะคือ แพรว' }),
-    ).toBeInTheDocument()
+    expect(screen.getByLabelText('ตารางคะแนนสะสม')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'เล่นใหม่ด้วยรายชื่อเดิม' }))
 
@@ -479,9 +469,7 @@ describe('คำต้องเชื่อม', () => {
       vi.advanceTimersByTime(3100)
     })
 
-    expect(
-      screen.getByRole('heading', { name: 'ผู้ชนะคือ ต้น' }),
-    ).toBeInTheDocument()
+    expect(screen.getByLabelText('ตารางคะแนนสะสม')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'เริ่มใหม่ทั้งหมด' }))
 

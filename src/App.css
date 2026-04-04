@@ -704,6 +704,8 @@ button:disabled {
 }
 
 .leaderboard-card {
+  display: flex;
+  flex-direction: column;
   gap: 18px;
   padding: 22px 24px;
   border-radius: calc(var(--radius-xl) - 6px);
@@ -712,14 +714,32 @@ button:disabled {
     var(--surface);
 }
 
+.result-leaderboard-card {
+  width: min(1080px, 100%);
+  margin: 0 auto;
+  gap: 14px;
+  padding: 20px 22px;
+  border-radius: 30px;
+}
+
+.result-leaderboard-card .panel-header {
+  align-items: center;
+}
+
+.result-leaderboard-card .panel-header h2 {
+  font-size: clamp(1.45rem, 2.1vw, 2rem);
+  line-height: 1;
+}
+
 .leaderboard-note {
-  line-height: 1.7;
+  font-size: 0.95rem;
+  line-height: 1.5;
 }
 
 .leaderboard-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 12px;
   padding: 0;
   margin: 0;
   list-style: none;
@@ -729,10 +749,11 @@ button:disabled {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  padding: 14px 16px;
+  gap: 12px;
+  min-width: 0;
+  padding: 12px 14px;
   border: 1px solid rgba(176, 126, 82, 0.14);
-  border-radius: 20px;
+  border-radius: 18px;
   background: rgba(255, 255, 255, 0.72);
 }
 
@@ -748,7 +769,7 @@ button:disabled {
 .leaderboard-copy {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 12px;
   min-width: 0;
 }
 
@@ -760,13 +781,19 @@ button:disabled {
 .leaderboard-copy div {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
   min-width: 0;
+}
+
+.leaderboard-copy strong {
+  font-size: 0.98rem;
+  line-height: 1.08;
 }
 
 .leaderboard-copy div span:last-child {
   color: var(--muted);
-  font-size: 0.94rem;
+  font-size: 0.88rem;
+  line-height: 1.35;
 }
 
 .leaderboard-rank {
@@ -787,7 +814,7 @@ button:disabled {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 6px;
+  gap: 4px;
   text-align: right;
 }
 
@@ -800,8 +827,13 @@ button:disabled {
   border-radius: 999px;
   background: rgba(210, 106, 58, 0.12);
   color: var(--accent-strong);
-  font-size: 0.88rem;
+  font-size: 0.82rem;
   font-weight: 700;
+}
+
+.result-leaderboard-card .action-row {
+  justify-content: flex-end;
+  gap: 10px;
 }
 
 .leaderboard-delta.is-muted {
@@ -855,6 +887,12 @@ button:disabled {
   .summary-grid,
   .winner-stats {
     grid-template-columns: 1fr;
+  }
+
+  .result-leaderboard-card {
+    width: min(920px, 100%);
+    gap: 18px;
+    padding: 22px 24px;
   }
 
   .play-screen {
@@ -938,6 +976,10 @@ button:disabled {
   .player-chip small {
     max-width: none;
     font-size: 0.92rem;
+  }
+
+  .leaderboard-list {
+    grid-template-columns: 1fr;
   }
 }
 
