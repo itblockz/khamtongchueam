@@ -112,9 +112,7 @@
 .validation-note,
 .stat-tile span,
 .timer-card span,
-.timer-card p,
-.player-chip small,
-.player-chip span {
+.timer-card p {
   color: var(--muted);
 }
 
@@ -599,75 +597,47 @@ button:disabled {
   margin-top: 14px;
 }
 
-.active-player-board {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px 12px;
-}
-
-.eliminated-player-board.is-two-column {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px 12px;
-}
-
 .player-chip {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   min-width: 0;
-  padding: 14px 16px;
+  padding: 18px 20px;
   border-radius: 20px;
   border: 1px solid rgba(176, 126, 82, 0.16);
   background: var(--surface-strong);
 }
 
-.player-chip div {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-}
-
 .player-chip strong {
   color: var(--ink);
-  font-size: 1rem;
-  line-height: 1.08;
+  font-size: 1.08rem;
+  line-height: 1.1;
 }
 
-.status-line {
+.player-chip-current {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  font-size: 0.94rem;
-}
-
-.status-symbol {
-  width: 22px;
-  height: 22px;
+  justify-content: center;
+  min-height: 28px;
+  padding: 0 10px;
   border-radius: 999px;
-  background: rgba(210, 106, 58, 0.12);
-  color: var(--accent-strong);
-  font-size: 0.76rem;
+  font-size: 0.82rem;
   font-weight: 700;
+  line-height: 1;
+  border: 1px solid rgba(176, 126, 82, 0.14);
+  background: rgba(243, 232, 216, 0.92);
 }
 
-.player-chip small {
-  max-width: 11ch;
-  font-size: 0.88rem;
-  line-height: 1.3;
-  text-align: right;
+.player-chip-current {
+  color: #fffaf4;
+  border-color: rgba(210, 106, 58, 0.24);
+  background: linear-gradient(180deg, #e18c60 0%, #c96539 100%);
 }
 
 .player-chip.is-active {
   border-color: rgba(210, 106, 58, 0.2);
   background: linear-gradient(180deg, #fff5ee 0%, #f8ede4 100%);
-}
-
-.player-chip.is-winner {
-  border-color: rgba(74, 134, 108, 0.2);
-  background: linear-gradient(180deg, #f2fbf7 0%, #e0f2ea 100%);
 }
 
 .player-chip.is-out {
@@ -979,23 +949,8 @@ button:disabled {
     padding: 24px;
   }
 
-  .active-player-board {
-    display: flex;
-    grid-template-columns: none;
-  }
-
-  .eliminated-player-board.is-two-column {
-    display: flex;
-    grid-template-columns: none;
-  }
-
   .player-chip {
     padding: 18px 20px;
-  }
-
-  .player-chip small {
-    max-width: none;
-    font-size: 0.92rem;
   }
 
   .leaderboard-table {

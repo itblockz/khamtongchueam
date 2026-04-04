@@ -22,7 +22,6 @@ import {
   prepareRoster,
   startActiveTurn,
   type GameState,
-  type Player,
   type PlayerDraft,
   type TurnDirection,
 } from './game'
@@ -88,48 +87,11 @@ function findNextBlankDraftIndex(playerDrafts: PlayerDraft[], startIndex: number
   return -1
 }
 
-function getPlayerStatusLabel(player: Player, activePlayerId: string | null) {
-  if (player.status === 'winner') {
-    return 'ผู้ชนะ'
-  }
-
-  if (player.status === 'eliminated') {
-    return 'ตกรอบ'
-  }
-
-  if (player.id === activePlayerId) {
-    return 'กำลังเล่น'
-  }
-
-  return 'รอคิว'
-}
-
-function getPlayerStatusSymbol(player: Player, activePlayerId: string | null) {
-  if (player.status === 'winner') {
-    return '★'
-  }
-
-  if (player.status === 'eliminated') {
-    return '×'
-  }
-
-  if (player.id === activePlayerId) {
-    return '▶'
-  }
-
-  return '◌'
-}
-
-function getPlayerCardClass(player: Player, activePlayerId: string | null) {
-  if (player.status === 'winner') {
-    return 'player-chip is-winner'
-  }
-
-  if (player.status === 'eliminated') {
-    return 'player-chip is-out'
-  }
-
-  if (player.id === activePlayerId) {
+function getActivePlayerCardClass(
+  playerId: string,
+  activePlayerId: string | null,
+) {
+  if (playerId === activePlayerId) {
     return 'player-chip is-active'
   }
 
@@ -231,6 +193,8 @@ function App() {
   const activePlayers = gameState.players.filter(
     (player) => player.status === 'active',
   )
+  const displayedActivePlayers =
+    currentMatchRound % 2 === 0 ? [...activePlayers].reverse() : activePlayers
   const eliminatedPlayers = gameState.players.filter(
     (player) => player.status === 'eliminated',
   )
@@ -938,43 +902,31 @@ function App() {
                     <span className="headline-symbol" aria-hidden="true">
                       ◌
                     </span>
-                    ลำดับผู้เล่น
+                    คิวผู้เล่น
                   </h2>
                 </div>
                 <span className="count-badge">{activePlayers.length} คน</span>
               </div>
 
-              <ul
+              <ol
                 className="player-board active-player-board"
                 aria-label="ผู้เล่นที่ยังไม่ตกรอบ"
               >
-                {gameState.players
-                  .filter((player) => player.status === 'active')
-                  .map((player) => (
-                    <li
-                      className={getPlayerCardClass(player, gameState.activePlayerId)}
-                      key={player.id}
-                    >
-                      <div>
-                        <strong>{player.name}</strong>
-                        <span className="status-line">
-                          <span className="status-symbol" aria-hidden="true">
-                            {getPlayerStatusSymbol(
-                              player,
-                              gameState.activePlayerId,
-                            )}
-                          </span>
-                          {getPlayerStatusLabel(player, gameState.activePlayerId)}
-                        </span>
-                      </div>
-                      <small>
-                        {player.answers.length > 0
-                          ? `ตอบล่าสุด ${player.answers.at(-1)}`
-                          : 'ยังไม่มีคำตอบ'}
-                      </small>
-                    </li>
-                  ))}
-              </ul>
+                {displayedActivePlayers.map((player) => (
+                  <li
+                    className={getActivePlayerCardClass(
+                      player.id,
+                      gameState.activePlayerId,
+                    )}
+                    key={player.id}
+                  >
+                    <strong>{player.name}</strong>
+                    {player.id === gameState.activePlayerId && (
+                      <span className="player-chip-current">ตอนนี้</span>
+                    )}
+                  </li>
+                ))}
+              </ol>
             </section>
 
             <section
@@ -996,27 +948,16 @@ function App() {
               </div>
 
               {eliminatedPlayers.length > 0 ? (
-                <ul
-                  className={`player-board eliminated-player-board ${
-                    eliminatedPlayers.length >= 2 ? 'is-two-column' : ''
-                  }`.trim()}
+                <ol
+                  className="player-board eliminated-player-board"
                   aria-label="ผู้เล่นที่ตกรอบ"
                 >
                   {eliminatedPlayers.map((player) => (
-                    <li className={getPlayerCardClass(player, null)} key={player.id}>
-                      <div>
-                        <strong>{player.name}</strong>
-                        <span className="status-line">
-                          <span className="status-symbol" aria-hidden="true">
-                            {getPlayerStatusSymbol(player, null)}
-                          </span>
-                          {getPlayerStatusLabel(player, null)}
-                        </span>
-                      </div>
-                      <small>ตกรอบในรอบ {player.eliminatedAtRound}</small>
+                    <li className="player-chip is-out" key={player.id}>
+                      <strong>{player.name}</strong>
                     </li>
                   ))}
-                </ul>
+                </ol>
               ) : (
                 <p className="empty-note">ยังไม่มีใครตกรอบในตอนนี้</p>
               )}

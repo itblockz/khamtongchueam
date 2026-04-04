@@ -37,6 +37,33 @@ function expectLeaderboardRow(
   ])
 }
 
+function getPlayerListItems(listLabel: string) {
+  return within(screen.getByLabelText(listLabel)).getAllByRole('listitem')
+}
+
+function expectPlayerListOrder(listLabel: string, expectedNames: string[]) {
+  const items = getPlayerListItems(listLabel)
+
+  expect(
+    items.map((item) => item.querySelector('strong')?.textContent?.trim()),
+  ).toEqual(expectedNames)
+}
+
+function expectCurrentTurnPlayer(listLabel: string, currentPlayerName: string) {
+  const items = getPlayerListItems(listLabel)
+
+  items.forEach((item) => {
+    const playerName = item.querySelector('strong')?.textContent?.trim()
+
+    if (playerName === currentPlayerName) {
+      expect(within(item).getByText('ตอนนี้')).toBeInTheDocument()
+      return
+    }
+
+    expect(within(item).queryByText('ตอนนี้')).not.toBeInTheDocument()
+  })
+}
+
 describe('คำต้องเชื่อม', () => {
   beforeEach(() => {
     vi.useFakeTimers()
@@ -326,6 +353,54 @@ describe('คำต้องเชื่อม', () => {
     ).toBeInTheDocument()
   })
 
+  it('shows the active queue in forward order with now and next labels', () => {
+    render(<App />)
+    fillSetupNames(['เอ', 'บี', 'ซี'])
+    fireEvent.click(screen.getByRole('button', { name: 'ยืนยันผู้เล่น' }))
+    fireEvent.click(screen.getByRole('button', { name: 'เริ่มรอบแรก' }))
+
+    expect(
+      screen.getByRole('heading', { name: 'คิวผู้เล่น' }),
+    ).toBeInTheDocument()
+    expectPlayerListOrder('ผู้เล่นที่ยังไม่ตกรอบ', ['เอ', 'บี', 'ซี'])
+    expectCurrentTurnPlayer('ผู้เล่นที่ยังไม่ตกรอบ', 'เอ')
+    expect(screen.queryByText('ถัดไป')).not.toBeInTheDocument()
+    expect(screen.queryByText('คิว 3')).not.toBeInTheDocument()
+  })
+
+  it('reverses active player order on even-numbered match rounds', () => {
+    render(<App />)
+    fillSetupNames(['เอ', 'บี', 'ซี'])
+    fireEvent.click(screen.getByRole('button', { name: 'ยืนยันผู้เล่น' }))
+    fireEvent.click(screen.getByRole('button', { name: 'เริ่มรอบแรก' }))
+
+    fireEvent.change(screen.getByLabelText('คำตอบของ เอ'), {
+      target: { value: 'คำแรก' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'ถัดไป' }))
+
+    act(() => {
+      vi.advanceTimersByTime(3100)
+    })
+
+    fireEvent.change(screen.getByLabelText('คำตอบของ ซี'), {
+      target: { value: 'คำสอง' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'ถัดไป' }))
+
+    act(() => {
+      vi.advanceTimersByTime(3100)
+    })
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'เล่นรอบถัดไปด้วยรายชื่อเดิม' }),
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'เริ่มรอบแรก' }))
+
+    expectPlayerListOrder('ผู้เล่นที่ยังไม่ตกรอบ', ['ซี', 'บี', 'เอ'])
+    expectCurrentTurnPlayer('ผู้เล่นที่ยังไม่ตกรอบ', 'ซี')
+  })
+
   it('pauses the timer for the next player after someone is eliminated', () => {
     render(<App />)
     fillSetupNames(['เอ', 'บี', 'ซี'])
@@ -356,7 +431,8 @@ describe('คำต้องเชื่อม', () => {
     expect(
       screen.getByRole('heading', { name: 'ผู้เล่นที่ตกรอบ' }).closest('section'),
     ).not.toHaveClass('is-empty-collapsed')
-    expect(screen.getByLabelText('ผู้เล่นที่ตกรอบ')).not.toHaveClass('is-two-column')
+    expectPlayerListOrder('ผู้เล่นที่ยังไม่ตกรอบ', ['เอ', 'ซี'])
+    expectCurrentTurnPlayer('ผู้เล่นที่ยังไม่ตกรอบ', 'ซี')
 
     act(() => {
       vi.advanceTimersByTime(5000)
@@ -375,7 +451,8 @@ describe('คำต้องเชื่อม', () => {
     expect(
       screen.getByRole('heading', { name: 'ถึงตา เอ' }),
     ).toBeInTheDocument()
-    expect(screen.getByLabelText('ผู้เล่นที่ตกรอบ')).not.toHaveClass('is-two-column')
+    expectPlayerListOrder('ผู้เล่นที่ยังไม่ตกรอบ', ['เอ', 'ซี'])
+    expectCurrentTurnPlayer('ผู้เล่นที่ยังไม่ตกรอบ', 'เอ')
   })
 
   it('awards leaderboard points to only the last three players', () => {
@@ -423,7 +500,7 @@ describe('คำต้องเชื่อม', () => {
     expectLeaderboardRow('บี', [0, '-', '-', '-'], 0)
   })
 
-  it('switches the eliminated board to two columns after two players are out', () => {
+  it('keeps eliminated players in roster order even when they are eliminated later', () => {
     render(<App />)
     fillSetupNames(['เอ', 'บี', 'ซี', 'ดี'])
     fireEvent.click(screen.getByRole('button', { name: 'ยืนยันผู้เล่น' }))
@@ -434,13 +511,7 @@ describe('คำต้องเชื่อม', () => {
     })
     fireEvent.click(screen.getByRole('button', { name: 'ถัดไป' }))
 
-    act(() => {
-      vi.advanceTimersByTime(3100)
-    })
-
-    expect(screen.getByLabelText('ผู้เล่นที่ตกรอบ')).not.toHaveClass('is-two-column')
-
-    fireEvent.change(screen.getByLabelText('คำตอบของ ซี'), {
+    fireEvent.change(screen.getByLabelText('คำตอบของ บี'), {
       target: { value: 'คำสอง' },
     })
     fireEvent.click(screen.getByRole('button', { name: 'ถัดไป' }))
@@ -449,7 +520,16 @@ describe('คำต้องเชื่อม', () => {
       vi.advanceTimersByTime(3100)
     })
 
-    expect(screen.getByLabelText('ผู้เล่นที่ตกรอบ')).toHaveClass('is-two-column')
+    fireEvent.change(screen.getByLabelText('คำตอบของ ดี'), {
+      target: { value: 'คำสาม' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'ถัดไป' }))
+
+    act(() => {
+      vi.advanceTimersByTime(3100)
+    })
+
+    expectPlayerListOrder('ผู้เล่นที่ตกรอบ', ['เอ', 'ซี'])
   })
 
   it('accumulates leaderboard scores across replay with the same roster', () => {
