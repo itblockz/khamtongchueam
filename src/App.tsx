@@ -1,6 +1,8 @@
 import {
   type ClipboardEvent,
+  type DragEvent,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type ChangeEvent,
@@ -87,6 +89,61 @@ function findNextBlankDraftIndex(playerDrafts: PlayerDraft[], startIndex: number
   return -1
 }
 
+const TRANSPARENT_DRAG_IMAGE_SRC =
+  'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=='
+
+function reorderPlayerDrafts(
+  playerDrafts: PlayerDraft[],
+  sourceDraftId: string,
+  targetDraftId: string,
+  insertAfter = false,
+) {
+  const sourceIndex = playerDrafts.findIndex((draft) => draft.id === sourceDraftId)
+  const targetIndex = playerDrafts.findIndex((draft) => draft.id === targetDraftId)
+
+  if (sourceIndex === -1 || targetIndex === -1 || sourceIndex === targetIndex) {
+    return playerDrafts
+  }
+
+  const reorderedDrafts = [...playerDrafts]
+  const [movedDraft] = reorderedDrafts.splice(sourceIndex, 1)
+
+  if (!movedDraft) {
+    return playerDrafts
+  }
+
+  const targetDraft = playerDrafts[targetIndex]
+  const insertionIndex = reorderedDrafts.findIndex(
+    (draft) => draft.id === targetDraftId,
+  )
+
+  if (insertionIndex === -1) {
+    return playerDrafts
+  }
+
+  const shouldInsertAfter =
+    insertAfter &&
+    Boolean(targetDraft) &&
+    !(isBlankDraft(targetDraft) && targetIndex === playerDrafts.length - 1)
+  const nextInsertionIndex = Math.min(
+    insertionIndex + (shouldInsertAfter ? 1 : 0),
+    reorderedDrafts.length,
+  )
+
+  reorderedDrafts.splice(nextInsertionIndex, 0, movedDraft)
+
+  const normalizedDrafts = ensureTrailingBlankDraft(reorderedDrafts)
+
+  if (
+    normalizedDrafts.length === playerDrafts.length &&
+    normalizedDrafts.every((draft, index) => draft.id === playerDrafts[index]?.id)
+  ) {
+    return playerDrafts
+  }
+
+  return normalizedDrafts
+}
+
 function getActivePlayerCardClass(
   playerId: string,
   activePlayerId: string | null,
@@ -170,7 +227,11 @@ function App() {
   const startFirstTurnButtonRef = useRef<HTMLButtonElement>(null)
   const leaderboardActionButtonRef = useRef<HTMLButtonElement>(null)
   const playerInputRefs = useRef<Record<string, HTMLInputElement | null>>({})
+  const draftItemRefs = useRef<Record<string, HTMLLIElement | null>>({})
+  const draftItemPositionSnapshotRef = useRef<Record<string, number>>({})
+  const transparentDragImageRef = useRef<HTMLImageElement | null>(null)
   const pendingSetupFocusIdRef = useRef<string | null>(null)
+  const [draggedDraftId, setDraggedDraftId] = useState<string | null>(null)
   const { gameState, leaderboardScores, roundScoresInMatch } = sessionState
   const currentMatchRound =
     gameState.phase === 'finished'
@@ -392,6 +453,43 @@ function App() {
     pendingSetupFocusIdRef.current = null
   }, [gameState.phase, playerDrafts])
 
+  useLayoutEffect(() => {
+    const previousPositions = draftItemPositionSnapshotRef.current
+
+    if (Object.keys(previousPositions).length === 0) {
+      return
+    }
+
+    playerDrafts.forEach((draft) => {
+      const draftItem = draftItemRefs.current[draft.id]
+      const previousTop = previousPositions[draft.id]
+
+      if (!draftItem || previousTop === undefined) {
+        return
+      }
+
+      const currentTop = draftItem.getBoundingClientRect().top
+      const deltaY = previousTop - currentTop
+
+      if (Math.abs(deltaY) < 1) {
+        return
+      }
+
+      draftItem.animate(
+        [
+          { transform: `translateY(${deltaY}px)` },
+          { transform: 'translateY(0)' },
+        ],
+        {
+          duration: 180,
+          easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
+        },
+      )
+    })
+
+    draftItemPositionSnapshotRef.current = {}
+  }, [playerDrafts])
+
   function focusPlayerInput(draftId: string | null, shouldSelect = false) {
     if (!draftId) {
       return
@@ -423,36 +521,6 @@ function App() {
         ),
       ),
     )
-  }
-
-  function handleAddPlayer() {
-    setPlayerDrafts((current) => {
-      const nextDrafts = ensureTrailingBlankDraft(current)
-      pendingSetupFocusIdRef.current =
-        nextDrafts[nextDrafts.length - 1]?.id ?? null
-      return nextDrafts
-    })
-  }
-
-  function handleMovePlayer(draftId: string, direction: -1 | 1) {
-    setPlayerDrafts((current) => {
-      const currentIndex = current.findIndex((draft) => draft.id === draftId)
-
-      if (currentIndex === -1) {
-        return current
-      }
-
-      const targetIndex = currentIndex + direction
-
-      if (targetIndex < 0 || targetIndex >= current.length) {
-        return current
-      }
-
-      const reordered = [...current]
-      const [movedDraft] = reordered.splice(currentIndex, 1)
-      reordered.splice(targetIndex, 0, movedDraft)
-      return reordered
-    })
   }
 
   function handleRemovePlayer(draftId: string) {
@@ -592,6 +660,82 @@ function App() {
     }
   }
 
+  function resetDraggedDraftState() {
+    setDraggedDraftId(null)
+    draftItemPositionSnapshotRef.current = {}
+  }
+
+  function handleDraftDragStart(
+    draftId: string,
+    event: DragEvent<HTMLLIElement>,
+  ) {
+    setDraggedDraftId(draftId)
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData('text/plain', draftId)
+
+    if (!transparentDragImageRef.current) {
+      const image = new Image(1, 1)
+      image.src = TRANSPARENT_DRAG_IMAGE_SRC
+      transparentDragImageRef.current = image
+    }
+
+    if (typeof event.dataTransfer.setDragImage === 'function') {
+      event.dataTransfer.setDragImage(transparentDragImageRef.current, 0, 0)
+    }
+  }
+
+  function handleDraftDragOver(
+    targetDraftId: string,
+    event: DragEvent<HTMLLIElement>,
+  ) {
+    if (!draggedDraftId || draggedDraftId === targetDraftId) {
+      return
+    }
+
+    event.preventDefault()
+    event.dataTransfer.dropEffect = 'move'
+
+    const targetRect = event.currentTarget.getBoundingClientRect()
+    const shouldInsertAfter =
+      event.clientY > targetRect.top + targetRect.height / 2
+
+    setPlayerDrafts((current) => {
+      const nextDrafts = reorderPlayerDrafts(
+        current,
+        draggedDraftId,
+        targetDraftId,
+        shouldInsertAfter,
+      )
+
+      if (nextDrafts === current) {
+        return current
+      }
+
+      draftItemPositionSnapshotRef.current = current.reduce<Record<string, number>>(
+        (positions, draft) => {
+          const draftItem = draftItemRefs.current[draft.id]
+
+          if (draftItem) {
+            positions[draft.id] = draftItem.getBoundingClientRect().top
+          }
+
+          return positions
+        },
+        {},
+      )
+
+      return nextDrafts
+    })
+  }
+
+  function handleDraftDrop(
+    _targetDraftId: string,
+    event: DragEvent<HTMLLIElement>,
+  ) {
+    event.preventDefault()
+    resetDraggedDraftState()
+  }
+
   function handleConfirmPlayers() {
     if (!validation.canStart) {
       return
@@ -701,29 +845,56 @@ function App() {
               <div className="setup-copy">
                 <h1>จัดรายชื่อผู้เล่น</h1>
               </div>
-              <button
-                type="button"
-                className="secondary-button symbol-button compact-symbol-button add-player-button"
-                onClick={handleAddPlayer}
-                aria-label="เพิ่มรายชื่อผู้เล่น"
-                tabIndex={-1}
-                title="เพิ่มรายชื่อผู้เล่น"
-              >
-                <span className="button-symbol" aria-hidden="true">
-                  ＋
-                </span>
-              </button>
+              <div className="setup-tooltip">
+                <button
+                  type="button"
+                  className="ghost-button symbol-button setup-help-button"
+                  aria-label="วิธีจัดรายชื่อผู้เล่น"
+                  aria-describedby="setup-help-tooltip"
+                  title="วิธีจัดรายชื่อผู้เล่น"
+                >
+                  วิธีใช้
+                </button>
+                <div
+                  className="setup-tooltip-panel"
+                  id="setup-help-tooltip"
+                  role="tooltip"
+                >
+                  <ul className="setup-tooltip-list">
+                    <li>พิมพ์ชื่อแล้วกด Enter เพื่อไปแถวถัดไป</li>
+                    <li>กด Enter บนแถวว่างท้ายเพื่อยืนยันรายชื่อ</li>
+                    <li>ลากการ์ดผู้เล่นเพื่อจัดลำดับได้อิสระ</li>
+                    <li>กด Backspace บนช่องว่างเพื่อลบ</li>
+                    <li>วางรายชื่อหลายบรรทัดได้</li>
+                  </ul>
+                </div>
+              </div>
             </div>
 
-              <p className="support-text setup-support">
-              พิมพ์ชื่อแล้วกด Enter เพื่อไปแถวถัดไป, กด Enter บนแถวว่างท้ายเพื่อยืนยันรายชื่อ,
-              กด Backspace บนช่องว่างเพื่อลบ และวางรายชื่อหลายบรรทัดได้
+            <p className="sr-only">
+              พิมพ์ชื่อแล้วกด Enter เพื่อไปแถวถัดไป กด Enter บนแถวว่างท้ายเพื่อยืนยันรายชื่อ
+              ลากการ์ดผู้เล่นเพื่อจัดลำดับได้อิสระ กด Backspace บนช่องว่างเพื่อลบ และวางรายชื่อหลายบรรทัดได้
             </p>
 
             {playerDrafts.length > 0 ? (
               <ol className="draft-list">
                 {playerDrafts.map((draft, index) => (
-                  <li className="draft-item" key={draft.id}>
+                  <li
+                    className={`draft-item ${
+                      index < playerDrafts.length - 1 ? 'is-draggable' : ''
+                    } ${
+                      draggedDraftId === draft.id ? 'is-dragging' : ''
+                    }`.trim()}
+                    key={draft.id}
+                    ref={(item) => {
+                      draftItemRefs.current[draft.id] = item
+                    }}
+                    draggable={index < playerDrafts.length - 1}
+                    onDragStart={(event) => handleDraftDragStart(draft.id, event)}
+                    onDragEnd={resetDraggedDraftState}
+                    onDragOver={(event) => handleDraftDragOver(draft.id, event)}
+                    onDrop={(event) => handleDraftDrop(draft.id, event)}
+                  >
                     <div className="draft-order">
                       <span className="order-chip" aria-hidden="true">
                         {index + 1}
@@ -758,32 +929,6 @@ function App() {
                     <div className="draft-actions">
                       <button
                         type="button"
-                        className="ghost-button symbol-button compact-symbol-button"
-                        onClick={() => handleMovePlayer(draft.id, -1)}
-                        disabled={index === 0}
-                        aria-label={`เลื่อนผู้เล่น ${index + 1} ขึ้น`}
-                        tabIndex={-1}
-                        title="เลื่อนขึ้น"
-                      >
-                        <span className="button-symbol" aria-hidden="true">
-                          ↑
-                        </span>
-                      </button>
-                      <button
-                        type="button"
-                        className="ghost-button symbol-button compact-symbol-button"
-                        onClick={() => handleMovePlayer(draft.id, 1)}
-                        disabled={index === playerDrafts.length - 1}
-                        aria-label={`เลื่อนผู้เล่น ${index + 1} ลง`}
-                        tabIndex={-1}
-                        title="เลื่อนลง"
-                      >
-                        <span className="button-symbol" aria-hidden="true">
-                          ↓
-                        </span>
-                      </button>
-                      <button
-                        type="button"
                         className="ghost-button danger-button symbol-button compact-symbol-button"
                         onClick={() => handleRemovePlayer(draft.id)}
                         aria-label={`ลบผู้เล่น ${index + 1}`}
@@ -801,7 +946,7 @@ function App() {
             ) : (
               <div className="empty-state">
                 <p>ยังไม่มีผู้เล่นในเกมนี้</p>
-                <p>กดปุ่มเพิ่มรายชื่อผู้เล่นเพื่อเริ่มจัดลำดับ</p>
+                <p>พิมพ์ชื่อผู้เล่นเพื่อเริ่มจัดลำดับ</p>
               </div>
             )}
 
@@ -816,15 +961,13 @@ function App() {
 
               <button
                 type="button"
-                className="primary-button symbol-button compact-symbol-button start-button"
+                className="primary-button start-button"
                 disabled={!validation.canStart}
                 onClick={handleConfirmPlayers}
                 aria-label="ยืนยันผู้เล่น"
                 title="ยืนยันผู้เล่น"
               >
-                <span className="button-symbol" aria-hidden="true">
-                  ▶
-                </span>
+                <span className="button-copy">ยืนยันผู้เล่น</span>
               </button>
             </div>
           </div>

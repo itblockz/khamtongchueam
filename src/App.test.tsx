@@ -13,6 +13,19 @@ function fillSetupNames(playerNames: string[]) {
   })
 }
 
+function createMockDataTransfer() {
+  let storedData = ''
+
+  return {
+    effectAllowed: 'all',
+    dropEffect: 'move',
+    setData: (_type: string, value: string) => {
+      storedData = value
+    },
+    getData: () => storedData,
+  }
+}
+
 function startTwoPlayerGame(firstPlayer: string, secondPlayer: string) {
   render(<App />)
   fillSetupNames([firstPlayer, secondPlayer])
@@ -177,17 +190,36 @@ describe('คำต้องเชื่อม', () => {
     render(<App />)
     fillSetupNames(['เอ', 'บี'])
 
-    expect(screen.getByRole('button', { name: 'เพิ่มรายชื่อผู้เล่น' }).tabIndex).toBe(-1)
-    expect(
-      screen.getByRole('button', { name: 'เลื่อนผู้เล่น 1 ขึ้น' }).tabIndex,
-    ).toBe(-1)
-    expect(
-      screen.getByRole('button', { name: 'เลื่อนผู้เล่น 1 ลง' }).tabIndex,
-    ).toBe(-1)
     expect(
       screen.getByRole('button', { name: 'ลบผู้เล่น 1' }).tabIndex,
     ).toBe(-1)
     expect(screen.getByRole('button', { name: 'ยืนยันผู้เล่น' }).tabIndex).toBe(0)
+  })
+
+  it('reorders setup rows by dragging a player to a new position', () => {
+    render(<App />)
+    fillSetupNames(['เอ', 'บี', 'ซี'])
+
+    const dataTransfer = createMockDataTransfer()
+    const draggedRow = screen.getByLabelText('ชื่อผู้เล่น 3').closest('li')
+    const firstRow = screen.getByLabelText('ชื่อผู้เล่น 1').closest('li')
+
+    expect(draggedRow).not.toBeNull()
+    expect(firstRow).not.toBeNull()
+
+    fireEvent.dragStart(draggedRow!, { dataTransfer })
+    fireEvent.dragOver(firstRow!, { dataTransfer })
+
+    expect(screen.getByLabelText('ชื่อผู้เล่น 1')).toHaveValue('ซี')
+    expect(screen.getByLabelText('ชื่อผู้เล่น 2')).toHaveValue('เอ')
+    expect(screen.getByLabelText('ชื่อผู้เล่น 3')).toHaveValue('บี')
+
+    fireEvent.drop(firstRow!, { dataTransfer })
+    fireEvent.dragEnd(draggedRow!, { dataTransfer })
+
+    expect(screen.getByLabelText('ชื่อผู้เล่น 1')).toHaveValue('ซี')
+    expect(screen.getByLabelText('ชื่อผู้เล่น 2')).toHaveValue('เอ')
+    expect(screen.getByLabelText('ชื่อผู้เล่น 3')).toHaveValue('บี')
   })
 
   it('supports pasting multiple lines and still flags duplicate names', () => {

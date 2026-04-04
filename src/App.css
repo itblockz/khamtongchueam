@@ -12,7 +12,7 @@
 .setup-screen {
   display: flex;
   justify-content: center;
-  padding-top: clamp(4px, 1.5vh, 18px);
+  padding-top: clamp(0px, 0.8vh, 10px);
 }
 
 .play-screen,
@@ -37,22 +37,29 @@
 }
 
 .setup-card {
-  width: min(1080px, 100%);
-  padding: 20px 20px 18px;
+  width: min(920px, 100%);
+  padding: 12px 14px 10px;
 }
 
 .setup-header {
   align-items: center;
-  gap: 12px;
+  gap: 8px;
+}
+
+.setup-tooltip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
 }
 
 .setup-copy {
-  gap: 4px;
+  gap: 2px;
 }
 
 .setup-copy h1 {
-  font-size: clamp(2rem, 3vw, 3.05rem);
-  line-height: 0.98;
+  font-size: clamp(1.38rem, 2vw, 1.92rem);
+  line-height: 0.94;
 }
 
 .setup-header,
@@ -116,11 +123,54 @@
   color: var(--muted);
 }
 
-.setup-support {
-  max-width: 74ch;
-  margin-top: 10px;
-  font-size: 0.94rem;
-  line-height: 1.5;
+.setup-help-button {
+  min-height: 30px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 0.74rem;
+  white-space: nowrap;
+}
+
+.setup-tooltip-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 2;
+  width: min(360px, calc(100vw - 48px));
+  padding: 12px 14px;
+  border: 1px solid rgba(176, 126, 82, 0.18);
+  border-radius: 16px;
+  background:
+    linear-gradient(180deg, rgba(255, 252, 247, 0.98), rgba(247, 239, 227, 0.96)),
+    var(--surface);
+  box-shadow: 0 14px 28px rgba(173, 92, 52, 0.14);
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.4;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-4px);
+  pointer-events: none;
+  transition:
+    opacity 140ms ease,
+    visibility 140ms ease,
+    transform 140ms ease;
+}
+
+.setup-tooltip-list {
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
+.setup-tooltip-list li + li {
+  margin-top: 0.32rem;
+}
+
+.setup-tooltip:hover .setup-tooltip-panel,
+.setup-tooltip:focus-within .setup-tooltip-panel {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
 }
 
 .draft-list,
@@ -132,23 +182,41 @@
 }
 
 .draft-list {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px 10px;
-  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
 }
 
 .draft-item {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: 12px;
+  gap: 5px;
   align-items: center;
   min-width: 0;
-  padding: 10px 12px;
-  border-radius: 20px;
+  padding: 6px 7px;
+  border-radius: 14px;
   border: 1px solid rgba(176, 126, 82, 0.16);
   background: var(--surface-strong);
   box-shadow: var(--shadow-soft);
+  will-change: transform;
+  transition:
+    border-color 140ms ease,
+    box-shadow 140ms ease,
+    opacity 140ms ease,
+    transform 140ms ease;
+}
+
+.draft-item.is-draggable {
+  cursor: grab;
+}
+
+.draft-item.is-dragging {
+  opacity: 0.54;
+}
+
+.draft-item.is-draggable:active {
+  cursor: grabbing;
 }
 
 .draft-order {
@@ -182,14 +250,14 @@
 .form-copy {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 4px;
 }
 
 .setup-card .draft-field {
   display: grid;
-  grid-template-columns: minmax(82px, max-content) minmax(0, 1fr);
+  grid-template-columns: minmax(70px, max-content) minmax(0, 1fr);
   align-items: center;
-  gap: 10px;
+  gap: 4px;
 }
 
 .draft-field label,
@@ -201,8 +269,8 @@
 
 .setup-card .draft-field label {
   min-width: 0;
-  font-size: 0.92rem;
-  line-height: 1.2;
+  font-size: 0.74rem;
+  line-height: 1.1;
 }
 
 .draft-actions,
@@ -234,18 +302,10 @@
 }
 
 .setup-card .compact-symbol-button {
-  min-width: 44px;
-  padding: 0 10px;
-}
-
-.add-player-button {
-  min-width: 68px;
-  min-height: 56px;
-}
-
-.setup-card .add-player-button {
-  min-width: 56px;
-  min-height: 52px;
+  min-width: 30px;
+  min-height: 30px;
+  padding: 0 5px;
+  border-radius: 10px;
 }
 
 .start-button {
@@ -254,8 +314,15 @@
 }
 
 .setup-card .start-button {
-  min-width: 68px;
-  min-height: 54px;
+  min-width: auto;
+  min-height: 38px;
+  padding: 0 12px;
+  border-radius: 12px;
+}
+
+.setup-card .start-button .button-copy {
+  font-size: 0.76rem;
+  letter-spacing: 0.01em;
 }
 
 .button-symbol {
@@ -285,10 +352,10 @@
 }
 
 .setup-card .text-input {
-  min-height: 50px;
+  min-height: 34px;
   min-width: 0;
-  padding: 0 14px;
-  border-radius: 18px;
+  padding: 0 8px;
+  border-radius: 12px;
 }
 
 .text-input::placeholder {
@@ -370,26 +437,26 @@ button:disabled {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  margin-top: 16px;
-  padding-top: 14px;
+  gap: 6px;
+  margin-top: 8px;
+  padding-top: 6px;
   border-top: 1px solid rgba(176, 126, 82, 0.14);
 }
 
 .setup-card .draft-actions {
   flex-wrap: nowrap;
-  gap: 8px;
+  gap: 3px;
 }
 
 .setup-card .order-chip {
-  min-width: 40px;
-  height: 40px;
-  padding: 0 12px;
-  font-size: 1.02rem;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 6px;
+  font-size: 0.78rem;
 }
 
 .setup-card .validation-note {
-  font-size: 0.95rem;
+  font-size: 0.78rem;
 }
 
 .validation-note {
@@ -896,28 +963,28 @@ button:disabled {
   }
 
   .setup-card {
-    width: min(820px, 100%);
+    width: min(880px, 100%);
   }
 
-  .draft-list {
-    grid-template-columns: 1fr;
+  .setup-tooltip-panel {
+    width: min(320px, calc(100vw - 40px));
   }
 
   .setup-card .draft-item {
-    padding: 14px 16px;
+    padding: 7px 8px;
   }
 
   .setup-card .draft-field {
     grid-template-columns: 1fr;
-    gap: 8px;
+    gap: 4px;
   }
 
   .setup-card .draft-field label {
-    font-size: 0.96rem;
+    font-size: 0.78rem;
   }
 
   .setup-card .text-input {
-    min-height: 60px;
+    min-height: 38px;
   }
 
   .answer-panel {
@@ -987,10 +1054,13 @@ button:disabled {
     grid-template-columns: 1fr;
   }
 
-  .draft-actions,
   .answer-controls {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .draft-actions {
+    justify-content: flex-end;
   }
 
   .leaderboard-table {
@@ -1007,7 +1077,6 @@ button:disabled {
     min-width: 150px;
   }
 
-  .draft-actions > button,
   .turn-timer-pill,
   .answer-controls > button {
     width: 100%;
@@ -1015,16 +1084,26 @@ button:disabled {
 
   .setup-card {
     width: 100%;
-    padding: 20px;
+    padding: 14px;
   }
 
   .setup-copy h1 {
     line-height: 1;
   }
 
-  .setup-support {
-    font-size: 1rem;
-    line-height: 1.65;
+  .setup-tooltip {
+    width: 100%;
+  }
+
+  .setup-help-button {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .setup-tooltip-panel {
+    left: 0;
+    right: auto;
+    width: min(100%, 340px);
   }
 
   .setup-card .draft-field {
