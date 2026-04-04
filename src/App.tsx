@@ -1,6 +1,7 @@
 import {
   type ClipboardEvent,
   type DragEvent,
+  type ReactNode,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -69,6 +70,14 @@ function getEliminatedPlayerSummary(
   }
 
   if (player.eliminationReason === 'duplicate_syllable') {
+    if (player.duplicateSubmittedAnswer && player.duplicateSourceAnswer) {
+      return `${player.name} ตกรอบเพราะคำตอบ "${player.duplicateSubmittedAnswer}" ซ้ำกับคำ "${player.duplicateSourceAnswer}"`
+    }
+
+    if (player.duplicateSourceAnswer) {
+      return `${player.name} ตกรอบเพราะซ้ำกับคำ "${player.duplicateSourceAnswer}"`
+    }
+
     return `${player.name} ตกรอบเพราะใช้พยางค์ซ้ำ`
   }
 
@@ -96,6 +105,77 @@ function getPausedTurnInstructions(
   return `ยังไม่เริ่มจับเวลา ${getPausedTurnReasonText(
     player,
   )} กดเริ่มเพื่อเริ่มจับเวลาของ ${activePlayerName}`
+}
+
+function getDuplicateSyllableDetails(
+  player: GameState['players'][number] | null,
+) {
+  if (
+    !player ||
+    player.eliminationReason !== 'duplicate_syllable' ||
+    !player.duplicateSyllable ||
+    !player.duplicateSourceAnswer ||
+    !player.duplicateSubmittedAnswer
+  ) {
+    return null
+  }
+
+  return {
+    duplicateSyllable: player.duplicateSyllable,
+    sourceAnswer: player.duplicateSourceAnswer,
+    submittedAnswer: player.duplicateSubmittedAnswer,
+  }
+}
+
+function renderHighlightedAnswer(answer: string, syllable: string) {
+  if (!syllable || !answer.includes(syllable)) {
+    return <span className="duplicate-answer-text">{answer}</span>
+  }
+
+  const parts: ReactNode[] = []
+  const segments = answer.split(syllable)
+
+  segments.forEach((segment, index) => {
+    if (segment) {
+      parts.push(<span key={`segment-${index}`}>{segment}</span>)
+    }
+
+    if (index < segments.length - 1) {
+      parts.push(
+        <mark className="duplicate-syllable-mark" key={`match-${index}`}>
+          {syllable}
+        </mark>,
+      )
+    }
+  })
+
+  return <span className="duplicate-answer-text">{parts}</span>
+}
+
+function renderEliminatedPlayerSummaryContent(
+  player: GameState['players'][number] | null,
+) {
+  const duplicateDetails = getDuplicateSyllableDetails(player)
+
+  if (player && duplicateDetails) {
+    return (
+      <>
+        <span>{player.name} ตกรอบเพราะคำตอบ "</span>
+        {renderHighlightedAnswer(
+          duplicateDetails.submittedAnswer,
+          duplicateDetails.duplicateSyllable,
+        )}
+        <span>" ซ้ำกับคำ "</span>
+        {renderHighlightedAnswer(
+          duplicateDetails.sourceAnswer,
+          duplicateDetails.duplicateSyllable,
+        )}
+        <span>"</span>
+      </>
+    )
+  }
+
+  return getEliminatedPlayerSummary(player)
 }
 
 function getSegmentationCacheKey(text: string) {
@@ -351,8 +431,10 @@ function App() {
             (right.eliminatedOrder ?? 0) - (left.eliminatedOrder ?? 0),
         )[0]
       : null
-  const pausedTurnReasonText = getPausedTurnReasonText(latestEliminatedPlayer)
   const eliminatedPlayerSummary = getEliminatedPlayerSummary(
+    latestEliminatedPlayer,
+  )
+  const eliminatedPlayerSummaryContent = renderEliminatedPlayerSummaryContent(
     latestEliminatedPlayer,
   )
   const roundAwards =
@@ -1259,12 +1341,12 @@ function App() {
               </p>
               {isAwaitingRoundSummary && (
                 <p className="pause-note" role="status" aria-live="polite">
-                  {eliminatedPlayerSummary}
+                  {eliminatedPlayerSummaryContent}
                 </p>
               )}
               {isPausedTurn && (
                 <p className="pause-note" role="status" aria-live="polite">
-                  {pausedTurnReasonText}
+                  {eliminatedPlayerSummaryContent}
                 </p>
               )}
               {segmentationError && (

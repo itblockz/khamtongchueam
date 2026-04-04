@@ -235,6 +235,18 @@ describe('advanceTurn', () => {
       afterDuplicateSubmit.players.find((player) => player.id === 'b')
         ?.eliminationReason,
     ).toBe('duplicate_syllable')
+    expect(
+      afterDuplicateSubmit.players.find((player) => player.id === 'b')
+        ?.duplicateSyllable,
+    ).toBe('กา')
+    expect(
+      afterDuplicateSubmit.players.find((player) => player.id === 'b')
+        ?.duplicateSourceAnswer,
+    ).toBe('กาแฟ')
+    expect(
+      afterDuplicateSubmit.players.find((player) => player.id === 'b')
+        ?.duplicateSubmittedAnswer,
+    ).toBe('กากี')
   })
 
   it('keeps used syllables across in-game cycle wraps within the same match round', () => {

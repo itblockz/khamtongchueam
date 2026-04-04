@@ -655,9 +655,11 @@ describe('คำต้องเชื่อม', () => {
     await submitAnswer('บี', 'กากี')
     await waitForTurn('ซี')
 
-    expect(
-      screen.getByText('บี ตกรอบเพราะใช้พยางค์ซ้ำ'),
-    ).toBeInTheDocument()
+    const duplicateStatus = screen.getByRole('status')
+    expect(duplicateStatus).toHaveTextContent(
+      'บี ตกรอบเพราะคำตอบ "กากี" ซ้ำกับคำ "กาแฟ"',
+    )
+    expect(within(duplicateStatus).getAllByText('กา')).toHaveLength(2)
     expect(screen.getByRole('button', { name: 'เริ่มตาถัดไป' })).toHaveFocus()
     expect(screen.getByLabelText('คำตอบของ ซี')).toBeDisabled()
   })
@@ -680,7 +682,11 @@ describe('คำต้องเชื่อม', () => {
     await submitAnswer('เอ', 'กากี')
     await waitForTurn('บี')
 
-    expect(screen.getByText('เอ ตกรอบเพราะใช้พยางค์ซ้ำ')).toBeInTheDocument()
+    const duplicateStatus = screen.getByRole('status')
+    expect(duplicateStatus).toHaveTextContent(
+      'เอ ตกรอบเพราะคำตอบ "กากี" ซ้ำกับคำ "กาแฟ"',
+    )
+    expect(within(duplicateStatus).getAllByText('กา')).toHaveLength(2)
     expect(screen.getByRole('button', { name: 'เริ่มตาถัดไป' })).toBeInTheDocument()
   })
 

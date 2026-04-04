@@ -513,17 +513,32 @@ button:disabled {
 .answer-panel .pause-note {
   margin: 0;
   display: inline-flex;
-  align-items: center;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.18rem;
   align-self: flex-start;
   min-height: 30px;
-  padding: 0 10px;
+  max-width: 34rem;
+  padding: 6px 10px;
   color: #7f2f24;
   font-size: 0.72rem;
   font-weight: 700;
-  line-height: 1.2;
+  line-height: 1.45;
   border: 1px solid rgba(189, 87, 66, 0.18);
-  border-radius: 999px;
+  border-radius: 18px;
   background: rgba(249, 221, 212, 0.92);
+}
+
+.duplicate-answer-text {
+  font-weight: 700;
+}
+
+.duplicate-syllable-mark {
+  padding: 0 0.18em;
+  color: #7f2f24;
+  font-weight: 800;
+  border-radius: 0.45em;
+  background: rgba(228, 130, 82, 0.22);
 }
 
 .answer-panel .segmentation-error {

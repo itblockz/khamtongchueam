@@ -26,6 +26,14 @@ export interface Player {
   eliminatedAtTurnCycle: number | null
   eliminatedOrder: number | null
   eliminationReason: EliminationReason | null
+  duplicateSyllable: string | null
+  duplicateSourceAnswer: string | null
+  duplicateSubmittedAnswer: string | null
+}
+
+interface UsedSyllableEntry {
+  syllable: string
+  answer: string
 }
 
 export interface GameState {
@@ -43,6 +51,7 @@ export interface GameState {
   isAwaitingFirstTurnStart: boolean
   isAwaitingRoundSummary: boolean
   usedSyllablesInRound: string[]
+  usedSyllableEntriesInRound: UsedSyllableEntry[]
 }
 
 export interface LeaderboardAward {
@@ -96,18 +105,25 @@ function normalizeProvidedSyllables(syllables: string[] | undefined) {
     .filter((syllable) => syllable.length > 0)
 }
 
-function findDuplicateSyllable(
-  usedSyllablesInRound: string[],
+function findDuplicateSyllableEntry(
+  usedSyllableEntriesInRound: UsedSyllableEntry[],
   nextSyllables: string[],
 ) {
-  const seenSyllables = new Set(usedSyllablesInRound)
+  const seenSyllables = new Map(
+    usedSyllableEntriesInRound.map((entry) => [entry.syllable, entry]),
+  )
 
   for (const syllable of nextSyllables) {
-    if (seenSyllables.has(syllable)) {
-      return syllable
+    const matchedEntry = seenSyllables.get(syllable)
+
+    if (matchedEntry) {
+      return matchedEntry
     }
 
-    seenSyllables.add(syllable)
+    seenSyllables.set(syllable, {
+      syllable,
+      answer: '',
+    })
   }
 
   return null
@@ -193,6 +209,9 @@ function createPlayers(playerSeeds: PlayerSeed[]): Player[] {
     eliminatedAtTurnCycle: null,
     eliminatedOrder: null,
     eliminationReason: null,
+    duplicateSyllable: null,
+    duplicateSourceAnswer: null,
+    duplicateSubmittedAnswer: null,
   }))
 }
 
@@ -231,6 +250,7 @@ export function createSetupState(): GameState {
     isAwaitingFirstTurnStart: false,
     isAwaitingRoundSummary: false,
     usedSyllablesInRound: [],
+    usedSyllableEntriesInRound: [],
   }
 }
 
@@ -277,6 +297,7 @@ export function createGameState(
     isAwaitingFirstTurnStart: false,
     isAwaitingRoundSummary: false,
     usedSyllablesInRound: [],
+    usedSyllableEntriesInRound: [],
     ...buildTurnState(now, durationMs),
   }
 }
@@ -298,6 +319,7 @@ export function createConfirmedGameState(
     isAwaitingFirstTurnStart: true,
     isAwaitingRoundSummary: false,
     usedSyllablesInRound: [],
+    usedSyllableEntriesInRound: [],
     ...buildPausedTurnState(durationMs),
   }
 }
@@ -446,6 +468,7 @@ export function advanceTurn(
   let nextPlayers = state.players
   let shouldPauseNextTurn = false
   let nextUsedSyllablesInRound = state.usedSyllablesInRound
+  let nextUsedSyllableEntriesInRound = state.usedSyllableEntriesInRound
   const nextEliminatedOrder =
     state.players.filter((player) => player.status === 'eliminated').length + 1
 
@@ -470,6 +493,9 @@ export function advanceTurn(
               eliminatedAtTurnCycle: state.turnCycle,
               eliminatedOrder: nextEliminatedOrder,
               eliminationReason: 'late_submit' as const,
+              duplicateSyllable: null,
+              duplicateSourceAnswer: null,
+              duplicateSubmittedAnswer: null,
             }
           : player,
       )
@@ -480,12 +506,12 @@ export function advanceTurn(
         return state
       }
 
-      const duplicateSyllable = findDuplicateSyllable(
-        state.usedSyllablesInRound,
+      const duplicateSyllableEntry = findDuplicateSyllableEntry(
+        state.usedSyllableEntriesInRound,
         nextSyllables,
       )
 
-      if (duplicateSyllable !== null) {
+      if (duplicateSyllableEntry !== null) {
         shouldPauseNextTurn = true
         nextPlayers = state.players.map((player, index) =>
           index === currentIndex
@@ -495,6 +521,9 @@ export function advanceTurn(
                 eliminatedAtTurnCycle: state.turnCycle,
                 eliminatedOrder: nextEliminatedOrder,
                 eliminationReason: 'duplicate_syllable' as const,
+                duplicateSyllable: duplicateSyllableEntry.syllable,
+                duplicateSourceAnswer: duplicateSyllableEntry.answer,
+                duplicateSubmittedAnswer: answer,
               }
             : player,
         )
@@ -502,6 +531,13 @@ export function advanceTurn(
         nextUsedSyllablesInRound = [
           ...state.usedSyllablesInRound,
           ...nextSyllables,
+        ]
+        nextUsedSyllableEntriesInRound = [
+          ...state.usedSyllableEntriesInRound,
+          ...nextSyllables.map((syllable) => ({
+            syllable,
+            answer,
+          })),
         ]
         nextPlayers = state.players.map((player, index) =>
           index === currentIndex
@@ -523,6 +559,9 @@ export function advanceTurn(
             eliminatedAtTurnCycle: state.turnCycle,
             eliminatedOrder: nextEliminatedOrder,
             eliminationReason: 'timeout' as const,
+            duplicateSyllable: null,
+            duplicateSourceAnswer: null,
+            duplicateSubmittedAnswer: null,
           }
         : player,
     )
@@ -547,6 +586,7 @@ export function advanceTurn(
       isAwaitingFirstTurnStart: false,
       isAwaitingRoundSummary: true,
       usedSyllablesInRound: nextUsedSyllablesInRound,
+      usedSyllableEntriesInRound: nextUsedSyllableEntriesInRound,
     }
   }
 
@@ -570,6 +610,7 @@ export function advanceTurn(
     isAwaitingFirstTurnStart: false,
     isAwaitingRoundSummary: false,
     usedSyllablesInRound: nextUsedSyllablesInRound,
+    usedSyllableEntriesInRound: nextUsedSyllableEntriesInRound,
     ...(shouldPauseNextTurn
       ? buildPausedTurnState(durationMs)
       : buildTurnState(now, durationMs)),
