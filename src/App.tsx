@@ -121,10 +121,10 @@ function getEliminatedPlayerSummary(
 
   if (player.eliminationReason === 'failed_challenge') {
     if (player.challengeTargetAnswer) {
-      return `${player.name} ตกรอบเพราะชาเล้นจ์คำ "${player.challengeTargetAnswer}" ไม่สำเร็จ`
+      return `${player.name} ตกรอบเพราะชาเลนจ์คำ "${player.challengeTargetAnswer}" ไม่สำเร็จ`
     }
 
-    return `${player.name} ตกรอบเพราะชาเล้นจ์ไม่สำเร็จ`
+    return `${player.name} ตกรอบเพราะชาเลนจ์ไม่สำเร็จ`
   }
 
   if (player.eliminationReason === 'invalid_connection') {
@@ -646,9 +646,9 @@ function App() {
     (gameState.isSafeToFinish || gameState.timeLeftMs > 0)
   const challengeSpeakerName =
     challengeState?.currentSpeaker === 'challenger'
-      ? selectedChallenger?.name ?? 'ผู้ชาเล้นจ์'
+      ? selectedChallenger?.name ?? 'ผู้ชาเลนจ์'
       : challengeState?.currentSpeaker === 'challenged'
-        ? selectedChallengedPlayer?.name ?? 'ผู้ถูกชาเล้นจ์'
+        ? selectedChallengedPlayer?.name ?? 'ผู้ถูกชาเลนจ์'
         : null
   const challengeTimeLeftMs =
     challengeState?.timeLeftMs ?? CHALLENGE_DEBATE_SEGMENT_DURATION_MS
@@ -691,13 +691,13 @@ function App() {
   const timerAriaLabel = isAwaitingRoundSummary
     ? 'เวลา สรุปรอบ'
     : isChallengeSelecting
-      ? 'เวลา เลือกการชาเล้นจ์'
+      ? 'เวลา เลือกการชาเลนจ์'
     : isChallengeDebating
       ? `เวลาโต้วาทีเหลือ ${formatSeconds(
           challengeTimeLeftMs,
         )} วินาที`
     : isChallengeJudging
-      ? 'เวลา ตัดสินการชาเล้นจ์'
+      ? 'เวลา ตัดสินการชาเลนจ์'
     : requiresManualTurnStart
       ? 'เวลา รอเริ่ม'
       : gameState.phase === 'playing' && gameState.isSafeToFinish
@@ -707,7 +707,7 @@ function App() {
           : 'เวลา'
   const challengeNote =
     isChallengeSelecting
-      ? 'เลือกผู้ชาเล้นจ์และคำที่ต้องการชาเล้นจ์'
+      ? 'เลือกผู้ชาเลนจ์และคำที่ต้องการชาเลนจ์'
       : isChallengeDebating
         ? `ช่วงโต้วาที ${challengeSegmentIndex + 1}/${CHALLENGE_DEBATE_SEGMENT_COUNT} ตอนนี้ ${challengeSpeakerName} กำลังพูด`
         : isChallengeJudging
@@ -1892,10 +1892,10 @@ function App() {
                     className="ghost-button challenge-open-button"
                     onClick={handleOpenChallenge}
                     disabled={!canOpenChallenge}
-                    aria-label="ชาเล้นจ์"
-                    title="ชาเล้นจ์"
+                    aria-label="ชาเลนจ์"
+                    title="ชาเลนจ์"
                   >
-                    ชาเล้นจ์
+                    ชาเลนจ์
                   </button>
                 )}
                 <button
@@ -1946,7 +1946,7 @@ function App() {
               </label>
               <p className="sr-only">
                 {isChallengeSelecting
-                  ? 'เลือกผู้ชาเล้นจ์และคำที่ต้องการชาเล้นจ์'
+                  ? 'เลือกผู้ชาเลนจ์และคำที่ต้องการชาเลนจ์'
                   : isChallengeDebating
                     ? challengeNote
                     : isChallengeJudging
@@ -1965,11 +1965,11 @@ function App() {
               {gameState.phase === 'playing' &&
                 canOpenChallenge &&
                 !isChallengeActive && (
-                  <p className="sr-only">F2 เพื่อเปิดชาเล้นจ์</p>
+                  <p className="sr-only">F2 เพื่อเปิดชาเลนจ์</p>
                 )}
               {isChallengeSelecting && (
                 <p className="sr-only">
-                  พิมพ์ชื่อเพื่อกรองและเลือกผู้ชาเล้นจ์ กดลูกศรลงเพื่อไปที่รายการ Enter เพื่อเริ่มทันที Esc เพื่อยกเลิก
+                  พิมพ์ชื่อเพื่อกรองและเลือกผู้ชาเลนจ์ กดลูกศรลงเพื่อไปที่รายการ Enter เพื่อเริ่มทันที Esc เพื่อยกเลิก
                 </p>
               )}
               {isChallengeDebating && (
@@ -2005,10 +2005,10 @@ function App() {
                   type="button"
                   className="secondary-button symbol-button start-turn-button"
                   disabled
-                  aria-label="กำลังชาเล้นจ์"
-                  title="กำลังชาเล้นจ์"
+                  aria-label="กำลังชาเลนจ์"
+                  title="กำลังชาเลนจ์"
                 >
-                  <span className="button-copy">กำลังชาเล้นจ์</span>
+                  <span className="button-copy">กำลังชาเลนจ์</span>
                 </button>
               ) : requiresPrimaryAction ? (
                 <button
@@ -2066,11 +2066,11 @@ function App() {
           {isChallengeActive && (
             <section
               className="surface-card challenge-card"
-              aria-label="การชาเล้นจ์คำไม่เชื่อม"
+              aria-label="การชาเลนจ์คำไม่เชื่อม"
             >
               <div className="panel-header compact challenge-header">
                 <div>
-                  <p className="eyebrow">ชาเล้นจ์</p>
+                  <p className="eyebrow">ชาเลนจ์</p>
                   <h2>คำไม่เชื่อมกัน</h2>
                 </div>
               </div>
@@ -2080,7 +2080,7 @@ function App() {
                   <div className="challenge-field-grid">
                     <div className="challenge-field">
                       <label htmlFor="challenge-challenger-search">
-                        พิมพ์ชื่อผู้ชาเล้นจ์
+                        พิมพ์ชื่อผู้ชาเลนจ์
                       </label>
                       <input
                         ref={challengeChallengerInputRef}
@@ -2090,10 +2090,10 @@ function App() {
                         value={challengeChallengerSearchValue}
                         onChange={handleChallengeChallengerSearchChange}
                         onKeyDown={handleChallengeChallengerInputKeyDown}
-                        placeholder="พิมพ์ชื่อผู้ชาเล้นจ์"
+                        placeholder="พิมพ์ชื่อผู้ชาเลนจ์"
                         autoComplete="off"
                       />
-                      <label htmlFor="challenge-challenger">ผู้ชาเล้นจ์</label>
+                      <label htmlFor="challenge-challenger">ผู้ชาเลนจ์</label>
                       <select
                         ref={challengeChallengerSelectRef}
                         id="challenge-challenger"
@@ -2103,7 +2103,7 @@ function App() {
                         onKeyDown={handleChallengeChallengerKeyDown}
                       >
                         {normalizedChallengeChallengerSearch.length === 0 ? (
-                          <option value="">เลือกผู้ชาเล้นจ์</option>
+                          <option value="">เลือกผู้ชาเลนจ์</option>
                         ) : null}
                         {filteredChallengeChallengerOptions.length > 0 ? (
                           filteredChallengeChallengerOptions.map((player) => (
@@ -2113,14 +2113,14 @@ function App() {
                           ))
                         ) : (
                           <option value="" disabled>
-                            ไม่พบผู้ชาเล้นจ์ที่ตรงกัน
+                            ไม่พบผู้ชาเลนจ์ที่ตรงกัน
                           </option>
                         )}
                       </select>
                     </div>
 
                     <div className="challenge-field">
-                      <label htmlFor="challenged-answer">คำที่ถูกชาเล้นจ์</label>
+                      <label htmlFor="challenged-answer">คำที่ถูกชาเลนจ์</label>
                       <select
                         ref={challengeChallengedAnswerSelectRef}
                         id="challenged-answer"
@@ -2129,7 +2129,7 @@ function App() {
                         onChange={handleChallengeAnswerChange}
                         onKeyDown={handleChallengeAnswerKeyDown}
                       >
-                        <option value="">เลือกคำที่ต้องการชาเล้นจ์</option>
+                        <option value="">เลือกคำที่ต้องการชาเลนจ์</option>
                         {challengeableAnswers.map((answerRecord: AnswerRecord) => {
                           const answerOwner =
                             playerById.get(answerRecord.playerId)?.name ?? 'ไม่ทราบชื่อ'
@@ -2155,7 +2155,7 @@ function App() {
                         <strong>คำที่ถูกท้า:</strong> {selectedChallengedAnswer.answer}
                       </p>
                       <p>
-                        <strong>ผู้ถูกชาเล้นจ์:</strong>{' '}
+                        <strong>ผู้ถูกชาเลนจ์:</strong>{' '}
                         {selectedChallengedPlayer?.name ?? '-'}
                       </p>
                       <p>
@@ -2174,17 +2174,17 @@ function App() {
                         )
                       }
                       disabled={!canStartVisibleChallenge}
-                      aria-label="เริ่มการชาเล้นจ์"
-                      title="เริ่มการชาเล้นจ์"
+                      aria-label="เริ่มการชาเลนจ์"
+                      title="เริ่มการชาเลนจ์"
                     >
-                      <span className="button-copy">เริ่มการชาเล้นจ์</span>
+                      <span className="button-copy">เริ่มการชาเลนจ์</span>
                     </button>
                     <button
                       type="button"
                       className="secondary-button symbol-button"
                       onClick={handleCancelChallenge}
-                      aria-label="ยกเลิกการชาเล้นจ์"
-                      title="ยกเลิกการชาเล้นจ์"
+                      aria-label="ยกเลิกการชาเลนจ์"
+                      title="ยกเลิกการชาเลนจ์"
                     >
                       <span className="button-copy">ยกเลิก</span>
                     </button>
@@ -2196,10 +2196,10 @@ function App() {
                 <div className="challenge-content">
                   <div className="challenge-summary">
                     <p>
-                      <strong>ผู้ชาเล้นจ์:</strong> {selectedChallenger?.name ?? '-'}
+                      <strong>ผู้ชาเลนจ์:</strong> {selectedChallenger?.name ?? '-'}
                     </p>
                     <p>
-                      <strong>ผู้ถูกชาเล้นจ์:</strong>{' '}
+                      <strong>ผู้ถูกชาเลนจ์:</strong>{' '}
                       {selectedChallengedPlayer?.name ?? '-'}
                     </p>
                     <p>
@@ -2225,10 +2225,10 @@ function App() {
                 <div className="challenge-content">
                   <div className="challenge-summary">
                     <p>
-                      <strong>ผู้ชาเล้นจ์:</strong> {selectedChallenger?.name ?? '-'}
+                      <strong>ผู้ชาเลนจ์:</strong> {selectedChallenger?.name ?? '-'}
                     </p>
                     <p>
-                      <strong>ผู้ถูกชาเล้นจ์:</strong>{' '}
+                      <strong>ผู้ถูกชาเลนจ์:</strong>{' '}
                       {selectedChallengedPlayer?.name ?? '-'}
                     </p>
                     <p>

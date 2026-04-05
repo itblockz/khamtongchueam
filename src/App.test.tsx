@@ -142,7 +142,7 @@ async function skipChallengeDebateSegments(segmentCount: number) {
 
 async function typeChallengeChallengerKeys(keys: string) {
   const challengerInput = screen.getByLabelText(
-    'พิมพ์ชื่อผู้ชาเล้นจ์',
+    'พิมพ์ชื่อผู้ชาเลนจ์',
   ) as HTMLInputElement
 
   let nextValue = challengerInput.value
@@ -160,7 +160,7 @@ async function typeChallengeChallengerKeys(keys: string) {
 
 function expectSelectedChallengeChallenger(playerName: string) {
   const challengerSelect = screen.getByLabelText(
-    'ผู้ชาเล้นจ์',
+    'ผู้ชาเลนจ์',
   ) as HTMLSelectElement
   const selectedOption = Array.from(challengerSelect.options).find(
     (option) => option.selected,
@@ -171,7 +171,7 @@ function expectSelectedChallengeChallenger(playerName: string) {
 
 function getChallengeChallengerOptionLabels() {
   const challengerSelect = screen.getByLabelText(
-    'ผู้ชาเล้นจ์',
+    'ผู้ชาเลนจ์',
   ) as HTMLSelectElement
 
   return Array.from(challengerSelect.options).map((option) =>
@@ -181,7 +181,7 @@ function getChallengeChallengerOptionLabels() {
 
 function selectChallengeTarget(answerText: string) {
   const challengedAnswerSelect = screen.getByLabelText(
-    'คำที่ถูกชาเล้นจ์',
+    'คำที่ถูกชาเลนจ์',
   ) as HTMLSelectElement
   const option = within(challengedAnswerSelect)
     .getAllByRole('option')
@@ -646,7 +646,7 @@ describe('คำต้องเชื่อม', () => {
     fireEvent.keyDown(window, { key: 'F2' })
 
     expect(
-      screen.queryByLabelText('การชาเล้นจ์คำไม่เชื่อม'),
+      screen.queryByLabelText('การชาเลนจ์คำไม่เชื่อม'),
     ).not.toBeInTheDocument()
   })
 
@@ -664,10 +664,10 @@ describe('คำต้องเชื่อม', () => {
     fireEvent.keyDown(window, { key: 'F2' })
 
     const challengerInput = screen.getByRole('textbox', {
-      name: 'พิมพ์ชื่อผู้ชาเล้นจ์',
+      name: 'พิมพ์ชื่อผู้ชาเลนจ์',
     })
     const challengedAnswerSelect = screen.getByLabelText(
-      'คำที่ถูกชาเล้นจ์',
+      'คำที่ถูกชาเลนจ์',
     ) as HTMLSelectElement
     const latestOption = within(challengedAnswerSelect)
       .getAllByRole('option')
@@ -675,7 +675,7 @@ describe('คำต้องเชื่อม', () => {
         (option) => (option as HTMLOptionElement).value !== '',
       ) as HTMLOptionElement | undefined
 
-    expect(screen.getByLabelText('การชาเล้นจ์คำไม่เชื่อม')).toBeInTheDocument()
+    expect(screen.getByLabelText('การชาเลนจ์คำไม่เชื่อม')).toBeInTheDocument()
     expect(challengerInput).toHaveFocus()
     expect(latestOption).toBeDefined()
     expect(challengedAnswerSelect).toHaveValue(latestOption!.value)
@@ -684,7 +684,7 @@ describe('คำต้องเชื่อม', () => {
     fireEvent.keyDown(window, { key: 'Escape' })
 
     expect(
-      screen.queryByLabelText('การชาเล้นจ์คำไม่เชื่อม'),
+      screen.queryByLabelText('การชาเลนจ์คำไม่เชื่อม'),
     ).not.toBeInTheDocument()
   })
 
@@ -702,7 +702,7 @@ describe('คำต้องเชื่อม', () => {
     fireEvent.keyDown(window, { key: 'F2' })
     await typeChallengeChallengerKeys('เ')
     fireEvent.keyDown(
-      screen.getByRole('textbox', { name: 'พิมพ์ชื่อผู้ชาเล้นจ์' }),
+      screen.getByRole('textbox', { name: 'พิมพ์ชื่อผู้ชาเลนจ์' }),
       { key: 'Enter' },
     )
 
@@ -720,13 +720,13 @@ describe('คำต้องเชื่อม', () => {
     await submitAnswer('บี', 'สับปะรด')
     await waitForTurn('ซี')
 
-    fireEvent.click(screen.getByRole('button', { name: 'ชาเล้นจ์' }))
+    fireEvent.click(screen.getByRole('button', { name: 'ชาเลนจ์' }))
 
     await typeChallengeChallengerKeys('เ')
     expectSelectedChallengeChallenger('เอ')
 
     fireEvent.keyDown(
-      screen.getByRole('textbox', { name: 'พิมพ์ชื่อผู้ชาเล้นจ์' }),
+      screen.getByRole('textbox', { name: 'พิมพ์ชื่อผู้ชาเลนจ์' }),
       { key: 'Enter' },
     )
 
@@ -755,10 +755,10 @@ describe('คำต้องเชื่อม', () => {
     expect(getChallengeChallengerOptionLabels()).toEqual(['บอส', 'บอม'])
 
     const challengerInput = screen.getByRole('textbox', {
-      name: 'พิมพ์ชื่อผู้ชาเล้นจ์',
+      name: 'พิมพ์ชื่อผู้ชาเลนจ์',
     })
     const challengerSelect = screen.getByLabelText(
-      'ผู้ชาเล้นจ์',
+      'ผู้ชาเลนจ์',
     ) as HTMLSelectElement
 
     fireEvent.keyDown(challengerInput, { key: 'ArrowDown' })
@@ -807,12 +807,12 @@ describe('คำต้องเชื่อม', () => {
 
     fireEvent.keyDown(window, { key: 'Escape' })
     expect(
-      screen.queryByLabelText('การชาเล้นจ์คำไม่เชื่อม'),
+      screen.queryByLabelText('การชาเลนจ์คำไม่เชื่อม'),
     ).not.toBeInTheDocument()
 
     fireEvent.keyDown(window, { key: 'F2' })
     expect(
-      screen.getByRole('textbox', { name: 'พิมพ์ชื่อผู้ชาเล้นจ์' }),
+      screen.getByRole('textbox', { name: 'พิมพ์ชื่อผู้ชาเลนจ์' }),
     ).toHaveValue('')
     await typeChallengeChallengerKeys('บ')
     expectSelectedChallengeChallenger('บอส')
@@ -837,7 +837,7 @@ describe('คำต้องเชื่อม', () => {
     await flushAsyncWork()
 
     const challengedAnswerSelect = screen.getByLabelText(
-      'คำที่ถูกชาเล้นจ์',
+      'คำที่ถูกชาเลนจ์',
     ) as HTMLSelectElement
 
     fireEvent.keyDown(challengedAnswerSelect, { key: 'Enter' })
@@ -860,8 +860,8 @@ describe('คำต้องเชื่อม', () => {
     fireEvent.keyDown(window, { key: 'F2' })
     const challengerInput = await typeChallengeChallengerKeys('เ')
     fireEvent.keyDown(challengerInput, { key: 'ArrowDown' })
-    expect(screen.getByLabelText('ผู้ชาเล้นจ์')).toHaveFocus()
-    fireEvent.keyDown(screen.getByLabelText('ผู้ชาเล้นจ์'), {
+    expect(screen.getByLabelText('ผู้ชาเลนจ์')).toHaveFocus()
+    fireEvent.keyDown(screen.getByLabelText('ผู้ชาเลนจ์'), {
       key: 'Enter',
     })
 
@@ -881,7 +881,7 @@ describe('คำต้องเชื่อม', () => {
     fireEvent.keyDown(connectsButton, { key: 'Enter' })
 
     expect(
-      screen.getByText('เอ ตกรอบเพราะชาเล้นจ์คำ "สับปะรด" ไม่สำเร็จ'),
+      screen.getByText('เอ ตกรอบเพราะชาเลนจ์คำ "สับปะรด" ไม่สำเร็จ'),
     ).toBeInTheDocument()
   })
 
@@ -896,15 +896,15 @@ describe('คำต้องเชื่อม', () => {
     await submitAnswer('บี', 'สับปะรด')
     await waitForTurn('ซี')
 
-    fireEvent.click(screen.getByRole('button', { name: 'ชาเล้นจ์' }))
+    fireEvent.click(screen.getByRole('button', { name: 'ชาเลนจ์' }))
 
-    expect(screen.getByLabelText('การชาเล้นจ์คำไม่เชื่อม')).toBeInTheDocument()
+    expect(screen.getByLabelText('การชาเลนจ์คำไม่เชื่อม')).toBeInTheDocument()
 
     await typeChallengeChallengerKeys('เ')
     selectChallengeTarget('สับปะรด')
     await flushAsyncWork()
 
-    fireEvent.click(screen.getByRole('button', { name: 'เริ่มการชาเล้นจ์' }))
+    fireEvent.click(screen.getByRole('button', { name: 'เริ่มการชาเลนจ์' }))
 
     expect(screen.getByRole('status')).toHaveTextContent('เอ กำลังพูด')
 
@@ -929,11 +929,11 @@ describe('คำต้องเชื่อม', () => {
     await submitAnswer('บี', 'สับปะรด')
     await waitForTurn('ซี')
 
-    fireEvent.click(screen.getByRole('button', { name: 'ชาเล้นจ์' }))
+    fireEvent.click(screen.getByRole('button', { name: 'ชาเลนจ์' }))
     await typeChallengeChallengerKeys('เ')
     selectChallengeTarget('สับปะรด')
     await flushAsyncWork()
-    fireEvent.click(screen.getByRole('button', { name: 'เริ่มการชาเล้นจ์' }))
+    fireEvent.click(screen.getByRole('button', { name: 'เริ่มการชาเลนจ์' }))
 
     await advanceChallengeDebateToJudging()
     fireEvent.click(screen.getByRole('button', { name: 'ตัดสินว่าไม่เชื่อม' }))
@@ -961,17 +961,17 @@ describe('คำต้องเชื่อม', () => {
     await submitAnswer('บี', 'สับปะรด')
     await waitForTurn('เอ')
 
-    fireEvent.click(screen.getByRole('button', { name: 'ชาเล้นจ์' }))
+    fireEvent.click(screen.getByRole('button', { name: 'ชาเลนจ์' }))
     await typeChallengeChallengerKeys('เ')
     selectChallengeTarget('สับปะรด')
     await flushAsyncWork()
-    fireEvent.click(screen.getByRole('button', { name: 'เริ่มการชาเล้นจ์' }))
+    fireEvent.click(screen.getByRole('button', { name: 'เริ่มการชาเลนจ์' }))
 
     await advanceChallengeDebateToJudging()
     fireEvent.click(screen.getByRole('button', { name: 'ตัดสินว่าเชื่อม' }))
 
     expect(
-      screen.getByText('เอ ตกรอบเพราะชาเล้นจ์คำ "สับปะรด" ไม่สำเร็จ'),
+      screen.getByText('เอ ตกรอบเพราะชาเลนจ์คำ "สับปะรด" ไม่สำเร็จ'),
     ).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'สรุปรอบ' })).toBeInTheDocument()
 
