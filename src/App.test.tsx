@@ -141,9 +141,7 @@ async function skipChallengeDebateSegments(segmentCount: number) {
 }
 
 async function typeChallengeChallengerKeys(keys: string) {
-  const challengerInput = screen.getByLabelText(
-    'พิมพ์ชื่อผู้ชาเลนจ์',
-  ) as HTMLInputElement
+  const challengerInput = getChallengeChallengerInput()
 
   let nextValue = challengerInput.value
 
@@ -158,36 +156,53 @@ async function typeChallengeChallengerKeys(keys: string) {
   return challengerInput
 }
 
-function expectSelectedChallengeChallenger(playerName: string) {
-  const challengerSelect = screen.getByLabelText(
-    'ผู้ชาเลนจ์',
-  ) as HTMLSelectElement
-  const selectedOption = Array.from(challengerSelect.options).find(
-    (option) => option.selected,
-  )
+function getChallengeChallengerInput() {
+  return screen.getByRole('combobox', {
+    name: 'พิมพ์ชื่อผู้ชาเลนจ์',
+  }) as HTMLInputElement
+}
 
-  expect(selectedOption?.textContent?.trim()).toBe(playerName)
+function getActiveChallengeChallengerOption() {
+  const activeOptionId =
+    getChallengeChallengerInput().getAttribute('aria-activedescendant')
+
+  if (activeOptionId) {
+    return document.getElementById(activeOptionId) as HTMLElement
+  }
+
+  const selectedOption = within(screen.getByRole('listbox'))
+    .getAllByRole('option')
+    .find(
+      (option) =>
+        option.getAttribute('aria-selected') === 'true' ||
+        option.getAttribute('data-selected') !== null,
+    )
+
+  expect(selectedOption).toBeDefined()
+
+  return selectedOption as HTMLElement
+}
+
+function expectSelectedChallengeChallenger(playerName: string) {
+  expect(getActiveChallengeChallengerOption().textContent?.trim()).toBe(
+    playerName,
+  )
 }
 
 function getChallengeChallengerOptionLabels() {
-  const challengerSelect = screen.getByLabelText(
-    'ผู้ชาเลนจ์',
-  ) as HTMLSelectElement
-
-  return Array.from(challengerSelect.options).map((option) =>
-    option.textContent?.trim(),
-  )
+  return within(screen.getByRole('listbox'))
+    .getAllByRole('option')
+    .map((option) => option.textContent?.trim())
 }
 
 function selectChallengeTarget(answerText: string) {
   const challengedAnswerSelect = screen.getByLabelText(
     'คำที่ถูกชาเลนจ์',
   ) as HTMLSelectElement
-  const option = within(challengedAnswerSelect)
-    .getAllByRole('option')
+  const option = Array.from(challengedAnswerSelect.options)
     .find((candidate) =>
       candidate.textContent?.trim().startsWith(`"${answerText}"`),
-    ) as HTMLOptionElement | undefined
+    )
 
   expect(option).toBeDefined()
 
@@ -663,17 +678,15 @@ describe('คำต้องเชื่อม', () => {
 
     fireEvent.keyDown(window, { key: 'F2' })
 
-    const challengerInput = screen.getByRole('textbox', {
+    const challengerInput = screen.getByRole('combobox', {
       name: 'พิมพ์ชื่อผู้ชาเลนจ์',
     })
     const challengedAnswerSelect = screen.getByLabelText(
       'คำที่ถูกชาเลนจ์',
     ) as HTMLSelectElement
-    const latestOption = within(challengedAnswerSelect)
-      .getAllByRole('option')
-      .find(
-        (option) => (option as HTMLOptionElement).value !== '',
-      ) as HTMLOptionElement | undefined
+    const latestOption = Array.from(challengedAnswerSelect.options).find(
+      (option) => option.value !== '',
+    )
 
     expect(screen.getByLabelText('การชาเลนจ์คำไม่เชื่อม')).toBeInTheDocument()
     expect(challengerInput).toHaveFocus()
@@ -702,7 +715,7 @@ describe('คำต้องเชื่อม', () => {
     fireEvent.keyDown(window, { key: 'F2' })
     await typeChallengeChallengerKeys('เ')
     fireEvent.keyDown(
-      screen.getByRole('textbox', { name: 'พิมพ์ชื่อผู้ชาเลนจ์' }),
+      screen.getByRole('combobox', { name: 'พิมพ์ชื่อผู้ชาเลนจ์' }),
       { key: 'Enter' },
     )
 
@@ -726,7 +739,7 @@ describe('คำต้องเชื่อม', () => {
     expectSelectedChallengeChallenger('เอ')
 
     fireEvent.keyDown(
-      screen.getByRole('textbox', { name: 'พิมพ์ชื่อผู้ชาเลนจ์' }),
+      screen.getByRole('combobox', { name: 'พิมพ์ชื่อผู้ชาเลนจ์' }),
       { key: 'Enter' },
     )
 
@@ -754,19 +767,13 @@ describe('คำต้องเชื่อม', () => {
     expectSelectedChallengeChallenger('บอส')
     expect(getChallengeChallengerOptionLabels()).toEqual(['บอส', 'บอม'])
 
-    const challengerInput = screen.getByRole('textbox', {
+    const challengerInput = screen.getByRole('combobox', {
       name: 'พิมพ์ชื่อผู้ชาเลนจ์',
     })
-    const challengerSelect = screen.getByLabelText(
-      'ผู้ชาเลนจ์',
-    ) as HTMLSelectElement
 
     fireEvent.keyDown(challengerInput, { key: 'ArrowDown' })
-    expect(challengerSelect).toHaveFocus()
-
-    fireEvent.change(challengerSelect, {
-      target: { value: challengerSelect.options[1]?.value ?? '' },
-    })
+    await flushAsyncWork()
+    expect(challengerInput).toHaveFocus()
     expectSelectedChallengeChallenger('บอม')
 
     fireEvent.change(
@@ -812,10 +819,45 @@ describe('คำต้องเชื่อม', () => {
 
     fireEvent.keyDown(window, { key: 'F2' })
     expect(
-      screen.getByRole('textbox', { name: 'พิมพ์ชื่อผู้ชาเลนจ์' }),
+      screen.getByRole('combobox', { name: 'พิมพ์ชื่อผู้ชาเลนจ์' }),
     ).toHaveValue('')
     await typeChallengeChallengerKeys('บ')
     expectSelectedChallengeChallenger('บอส')
+  })
+
+  it('shows a no-results state and does not confirm a challenger when the search has no matches', async () => {
+    render(<App />)
+    fillSetupNames(['บอส', 'บอม', 'เอ', 'ซี'])
+    fireEvent.click(screen.getByRole('button', { name: 'ยืนยันผู้เล่น' }))
+    fireEvent.click(screen.getByRole('button', { name: 'เริ่มรอบแรก' }))
+
+    await submitAnswer('บอส', 'alpha')
+    await waitForTurn('บอม')
+    await submitAnswer('บอม', 'bravo')
+    await waitForTurn('เอ')
+    await submitAnswer('เอ', 'charlie')
+    await waitForTurn('ซี')
+
+    fireEvent.keyDown(window, { key: 'F2' })
+    const challengerInput = await typeChallengeChallengerKeys('zzz')
+
+    expect(
+      screen.getByText('ไม่พบผู้ชาเลนจ์ที่ตรงกัน'),
+    ).toBeInTheDocument()
+    expect(challengerInput.getAttribute('aria-activedescendant')).toBeNull()
+    expect(
+      screen.getByRole('button', {
+        name: 'เริ่มการชาเลนจ์',
+        hidden: true,
+      }),
+    ).toBeDisabled()
+
+    fireEvent.keyDown(challengerInput, { key: 'Enter' })
+
+    expect(
+      screen.getByLabelText('การชาเลนจ์คำไม่เชื่อม'),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('status')).not.toHaveTextContent('กำลังพูด')
   })
 
   it('starts a challenge with Enter from the answer field after changing the target', async () => {
@@ -859,11 +901,7 @@ describe('คำต้องเชื่อม', () => {
 
     fireEvent.keyDown(window, { key: 'F2' })
     const challengerInput = await typeChallengeChallengerKeys('เ')
-    fireEvent.keyDown(challengerInput, { key: 'ArrowDown' })
-    expect(screen.getByLabelText('ผู้ชาเลนจ์')).toHaveFocus()
-    fireEvent.keyDown(screen.getByLabelText('ผู้ชาเลนจ์'), {
-      key: 'Enter',
-    })
+    fireEvent.keyDown(challengerInput, { key: 'Enter' })
 
     await flushAsyncWork()
     expect(screen.getByRole('status')).toHaveTextContent('เอ กำลังพูด')
@@ -904,7 +942,12 @@ describe('คำต้องเชื่อม', () => {
     selectChallengeTarget('สับปะรด')
     await flushAsyncWork()
 
-    fireEvent.click(screen.getByRole('button', { name: 'เริ่มการชาเลนจ์' }))
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'เริ่มการชาเลนจ์',
+        hidden: true,
+      }),
+    )
 
     expect(screen.getByRole('status')).toHaveTextContent('เอ กำลังพูด')
 
@@ -933,7 +976,12 @@ describe('คำต้องเชื่อม', () => {
     await typeChallengeChallengerKeys('เ')
     selectChallengeTarget('สับปะรด')
     await flushAsyncWork()
-    fireEvent.click(screen.getByRole('button', { name: 'เริ่มการชาเลนจ์' }))
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'เริ่มการชาเลนจ์',
+        hidden: true,
+      }),
+    )
 
     await advanceChallengeDebateToJudging()
     fireEvent.click(screen.getByRole('button', { name: 'ตัดสินว่าไม่เชื่อม' }))
@@ -965,7 +1013,12 @@ describe('คำต้องเชื่อม', () => {
     await typeChallengeChallengerKeys('เ')
     selectChallengeTarget('สับปะรด')
     await flushAsyncWork()
-    fireEvent.click(screen.getByRole('button', { name: 'เริ่มการชาเลนจ์' }))
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'เริ่มการชาเลนจ์',
+        hidden: true,
+      }),
+    )
 
     await advanceChallengeDebateToJudging()
     fireEvent.click(screen.getByRole('button', { name: 'ตัดสินว่าเชื่อม' }))

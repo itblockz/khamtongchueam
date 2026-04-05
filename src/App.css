@@ -737,12 +737,18 @@ button:disabled {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  min-width: 0;
 }
 
 .challenge-field label {
   color: var(--muted);
   font-size: 0.78rem;
   font-weight: 700;
+}
+
+.challenge-challenger-combobox {
+  display: grid;
+  gap: 6px;
 }
 
 .challenge-select {
@@ -755,6 +761,58 @@ button:disabled {
   min-height: 44px;
   padding: 0 14px;
   font-size: 0.88rem;
+}
+
+.challenge-challenger-popover {
+  width: var(--trigger-width);
+  margin-top: 6px;
+  padding: 8px;
+  border-radius: 22px;
+  border: 1px solid rgba(176, 126, 82, 0.18);
+  background:
+    linear-gradient(180deg, rgba(255, 252, 248, 0.98), rgba(249, 242, 235, 0.96));
+  box-shadow: 0 18px 32px rgba(120, 77, 43, 0.14);
+}
+
+.challenge-challenger-listbox {
+  display: grid;
+  gap: 4px;
+  outline: none;
+}
+
+.challenge-challenger-option {
+  padding: 12px 14px;
+  border-radius: 16px;
+  color: var(--ink);
+  font-size: 0.92rem;
+  font-weight: 700;
+  line-height: 1.25;
+  cursor: pointer;
+  transition:
+    background-color 160ms ease,
+    color 160ms ease,
+    transform 160ms ease;
+}
+
+.challenge-challenger-option.is-focused,
+.challenge-challenger-option[data-focused],
+.challenge-challenger-option[data-hovered] {
+  background: rgba(236, 220, 203, 0.72);
+}
+
+.challenge-challenger-option.is-selected,
+.challenge-challenger-option[data-selected] {
+  color: #fffaf4;
+  background: linear-gradient(180deg, #d68458 0%, #bf5f35 100%);
+}
+
+.challenge-challenger-empty {
+  padding: 12px 14px;
+  border-radius: 16px;
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.35;
+  background: rgba(255, 255, 255, 0.76);
 }
 
 .challenge-summary {

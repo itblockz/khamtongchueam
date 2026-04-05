@@ -1,8 +1,10 @@
 import {
   type ClipboardEvent,
   type DragEvent,
+  type Key,
   type ReactNode,
   useCallback,
+  useContext,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -11,6 +13,15 @@ import {
   type FormEvent,
   type KeyboardEvent,
 } from 'react'
+import {
+  ComboBox,
+  ComboBoxStateContext,
+  Input,
+  Label,
+  ListBox,
+  ListBoxItem,
+  Popover,
+} from 'react-aria-components'
 import './App.css'
 import {
   acknowledgeRoundSummary,
@@ -64,6 +75,28 @@ function formatSeconds(timeLeftMs: number) {
 
 function normalizeChallengeTypeaheadText(text: string) {
   return text.trim().toLocaleLowerCase()
+}
+
+function matchesChallengeTypeaheadCandidate(
+  text: string,
+  query: string,
+) {
+  const normalizedQuery = normalizeChallengeTypeaheadText(query)
+
+  if (normalizedQuery.length === 0) {
+    return true
+  }
+
+  return normalizeChallengeTypeaheadText(text).startsWith(normalizedQuery)
+}
+
+function getMatchingChallengeChallengerOptions(
+  options: ChallengeChallengerOption[],
+  query: string,
+) {
+  return options.filter((player) =>
+    matchesChallengeTypeaheadCandidate(player.name, query),
+  )
 }
 
 function getInitialSyllableDebugVisibility() {
@@ -354,6 +387,60 @@ interface RoundScoreBreakdown {
   challengeBonus: number
 }
 
+type ChallengeChallengerOption = GameState['players'][number]
+
+interface ChallengeChallengerListBoxProps {
+  activeSuggestionId: string | null
+  options: ChallengeChallengerOption[]
+}
+
+function ChallengeChallengerListBox({
+  activeSuggestionId,
+  options,
+}: ChallengeChallengerListBoxProps) {
+  const comboBoxState = useContext(ComboBoxStateContext)
+  const selectionManager = comboBoxState?.selectionManager ?? null
+  const isOpen = comboBoxState?.isOpen ?? false
+
+  useLayoutEffect(() => {
+    if (!selectionManager || !isOpen) {
+      return
+    }
+
+    selectionManager.setFocusedKey(activeSuggestionId)
+  }, [activeSuggestionId, isOpen, selectionManager])
+
+  return (
+    <ListBox
+      className="challenge-challenger-listbox"
+      items={options}
+      renderEmptyState={() => (
+        <div className="challenge-challenger-empty" role="status">
+          ไม่พบผู้ชาเลนจ์ที่ตรงกัน
+        </div>
+      )}
+    >
+      {(player: ChallengeChallengerOption) => (
+        <ListBoxItem
+          id={player.id}
+          className={({ isFocused, isSelected }) =>
+            [
+              'challenge-challenger-option',
+              isFocused ? 'is-focused' : '',
+              isSelected ? 'is-selected' : '',
+            ]
+              .filter(Boolean)
+              .join(' ')
+          }
+          textValue={player.name}
+        >
+          {player.name}
+        </ListBoxItem>
+      )}
+    </ListBox>
+  )
+}
+
 function createInitialSessionState(): SessionState {
   return {
     gameState: createSetupState(),
@@ -422,7 +509,6 @@ function App() {
   const startFirstTurnButtonRef = useRef<HTMLButtonElement>(null)
   const leaderboardActionButtonRef = useRef<HTMLButtonElement>(null)
   const challengeChallengerInputRef = useRef<HTMLInputElement>(null)
-  const challengeChallengerSelectRef = useRef<HTMLSelectElement>(null)
   const challengeChallengedAnswerSelectRef = useRef<HTMLSelectElement>(null)
   const challengeDecisionButtonRef = useRef<HTMLButtonElement>(null)
   const playerInputRefs = useRef<Record<string, HTMLInputElement | null>>({})
@@ -441,6 +527,10 @@ function App() {
   const [isSubmittingTurn, setIsSubmittingTurn] = useState(false)
   const [challengeChallengerSearchValue, setChallengeChallengerSearchValue] =
     useState('')
+  const [
+    challengeChallengerActiveOptionId,
+    setChallengeChallengerActiveOptionId,
+  ] = useState<string | null>(null)
   const [isSyllableDebugVisible, setIsSyllableDebugVisible] = useState(() =>
     getInitialSyllableDebugVisibility(),
   )
@@ -516,40 +606,25 @@ function App() {
   const normalizedChallengeChallengerSearch = normalizeChallengeTypeaheadText(
     challengeChallengerSearchValue,
   )
-  const filteredChallengeChallengerOptions =
-    normalizedChallengeChallengerSearch.length > 0
-      ? challengeChallengerOptions.filter((player) =>
-          normalizeChallengeTypeaheadText(player.name).startsWith(
-            normalizedChallengeChallengerSearch,
-          ),
-        )
-      : challengeChallengerOptions
-  const bestMatchedChallengeChallengerId =
-    filteredChallengeChallengerOptions[0]?.id ?? ''
-  const visibleChallengeChallengerId =
-    challengeState?.challengerPlayerId !== undefined &&
-    challengeState?.challengerPlayerId !== null &&
-    filteredChallengeChallengerOptions.some(
-      (player) => player.id === challengeState.challengerPlayerId,
-    )
-      ? challengeState.challengerPlayerId
-      : normalizedChallengeChallengerSearch.length > 0
-        ? bestMatchedChallengeChallengerId
-        : ''
+  const filteredChallengeChallengerOptions = getMatchingChallengeChallengerOptions(
+    challengeChallengerOptions,
+    normalizedChallengeChallengerSearch,
+  )
+  const preferredChallengeChallengerId =
+    challengeChallengerActiveOptionId ??
+    selectedChallenger?.id ??
+    (normalizedChallengeChallengerSearch.length > 0
+      ? (filteredChallengeChallengerOptions[0]?.id ?? null)
+      : null)
   const canOpenChallenge =
     gameState.phase === 'playing' &&
     challengeState?.status === 'idle' &&
     activePlayers.length > 1 &&
     challengeableAnswers.length > 0 &&
     !isSubmittingTurn
-  const canStartSelectedChallenge =
-    isChallengeSelecting &&
-    selectedChallenger !== null &&
-    selectedChallengedAnswer !== null &&
-    selectedChallengePreviousAnswer !== null
   const canStartVisibleChallenge =
     isChallengeSelecting &&
-    visibleChallengeChallengerId.length > 0 &&
+    preferredChallengeChallengerId !== null &&
     selectedChallengedAnswer !== null &&
     selectedChallengePreviousAnswer !== null
   const visiblePlayers =
@@ -720,6 +795,7 @@ function App() {
 
   const resetChallengeChallengerTypeahead = useCallback(() => {
     setChallengeChallengerSearchValue('')
+    setChallengeChallengerActiveOptionId(null)
   }, [])
 
   async function getSyllableSegmentation(
@@ -953,33 +1029,36 @@ function App() {
   }, [isChallengeSelecting, resetChallengeChallengerTypeahead])
 
   useEffect(() => {
-    if (!isChallengeSelecting || normalizedChallengeChallengerSearch.length === 0) {
+    if (!isChallengeSelecting) {
       return
     }
 
-    const nextChallengerId = filteredChallengeChallengerOptions[0]?.id ?? null
-    const currentChallengerId = challengeState?.challengerPlayerId ?? null
-    const currentSelectionStillVisible =
-      currentChallengerId !== null &&
+    const activeOptionIsVisible =
+      challengeChallengerActiveOptionId !== null &&
       filteredChallengeChallengerOptions.some(
-        (player) => player.id === currentChallengerId,
+        (player) => player.id === challengeChallengerActiveOptionId,
       )
 
-    if (currentSelectionStillVisible || currentChallengerId === nextChallengerId) {
+    if (activeOptionIsVisible) {
       return
     }
 
-    updateGameState((current) =>
-      updateChallengeSelection(current, {
-        challengerPlayerId: nextChallengerId,
-      }),
-    )
+    const nextActiveOptionId =
+      normalizedChallengeChallengerSearch.length > 0
+        ? (filteredChallengeChallengerOptions[0]?.id ?? null)
+        : (challengeState?.challengerPlayerId ?? null)
+
+    if (nextActiveOptionId === challengeChallengerActiveOptionId) {
+      return
+    }
+
+    setChallengeChallengerActiveOptionId(nextActiveOptionId)
   }, [
+    challengeChallengerActiveOptionId,
+    challengeState?.challengerPlayerId,
+    filteredChallengeChallengerOptions,
     isChallengeSelecting,
     normalizedChallengeChallengerSearch,
-    filteredChallengeChallengerOptions,
-    challengeState?.challengerPlayerId,
-    updateGameState,
   ])
 
   useEffect(() => {
@@ -1505,10 +1584,15 @@ function App() {
     updateGameState((current) => cancelChallenge(current))
   }
 
-  function handleChallengeChallengerChange(
-    event: ChangeEvent<HTMLSelectElement>,
-  ) {
-    const nextValue = event.target.value.trim()
+  function handleChallengeChallengerChange(nextKey: Key | null) {
+    const nextValue =
+      nextKey === null || nextKey === undefined ? null : `${nextKey}`.trim()
+    const nextChallenger =
+      challengeChallengerOptions.find((player) => player.id === nextValue) ??
+      null
+
+    setChallengeChallengerSearchValue(nextChallenger?.name ?? '')
+    setChallengeChallengerActiveOptionId(nextValue || null)
     updateGameState((current) =>
       updateChallengeSelection(current, {
         challengerPlayerId: nextValue || null,
@@ -1516,37 +1600,41 @@ function App() {
     )
   }
 
-  function handleChallengeChallengerSearchChange(
-    event: ChangeEvent<HTMLInputElement>,
-  ) {
-    const nextValue = event.target.value
-    const normalizedNextValue = normalizeChallengeTypeaheadText(nextValue)
+  function handleChallengeChallengerSearchChange(nextValue: string) {
     setChallengeChallengerSearchValue(nextValue)
+    const nextFilteredOptions = getMatchingChallengeChallengerOptions(
+      challengeChallengerOptions,
+      nextValue,
+    )
+    const normalizedNextValue = normalizeChallengeTypeaheadText(nextValue)
+    setChallengeChallengerActiveOptionId(
+      normalizedNextValue.length > 0
+        ? (nextFilteredOptions[0]?.id ?? null)
+        : null,
+    )
 
-    if (!isChallengeSelecting || normalizedNextValue.length === 0) {
+    if (!isChallengeSelecting) {
       return
     }
 
-    const nextFilteredOptions = challengeChallengerOptions.filter((player) =>
-      normalizeChallengeTypeaheadText(player.name).startsWith(
-        normalizedNextValue,
-      ),
-    )
-    const currentChallengerId = challengeState?.challengerPlayerId ?? null
-    const currentSelectionStillVisible =
-      currentChallengerId !== null &&
-      nextFilteredOptions.some((player) => player.id === currentChallengerId)
-    const nextChallengerId = currentSelectionStillVisible
-      ? currentChallengerId
-      : nextFilteredOptions[0]?.id ?? null
+    if (challengeState?.challengerPlayerId === null) {
+      return
+    }
 
-    if (nextChallengerId === currentChallengerId) {
+    const normalizedSelectedChallengerName = normalizeChallengeTypeaheadText(
+      selectedChallenger?.name ?? '',
+    )
+
+    if (
+      normalizedNextValue.length > 0 &&
+      normalizedNextValue === normalizedSelectedChallengerName
+    ) {
       return
     }
 
     updateGameState((current) =>
       updateChallengeSelection(current, {
-        challengerPlayerId: nextChallengerId,
+        challengerPlayerId: null,
       }),
     )
   }
@@ -1554,9 +1642,29 @@ function App() {
   function handleChallengeChallengerInputKeyDown(
     event: KeyboardEvent<HTMLInputElement>,
   ) {
-    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+    if (
+      (event.key === 'ArrowDown' || event.key === 'ArrowUp') &&
+      filteredChallengeChallengerOptions.length > 0
+    ) {
       event.preventDefault()
-      challengeChallengerSelectRef.current?.focus()
+
+      const currentIndex = filteredChallengeChallengerOptions.findIndex(
+        (player) => player.id === preferredChallengeChallengerId,
+      )
+      const offset = event.key === 'ArrowDown' ? 1 : -1
+      const nextIndex =
+        currentIndex === -1
+          ? (event.key === 'ArrowDown'
+              ? 0
+              : filteredChallengeChallengerOptions.length - 1)
+          : Math.min(
+              filteredChallengeChallengerOptions.length - 1,
+              Math.max(0, currentIndex + offset),
+            )
+
+      setChallengeChallengerActiveOptionId(
+        filteredChallengeChallengerOptions[nextIndex]?.id ?? null,
+      )
       return
     }
 
@@ -1565,11 +1673,9 @@ function App() {
     }
 
     event.preventDefault()
-    const nextChallengerId =
-      (selectedChallenger?.id ?? visibleChallengeChallengerId) || null
+    const nextChallengerId = preferredChallengeChallengerId
 
     if (!nextChallengerId) {
-      challengeChallengerSelectRef.current?.focus()
       return
     }
 
@@ -1582,37 +1688,17 @@ function App() {
     }
 
     if (challengeState?.challengerPlayerId !== nextChallengerId) {
+      const nextChallenger =
+        challengeChallengerOptions.find(
+          (player) => player.id === nextChallengerId,
+        ) ?? null
+      setChallengeChallengerSearchValue(nextChallenger?.name ?? '')
+      setChallengeChallengerActiveOptionId(nextChallengerId)
       updateGameState((current) =>
         updateChallengeSelection(current, {
           challengerPlayerId: nextChallengerId,
         }),
       )
-    }
-
-    challengeChallengedAnswerSelectRef.current?.focus()
-  }
-
-  function handleChallengeChallengerKeyDown(
-    event: KeyboardEvent<HTMLSelectElement>,
-  ) {
-    if (event.key !== 'Enter') {
-      return
-    }
-
-    event.preventDefault()
-    const nextChallengerId =
-      (selectedChallenger?.id ?? visibleChallengeChallengerId) || null
-
-    if (!nextChallengerId) {
-      return
-    }
-
-    if (
-      selectedChallengedAnswer !== null &&
-      selectedChallengePreviousAnswer !== null
-    ) {
-      handleStartChallenge(nextChallengerId)
-      return
     }
 
     challengeChallengedAnswerSelectRef.current?.focus()
@@ -1637,13 +1723,13 @@ function App() {
 
     event.preventDefault()
 
-    if (!selectedChallenger) {
-      challengeChallengerSelectRef.current?.focus()
+    if (!preferredChallengeChallengerId) {
+      challengeChallengerInputRef.current?.focus()
       return
     }
 
-    if (canStartSelectedChallenge) {
-      handleStartChallenge()
+    if (canStartVisibleChallenge) {
+      handleStartChallenge(preferredChallengeChallengerId)
     }
   }
 
@@ -2079,44 +2165,32 @@ function App() {
                 <div className="challenge-content">
                   <div className="challenge-field-grid">
                     <div className="challenge-field">
-                      <label htmlFor="challenge-challenger-search">
-                        พิมพ์ชื่อผู้ชาเลนจ์
-                      </label>
-                      <input
-                        ref={challengeChallengerInputRef}
+                      <ComboBox<ChallengeChallengerOption>
                         id="challenge-challenger-search"
-                        className="text-input challenge-search-input"
-                        type="text"
-                        value={challengeChallengerSearchValue}
-                        onChange={handleChallengeChallengerSearchChange}
-                        onKeyDown={handleChallengeChallengerInputKeyDown}
-                        placeholder="พิมพ์ชื่อผู้ชาเลนจ์"
-                        autoComplete="off"
-                      />
-                      <label htmlFor="challenge-challenger">ผู้ชาเลนจ์</label>
-                      <select
-                        ref={challengeChallengerSelectRef}
-                        id="challenge-challenger"
-                        className="text-input challenge-select"
-                        value={visibleChallengeChallengerId}
-                        onChange={handleChallengeChallengerChange}
-                        onKeyDown={handleChallengeChallengerKeyDown}
+                        className="challenge-challenger-combobox"
+                        allowsEmptyCollection
+                        defaultFilter={matchesChallengeTypeaheadCandidate}
+                        inputValue={challengeChallengerSearchValue}
+                        menuTrigger="focus"
+                        onInputChange={handleChallengeChallengerSearchChange}
+                        onSelectionChange={handleChallengeChallengerChange}
+                        selectedKey={challengeState?.challengerPlayerId ?? null}
                       >
-                        {normalizedChallengeChallengerSearch.length === 0 ? (
-                          <option value="">เลือกผู้ชาเลนจ์</option>
-                        ) : null}
-                        {filteredChallengeChallengerOptions.length > 0 ? (
-                          filteredChallengeChallengerOptions.map((player) => (
-                            <option key={player.id} value={player.id}>
-                              {player.name}
-                            </option>
-                          ))
-                        ) : (
-                          <option value="" disabled>
-                            ไม่พบผู้ชาเลนจ์ที่ตรงกัน
-                          </option>
-                        )}
-                      </select>
+                        <Label>พิมพ์ชื่อผู้ชาเลนจ์</Label>
+                        <Input
+                          ref={challengeChallengerInputRef}
+                          className="text-input challenge-search-input"
+                          onKeyDown={handleChallengeChallengerInputKeyDown}
+                          placeholder="พิมพ์ชื่อผู้ชาเลนจ์"
+                          autoComplete="off"
+                        />
+                        <Popover className="challenge-challenger-popover">
+                          <ChallengeChallengerListBox
+                            activeSuggestionId={preferredChallengeChallengerId}
+                            options={challengeChallengerOptions}
+                          />
+                        </Popover>
+                      </ComboBox>
                     </div>
 
                     <div className="challenge-field">
@@ -2170,7 +2244,7 @@ function App() {
                       className="primary-button symbol-button"
                       onClick={() =>
                         handleStartChallenge(
-                          visibleChallengeChallengerId || undefined,
+                          preferredChallengeChallengerId ?? undefined,
                         )
                       }
                       disabled={!canStartVisibleChallenge}
