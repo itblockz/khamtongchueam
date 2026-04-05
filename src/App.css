@@ -1149,6 +1149,16 @@ button:disabled {
   color: var(--accent-strong);
 }
 
+.leaderboard-round-score-value {
+  display: inline-block;
+  white-space: nowrap;
+}
+
+.leaderboard-round-bonus {
+  color: var(--accent-strong);
+  font-size: 0.84rem;
+}
+
 .leaderboard-total-cell strong {
   display: block;
   font-family: var(--display);

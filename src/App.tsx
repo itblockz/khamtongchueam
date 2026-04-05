@@ -38,6 +38,7 @@ import {
   updateChallengeSelection,
   type AnswerRecord,
   type GameState,
+  type LeaderboardAward,
   type PlayerDraft,
   type TurnDirection,
 } from './game'
@@ -344,26 +345,34 @@ function getActivePlayerCardClass(
 interface SessionState {
   gameState: GameState
   leaderboardScores: Record<string, number>
-  roundScoresInMatch: Array<Record<string, number>>
+  roundScoreBreakdownsInMatch: Array<Record<string, RoundScoreBreakdown>>
   completedRoundsInMatch: number
+}
+
+interface RoundScoreBreakdown {
+  totalPoints: number
+  challengeBonus: number
 }
 
 function createInitialSessionState(): SessionState {
   return {
     gameState: createSetupState(),
     leaderboardScores: {},
-    roundScoresInMatch: [],
+    roundScoreBreakdownsInMatch: [],
     completedRoundsInMatch: 0,
   }
 }
 
-function createRoundScoreMap(
-  gameState: GameState,
-): Record<string, number> {
-  return getScoreAwards(gameState).reduce<Record<string, number>>(
+function createRoundScoreBreakdownMap(
+  awards: LeaderboardAward[],
+): Record<string, RoundScoreBreakdown> {
+  return awards.reduce<Record<string, RoundScoreBreakdown>>(
     (scoreMap, award) => ({
       ...scoreMap,
-      [award.playerId]: award.points,
+      [award.playerId]: {
+        totalPoints: award.points,
+        challengeBonus: award.challengeBonus,
+      },
     }),
     {},
   )
@@ -391,9 +400,9 @@ function applyFinishedSessionState(
       currentSession.leaderboardScores,
       roundAwards,
     ),
-    roundScoresInMatch: [
-      ...currentSession.roundScoresInMatch,
-      createRoundScoreMap(nextGameState),
+    roundScoreBreakdownsInMatch: [
+      ...currentSession.roundScoreBreakdownsInMatch,
+      createRoundScoreBreakdownMap(roundAwards),
     ],
     completedRoundsInMatch: Math.min(
       currentSession.completedRoundsInMatch + 1,
@@ -435,7 +444,8 @@ function App() {
   const [isSyllableDebugVisible, setIsSyllableDebugVisible] = useState(() =>
     getInitialSyllableDebugVisibility(),
   )
-  const { gameState, leaderboardScores, roundScoresInMatch } = sessionState
+  const { gameState, leaderboardScores, roundScoreBreakdownsInMatch } =
+    sessionState
   const currentMatchRound =
     gameState.phase === 'finished'
       ? Math.max(sessionState.completedRoundsInMatch, 1)
@@ -583,7 +593,12 @@ function App() {
                   return null
                 }
 
-                return roundScoresInMatch[roundIndex]?.[player.id] ?? 0
+                return (
+                  roundScoreBreakdownsInMatch[roundIndex]?.[player.id] ?? {
+                    totalPoints: 0,
+                    challengeBonus: 0,
+                  }
+                )
               },
             ),
             roundPoints: roundAwardMap.get(player.id)?.points ?? 0,
@@ -1704,9 +1719,9 @@ function App() {
         leaderboardScores: shouldStartNewMatch
           ? {}
           : current.leaderboardScores,
-        roundScoresInMatch: shouldStartNewMatch
+        roundScoreBreakdownsInMatch: shouldStartNewMatch
           ? []
-          : current.roundScoresInMatch,
+          : current.roundScoreBreakdownsInMatch,
         completedRoundsInMatch: shouldStartNewMatch
           ? 0
           : current.completedRoundsInMatch,
@@ -2434,7 +2449,27 @@ function App() {
                               : ''
                           }
                         >
-                          {roundScore === null ? '-' : roundScore}
+                          {roundScore === null ? (
+                            '-'
+                          ) : roundScore.challengeBonus > 0 ? (
+                            <span className="leaderboard-round-score-value">
+                              {roundScore.totalPoints -
+                                roundScore.challengeBonus >
+                              0 ? (
+                                <>
+                                  <span>
+                                    {roundScore.totalPoints -
+                                      roundScore.challengeBonus}
+                                  </span>{' '}
+                                </>
+                              ) : null}
+                              <span className="leaderboard-round-bonus">
+                                +{roundScore.challengeBonus}
+                              </span>
+                            </span>
+                          ) : (
+                            roundScore.totalPoints
+                          )}
                         </td>
                       ))}
                       <td className="leaderboard-total-cell">

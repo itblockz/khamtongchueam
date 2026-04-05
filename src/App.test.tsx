@@ -63,7 +63,7 @@ function toggleSyllableDebug() {
 
 function expectLeaderboardRow(
   playerName: string,
-  expectedRoundScores: Array<number | '-'>,
+  expectedRoundScores: Array<number | string>,
   expectedTotal: number,
 ) {
   const leaderboard = within(screen.getByLabelText('ตารางคะแนนสะสม'))
@@ -948,7 +948,7 @@ describe('คำต้องเชื่อม', () => {
     await advanceTimers(3100)
     await openRoundSummary()
 
-    expectLeaderboardRow('เอ', [5, '-', '-', '-'], 5)
+    expectLeaderboardRow('เอ', ['3 +2', '-', '-', '-'], 5)
     expectLeaderboardRow('ซี', [1, '-', '-', '-'], 1)
     expectLeaderboardRow('บี', [1, '-', '-', '-'], 1)
   })
