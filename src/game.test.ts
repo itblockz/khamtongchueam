@@ -1,18 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import {
-  beginChallengeSelection,
-  CHALLENGE_DEBATE_SEGMENT_COUNT,
-  TURN_DURATION_MS,
   acknowledgeRoundSummary,
-  applyScoreAwards,
   advanceChallengeDebate,
   advanceTurn,
+  beginChallengeSelection,
+  CHALLENGE_DEBATE_SEGMENT_COUNT,
   createConfirmedGameState,
   createGameState,
   getChallengeableAnswers,
-  getFinalPlacements,
-  getScoreAwards,
   resolveChallenge,
+  resumeChallengeDebate,
   startActiveTurn,
   startChallengeDebate,
   updateChallengeSelection,
@@ -42,6 +39,10 @@ function advanceDebateToJudging(state: ReturnType<typeof startChallengeDebate>) 
       now,
     )
     now += 1000
+    if (segment < CHALLENGE_DEBATE_SEGMENT_COUNT - 1 && nextState.challenge.segmentAwaitingContinue) {
+      nextState = resumeChallengeDebate(nextState, now)
+      now += 1000
+    }
   }
 
   return nextState

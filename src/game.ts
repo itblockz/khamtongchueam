@@ -67,6 +67,7 @@ export interface ChallengeState {
   segmentStartedAt: number | null
   segmentDeadlineAt: number | null
   timeLeftMs: number
+  segmentAwaitingContinue: boolean
 }
 
 export interface GameState {
@@ -144,6 +145,7 @@ function createIdleChallengeState(): ChallengeState {
     segmentStartedAt: null,
     segmentDeadlineAt: null,
     timeLeftMs: CHALLENGE_DEBATE_SEGMENT_DURATION_MS,
+    segmentAwaitingContinue: false,
   }
 }
 
@@ -317,15 +319,17 @@ function buildDebatingChallengeState(
   now: number,
   durationMs: number,
   segmentIndex: number,
+  awaitingContinue: boolean = false,
 ): ChallengeState {
   return {
     ...challenge,
     status: 'debating',
     currentSpeaker: getChallengeSpeakerForSegmentIndex(segmentIndex),
     segmentIndex,
-    segmentStartedAt: now,
-    segmentDeadlineAt: now + durationMs,
+    segmentStartedAt: awaitingContinue ? null : now,
+    segmentDeadlineAt: awaitingContinue ? null : now + durationMs,
     timeLeftMs: durationMs,
+    segmentAwaitingContinue: awaitingContinue,
   }
 }
 
@@ -337,6 +341,7 @@ function buildJudgingChallengeState(challenge: ChallengeState): ChallengeState {
     segmentStartedAt: null,
     segmentDeadlineAt: null,
     timeLeftMs: 0,
+    segmentAwaitingContinue: false,
   }
 }
 
@@ -959,17 +964,49 @@ export function advanceChallengeDebate(
 
   const nextSegmentIndex = state.challenge.segmentIndex + 1
 
+  if (nextSegmentIndex >= CHALLENGE_DEBATE_SEGMENT_COUNT) {
+    return {
+      ...state,
+      challenge: buildJudgingChallengeState(state.challenge),
+    }
+  }
+
+  const shouldAwaitContinue = nextSegmentIndex > 0
+
   return {
     ...state,
-    challenge:
-      nextSegmentIndex >= CHALLENGE_DEBATE_SEGMENT_COUNT
-        ? buildJudgingChallengeState(state.challenge)
-        : buildDebatingChallengeState(
-            state.challenge,
-            now,
-            durationMs,
-            nextSegmentIndex,
-          ),
+    challenge: buildDebatingChallengeState(
+      state.challenge,
+      now,
+      durationMs,
+      nextSegmentIndex,
+      shouldAwaitContinue,
+    ),
+  }
+}
+
+export function resumeChallengeDebate(
+  state: GameState,
+  now = Date.now(),
+  durationMs = CHALLENGE_DEBATE_SEGMENT_DURATION_MS,
+) {
+  if (
+    state.phase !== 'playing' ||
+    state.challenge.status !== 'debating' ||
+    !state.challenge.segmentAwaitingContinue
+  ) {
+    return state
+  }
+
+  return {
+    ...state,
+    challenge: {
+      ...state.challenge,
+      segmentAwaitingContinue: false,
+      segmentStartedAt: now,
+      segmentDeadlineAt: now + durationMs,
+      timeLeftMs: durationMs,
+    },
   }
 }
 

@@ -43,6 +43,7 @@ import {
   getSetupValidation,
   prepareRoster,
   resolveChallenge,
+  resumeChallengeDebate,
   startActiveTurn,
   startChallengeDebate,
   tickChallengeDebate,
@@ -511,6 +512,7 @@ function App() {
   const challengeChallengerInputRef = useRef<HTMLInputElement>(null)
   const challengeChallengedAnswerSelectRef = useRef<HTMLSelectElement>(null)
   const challengeDecisionButtonRef = useRef<HTMLButtonElement>(null)
+  const challengeResumeButtonRef = useRef<HTMLButtonElement>(null)
   const playerInputRefs = useRef<Record<string, HTMLInputElement | null>>({})
   const draftItemRefs = useRef<Record<string, HTMLLIElement | null>>({})
   const draftItemPositionSnapshotRef = useRef<Record<string, number>>({})
@@ -887,7 +889,10 @@ function App() {
 
   useTurnTimer({
     durationMs: CHALLENGE_DEBATE_SEGMENT_DURATION_MS,
-    active: gameState.phase === 'playing' && isChallengeDebating,
+    active:
+      gameState.phase === 'playing' &&
+      isChallengeDebating &&
+      !challengeState?.segmentAwaitingContinue,
     safeToFinish: false,
     startedAt:
       gameState.phase === 'playing' && isChallengeDebating
@@ -920,6 +925,11 @@ function App() {
       return
     }
 
+    if (isChallengeDebating && challengeState?.segmentAwaitingContinue) {
+      challengeResumeButtonRef.current?.focus()
+      return
+    }
+
     if (isChallengeDebating) {
       return
     }
@@ -942,6 +952,7 @@ function App() {
     isChallengeSelecting,
     isChallengeJudging,
     isChallengeDebating,
+    challengeState?.segmentAwaitingContinue,
   ])
 
   useEffect(() => {
@@ -1482,6 +1493,22 @@ function App() {
 
   function handleContinueToRoundSummary() {
     updateGameState((current) => acknowledgeRoundSummary(current))
+  }
+
+  function handleResumeChallengeDebate() {
+    updateGameState((current) => resumeChallengeDebate(current))
+  }
+
+  function handleResumeChallengeDebateKeyDown(
+    event: KeyboardEvent<HTMLButtonElement>,
+  ) {
+    if (event.key !== 'Enter') {
+      return
+    }
+
+    event.preventDefault()
+    event.stopPropagation()
+    handleResumeChallengeDebate()
   }
 
   function handleStartFirstTurnKeyDown(
@@ -2292,6 +2319,22 @@ function App() {
                       ตอนนี้ <strong>{challengeSpeakerName}</strong> กำลังพูด
                     </p>
                   </div>
+                  {challengeState?.segmentAwaitingContinue && (
+                    <div className="action-row challenge-actions">
+                      <button
+                        ref={challengeResumeButtonRef}
+                        type="button"
+                        className="primary-button symbol-button"
+                        onClick={handleResumeChallengeDebate}
+                        onKeyDown={handleResumeChallengeDebateKeyDown}
+                        aria-label="ต่อ"
+                        title="ต่อ"
+                      >
+                        <span className="button-symbol" aria-hidden="true">▶</span>
+                        <span className="button-copy">ต่อ</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
 
