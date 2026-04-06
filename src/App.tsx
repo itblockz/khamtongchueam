@@ -756,9 +756,9 @@ function App() {
     : isChallengeSelecting
       ? 'เลือกท้า'
     : isChallengeDebating
-      ? `${formatSeconds(challengeTimeLeftMs)}s`
+      ? 'ชาเลนจ์'
     : isChallengeJudging
-      ? 'ตัดสิน'
+      ? 'ชาเลนจ์'
     : requiresManualTurnStart
       ? 'รอเริ่ม'
       : gameState.phase === 'playing' && gameState.isSafeToFinish
@@ -771,11 +771,9 @@ function App() {
     : isChallengeSelecting
       ? 'เวลา เลือกการชาเลนจ์'
     : isChallengeDebating
-      ? `เวลาโต้วาทีเหลือ ${formatSeconds(
-          challengeTimeLeftMs,
-        )} วินาที`
+      ? 'กำลังชาเลนจ์'
     : isChallengeJudging
-      ? 'เวลา ตัดสินการชาเลนจ์'
+      ? 'กำลังตัดสินการชาเลนจ์'
     : requiresManualTurnStart
       ? 'เวลา รอเริ่ม'
       : gameState.phase === 'playing' && gameState.isSafeToFinish
