@@ -2317,13 +2317,21 @@ function App() {
                       </span>
                     </span>
                   </div>
-                  <div className="challenge-debate-status">
-                    <p className="challenge-debate-round">
-                      รอบโต้วาที {Math.floor(challengeSegmentIndex / 2) + 1}/2
+                  <div className="challenge-debate-controls">
+                    <div className="challenge-debate-status">
+                    <p className="round-indicator">
+                      รอบ {challengeSegmentIndex + 1}/{CHALLENGE_DEBATE_SEGMENT_COUNT}
                     </p>
-                    <p className="challenge-debate-speaker">
-                      ตอนนี้ <strong>{challengeSpeakerName}</strong> กำลังพูด
-                    </p>
+                    <div className={`turn-timer-pill ${timerTone}`} aria-live="polite">
+                      <span>เวลา</span>
+                      <strong>{formatSeconds(challengeTimeLeftMs)}s</strong>
+                    </div>
+                    <span className="challenge-debate-speaker">
+                      <strong>{challengeSpeakerName}</strong>
+                      <span className="challenge-debate-speaker-role">
+                        {challengeState?.currentSpeaker === 'challenger' ? '(ผู้ชาเลนจ์)' : '(ผู้ถูกชาเลนจ์)'}
+                      </span>
+                    </span>
                   </div>
                   {challengeState?.segmentAwaitingContinue && (
                     <div className="action-row challenge-actions">
@@ -2341,6 +2349,7 @@ function App() {
                       </button>
                     </div>
                   )}
+                  </div>
                 </div>
               )}
 
