@@ -2381,11 +2381,11 @@ function App() {
                         className="primary-button symbol-button"
                         onClick={handleResumeChallengeDebate}
                         onKeyDown={handleResumeChallengeDebateKeyDown}
-                        aria-label="ต่อ"
-                        title="ต่อ"
+                        aria-label={challengeSegmentIndex === 0 ? 'เริ่ม' : 'ต่อ'}
+                        title={challengeSegmentIndex === 0 ? 'เริ่ม' : 'ต่อ'}
                       >
                         <span className="button-symbol" aria-hidden="true">▶</span>
-                        <span className="button-copy">ต่อ</span>
+                        <span className="button-copy">{challengeSegmentIndex === 0 ? 'เริ่ม' : 'ต่อ'}</span>
                       </button>
                     </div>
                   )}
