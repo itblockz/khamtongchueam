@@ -783,14 +783,7 @@ function App() {
         : gameState.phase === 'playing'
           ? `เวลาเหลือ ${formatSeconds(gameState.timeLeftMs)} วินาที`
           : 'เวลา'
-  const challengeNote =
-    isChallengeSelecting
-      ? null
-      : isChallengeDebating
-        ? `ช่วงโต้วาที ${challengeSegmentIndex + 1}/${CHALLENGE_DEBATE_SEGMENT_COUNT} ตอนนี้ ${challengeSpeakerName} กำลังพูด`
-        : isChallengeJudging
-          ? 'ครบสองรอบโต้วาทีแล้ว เลือกผลตัดสิน'
-          : null
+  const challengeNote = null
   const currentInputSyllables = currentInputSegmentation?.syllables ?? []
   const currentInputSegmentationMeta = currentInputSegmentation
     ? `${currentInputSegmentation.engine} · ${currentInputSegmentation.modelVersion}`
@@ -2360,7 +2353,7 @@ function App() {
                   <div className="challenge-debate-controls">
                     <div className="challenge-debate-status">
                     <p className="round-indicator">
-                      รอบ {challengeSegmentIndex + 1}/{CHALLENGE_DEBATE_SEGMENT_COUNT}
+                      ช่วง {challengeSegmentIndex + 1}/{CHALLENGE_DEBATE_SEGMENT_COUNT}
                     </p>
                     <div className={`turn-timer-pill ${timerTone}`} aria-live="polite">
                       <span>เวลา</span>
