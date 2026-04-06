@@ -171,7 +171,9 @@ function findDuplicateSyllableEntry(
     usedSyllableEntriesInRound.map((entry) => [entry.syllable, entry]),
   )
 
-  for (const syllable of nextSyllables) {
+  const uniqueNextSyllables = [...new Set(nextSyllables)]
+
+  for (const syllable of uniqueNextSyllables) {
     const matchedEntry = seenSyllables.get(syllable)
 
     if (matchedEntry) {
