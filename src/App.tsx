@@ -46,6 +46,7 @@ import {
   resumeChallengeDebate,
   startActiveTurn,
   startChallengeDebate,
+  confirmChallengeDebate,
   tickChallengeDebate,
   updateChallengeSelection,
   type AnswerRecord,
@@ -1770,18 +1771,30 @@ function App() {
 
     resetChallengeChallengerTypeahead()
     updateGameState((current) => {
-      if (current.phase !== 'playing' || current.challenge.status !== 'selecting') {
+      if (current.phase !== 'playing') {
         return current
       }
 
-      const nextState =
+      if (current.challenge.status === 'debating' && current.challenge.segmentAwaitingContinue) {
+        return startChallengeDebate(current)
+      }
+
+      if (current.challenge.status !== 'selecting') {
+        return current
+      }
+
+      const stateWithChallenger =
         current.challenge.challengerPlayerId === nextChallengerId
           ? current
           : updateChallengeSelection(current, {
               challengerPlayerId: nextChallengerId,
             })
 
-      return startChallengeDebate(nextState)
+      if (stateWithChallenger.challenge.awaitingChallengeStart) {
+        return startChallengeDebate(stateWithChallenger)
+      }
+
+      return confirmChallengeDebate(stateWithChallenger)
     })
   }
 
@@ -2256,7 +2269,10 @@ function App() {
                                         const stateWithChallenger = updateChallengeSelection(stateWithAnswer, {
                                           challengerPlayerId: preferredChallengeChallengerId,
                                         })
-                                        return startChallengeDebate(stateWithChallenger)
+                                        if (stateWithChallenger.challenge.awaitingChallengeStart) {
+                                          return startChallengeDebate(stateWithChallenger)
+                                        }
+                                        return confirmChallengeDebate(stateWithChallenger)
                                       }
                                       return stateWithAnswer
                                     })
@@ -2299,10 +2315,10 @@ function App() {
                         )
                       }
                       disabled={!canStartVisibleChallenge}
-                      aria-label="เริ่มการชาเลนจ์"
-                      title="เริ่มการชาเลนจ์"
+                      aria-label={challengeState?.awaitingChallengeStart ? 'เริ่มการชาเลนจ์' : 'ยืนยันการชาเลนจ์'}
+                      title={challengeState?.awaitingChallengeStart ? 'เริ่มการชาเลนจ์' : 'ยืนยันการชาเลนจ์'}
                     >
-                      <span className="button-copy">เริ่มการชาเลนจ์</span>
+                      <span className="button-copy">{challengeState?.awaitingChallengeStart ? 'เริ่มการชาเลนจ์' : 'ยืนยันการชาเลนจ์'}</span>
                     </button>
                     <button
                       type="button"

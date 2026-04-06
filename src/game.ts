@@ -68,6 +68,7 @@ export interface ChallengeState {
   segmentDeadlineAt: number | null
   timeLeftMs: number
   segmentAwaitingContinue: boolean
+  awaitingChallengeStart: boolean
 }
 
 export interface GameState {
@@ -146,6 +147,7 @@ function createIdleChallengeState(): ChallengeState {
     segmentDeadlineAt: null,
     timeLeftMs: CHALLENGE_DEBATE_SEGMENT_DURATION_MS,
     segmentAwaitingContinue: false,
+    awaitingChallengeStart: false,
   }
 }
 
@@ -330,6 +332,7 @@ function buildDebatingChallengeState(
     segmentDeadlineAt: awaitingContinue ? null : now + durationMs,
     timeLeftMs: durationMs,
     segmentAwaitingContinue: awaitingContinue,
+    awaitingChallengeStart: false,
   }
 }
 
@@ -342,6 +345,7 @@ function buildJudgingChallengeState(challenge: ChallengeState): ChallengeState {
     segmentDeadlineAt: null,
     timeLeftMs: 0,
     segmentAwaitingContinue: false,
+    awaitingChallengeStart: false,
   }
 }
 
@@ -904,11 +908,7 @@ export function updateChallengeSelection(
   }
 }
 
-export function startChallengeDebate(
-  state: GameState,
-  now = Date.now(),
-  durationMs = CHALLENGE_DEBATE_SEGMENT_DURATION_MS,
-) {
+export function confirmChallengeDebate(state: GameState) {
   if (
     state.phase !== 'playing' ||
     state.challenge.status !== 'selecting' ||
@@ -922,7 +922,42 @@ export function startChallengeDebate(
 
   return {
     ...state,
-    challenge: buildDebatingChallengeState(state.challenge, now, durationMs, 0),
+    challenge: buildDebatingChallengeState(state.challenge, 0, CHALLENGE_DEBATE_SEGMENT_DURATION_MS, 0, true),
+  }
+}
+
+export function startChallengeDebate(
+  state: GameState,
+  now = Date.now(),
+  durationMs = CHALLENGE_DEBATE_SEGMENT_DURATION_MS,
+) {
+  if (state.phase !== 'playing' || state.challenge.status !== 'selecting') {
+    return state
+  }
+
+  if (
+    !state.challenge.challengerPlayerId ||
+    !state.challenge.challengedAnswerId ||
+    !state.challenge.challengedPlayerId ||
+    !state.challenge.previousValidAnswerId
+  ) {
+    return state
+  }
+
+  if (!state.challenge.awaitingChallengeStart) {
+    return state
+  }
+
+  return {
+    ...state,
+    challenge: {
+      ...state.challenge,
+      awaitingChallengeStart: false,
+      segmentAwaitingContinue: false,
+      segmentStartedAt: now,
+      segmentDeadlineAt: now + durationMs,
+      timeLeftMs: durationMs,
+    },
   }
 }
 
