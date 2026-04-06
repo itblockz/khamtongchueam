@@ -2036,7 +2036,7 @@ function App() {
                   {eliminatedPlayerSummaryContent}
                 </p>
               )}
-              {isPausedTurn && (
+              {isPausedTurn && gameState.isEliminationPause && (
                 <p className="pause-note" role="status" aria-live="polite">
                   {eliminatedPlayerSummaryContent}
                 </p>

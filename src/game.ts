@@ -90,6 +90,7 @@ export interface GameState {
   answerHistory: AnswerRecord[]
   challenge: ChallengeState
   challengeBonusPointsByPlayerId: Record<string, number>
+  isEliminationPause: boolean
 }
 
 export interface LeaderboardAward {
@@ -447,6 +448,7 @@ function finalizePlayingState(
     ...(shouldPauseNextTurn
       ? buildPausedTurnState(durationMs)
       : buildTurnState(now, durationMs)),
+    isEliminationPause: shouldPauseNextTurn,
   }
 }
 
@@ -537,6 +539,7 @@ function buildChallengeSelectionState(
       answerHistory,
       challenge: createIdleChallengeState(),
       challengeBonusPointsByPlayerId: {},
+      isEliminationPause: false,
     }).map((answerRecord) => answerRecord.id),
   )
 
@@ -605,6 +608,7 @@ export function createSetupState(): GameState {
     answerHistory: [],
     challenge: createIdleChallengeState(),
     challengeBonusPointsByPlayerId: {},
+    isEliminationPause: false,
   }
 }
 
@@ -655,6 +659,7 @@ export function createGameState(
     answerHistory: [],
     challenge: createIdleChallengeState(),
     challengeBonusPointsByPlayerId: {},
+    isEliminationPause: false,
     ...buildTurnState(now, durationMs),
   }
 }
@@ -680,6 +685,7 @@ export function createConfirmedGameState(
     answerHistory: [],
     challenge: createIdleChallengeState(),
     challengeBonusPointsByPlayerId: {},
+    isEliminationPause: false,
     ...buildPausedTurnState(durationMs),
   }
 }
@@ -703,6 +709,7 @@ export function startActiveTurn(
   return {
     ...state,
     isAwaitingFirstTurnStart: false,
+    isEliminationPause: false,
     ...buildTurnState(now, durationMs),
   }
 }
@@ -864,6 +871,7 @@ export function beginChallengeSelection(
       null,
       challengeableAnswers[0]?.id ?? null,
     ),
+    isEliminationPause: false,
     ...buildPausedTurnState(durationMs),
   }
 }
