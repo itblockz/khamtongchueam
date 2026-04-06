@@ -47,6 +47,7 @@ import {
   startActiveTurn,
   startChallengeDebate,
   confirmChallengeDebate,
+  hostEliminateCurrentPlayer,
   tickChallengeDebate,
   updateChallengeSelection,
   type AnswerRecord,
@@ -168,6 +169,10 @@ function getEliminatedPlayerSummary(
     }
 
     return `${player.name} ตกรอบเพราะคำไม่เชื่อมกัน`
+  }
+
+  if (player.eliminationReason === 'not_noun') {
+    return `${player.name} ตกรอบเพราะคำไม่ใช่คำนาม`
   }
 
   return `${player.name} ตกรอบ`
@@ -1483,6 +1488,10 @@ function App() {
     updateGameState((current) => startActiveTurn(current))
   }
 
+  function handleHostEliminateNotNoun() {
+    updateGameState((current) => hostEliminateCurrentPlayer(current, 'not_noun'))
+  }
+
   function handleContinueToRoundSummary() {
     updateGameState((current) => acknowledgeRoundSummary(current))
   }
@@ -2153,17 +2162,30 @@ function App() {
                   </span>
                 </button>
               ) : (
-                <button
-                  type="submit"
-                  className="primary-button symbol-button compact-symbol-button"
-                  disabled={!canSubmitCurrentTurn}
-                  aria-label="ถัดไป"
-                  title="ถัดไป"
-                >
-                  <span className="button-symbol" aria-hidden="true">
-                    →
-                  </span>
-                </button>
+                <>
+                  <button
+                    type="button"
+                    className="secondary-button symbol-button compact-symbol-button"
+                    onClick={handleHostEliminateNotNoun}
+                    aria-label="คำไม่ใช่คำนาม"
+                    title="คำไม่ใช่คำนาม (Host)"
+                  >
+                    <span className="button-symbol" aria-hidden="true">
+                      ✗
+                    </span>
+                  </button>
+                  <button
+                    type="submit"
+                    className="primary-button symbol-button compact-symbol-button"
+                    disabled={!canSubmitCurrentTurn}
+                    aria-label="ถัดไป"
+                    title="ถัดไป"
+                  >
+                    <span className="button-symbol" aria-hidden="true">
+                      →
+                    </span>
+                  </button>
+                </>
               )}
             </div>
           </form>

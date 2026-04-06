@@ -15,6 +15,7 @@ export type EliminationReason =
   | 'duplicate_syllable'
   | 'failed_challenge'
   | 'invalid_connection'
+  | 'not_noun'
 
 export interface PlayerDraft {
   id: string
@@ -1140,6 +1141,63 @@ export function resolveChallenge(
       nextUsedSyllablesInRound: nextUsedSyllableState.usedSyllablesInRound,
       nextUsedSyllableEntriesInRound:
         nextUsedSyllableState.usedSyllableEntriesInRound,
+      shouldPauseNextTurn: true,
+      now,
+    },
+    durationMs,
+  )
+}
+
+export function hostEliminateCurrentPlayer(
+  state: GameState,
+  eliminationReason: 'not_noun',
+  durationMs = TURN_DURATION_MS,
+): GameState {
+  if (
+    state.phase !== 'playing' ||
+    state.activePlayerId === null ||
+    state.isAwaitingFirstTurnStart
+  ) {
+    return state
+  }
+
+  const currentIndex = state.players.findIndex(
+    (player) => player.id === state.activePlayerId,
+  )
+
+  if (currentIndex === -1 || state.players[currentIndex].status !== 'active') {
+    return state
+  }
+
+  const now = Date.now()
+  const nextEliminatedOrder = getNextEliminatedOrder(state.players)
+
+  const nextPlayers = state.players.map((player, index) =>
+    index === currentIndex
+      ? {
+          ...player,
+          status: 'eliminated' as const,
+          eliminatedAtTurnCycle: state.turnCycle,
+          eliminatedOrder: nextEliminatedOrder,
+          eliminationReason,
+          duplicateSyllable: null,
+          duplicateSourceAnswer: null,
+          duplicateSubmittedAnswer: null,
+          challengeSourceAnswer: null,
+          challengeTargetAnswer: null,
+        }
+      : player,
+  )
+
+  return finalizePlayingState(
+    state,
+    {
+      nextPlayers,
+      currentPlayerIdForNextTurn: state.activePlayerId,
+      nextAnswerHistory: state.answerHistory,
+      nextChallengeBonusPointsByPlayerId: state.challengeBonusPointsByPlayerId,
+      nextUsedSyllablesInRound: state.usedSyllablesInRound,
+      nextUsedSyllableEntriesInRound: state.usedSyllableEntriesInRound,
       shouldPauseNextTurn: true,
       now,
     },
