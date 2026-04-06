@@ -1493,6 +1493,23 @@ function App() {
     updateGameState((current) => resumeChallengeDebate(current))
   }
 
+  function handleAdvanceChallengeDebate() {
+    updateGameState((current) => {
+      if (
+        current.phase !== 'playing' ||
+        current.challenge.status !== 'debating' ||
+        current.challenge.segmentStartedAt === null
+      ) {
+        return current
+      }
+
+      return advanceChallengeDebate(
+        current,
+        current.challenge.segmentStartedAt,
+      )
+    })
+  }
+
   function handleResumeChallengeDebateKeyDown(
     event: KeyboardEvent<HTMLButtonElement>,
   ) {
@@ -1723,35 +1740,6 @@ function App() {
     }
 
     challengeChallengedAnswerSelectRef.current?.focus()
-  }
-
-  function handleChallengeAnswerChange(event: ChangeEvent<HTMLSelectElement>) {
-    const nextValue = event.target.value.trim()
-
-    updateGameState((current) =>
-      updateChallengeSelection(current, {
-        challengedAnswerId: nextValue || null,
-      }),
-    )
-  }
-
-  function handleChallengeAnswerKeyDown(
-    event: KeyboardEvent<HTMLSelectElement>,
-  ) {
-    if (event.key !== 'Enter') {
-      return
-    }
-
-    event.preventDefault()
-
-    if (!preferredChallengeChallengerId) {
-      challengeChallengerInputRef.current?.focus()
-      return
-    }
-
-    if (canStartVisibleChallenge) {
-      handleStartChallenge(preferredChallengeChallengerId)
-    }
   }
 
   function handleStartChallenge(challengerPlayerId?: string) {
@@ -2366,7 +2354,7 @@ function App() {
                       </span>
                     </span>
                   </div>
-                  {challengeState?.segmentAwaitingContinue && (
+                  {challengeState?.segmentAwaitingContinue ? (
                     <div className="action-row challenge-actions">
                       <button
                         ref={challengeResumeButtonRef}
@@ -2379,6 +2367,18 @@ function App() {
                       >
                         <span className="button-symbol" aria-hidden="true">▶</span>
                         <span className="button-copy">{challengeSegmentIndex === 0 ? 'เริ่ม' : 'ต่อ'}</span>
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="action-row challenge-actions">
+                      <button
+                        type="button"
+                        className="secondary-button symbol-button"
+                        onClick={handleAdvanceChallengeDebate}
+                        aria-label="จบช่วง"
+                        title="จบช่วง"
+                      >
+                        <span className="button-copy">จบช่วง</span>
                       </button>
                     </div>
                   )}
