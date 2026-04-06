@@ -2395,21 +2395,27 @@ function App() {
 
               {isChallengeJudging && (
                 <div className="challenge-content">
-                  <div className="challenge-summary">
-                    <p>
-                      <strong>ผู้ชาเลนจ์:</strong> {selectedChallenger?.name ?? '-'}
-                    </p>
-                    <p>
-                      <strong>ผู้ถูกชาเลนจ์:</strong>{' '}
-                      {selectedChallengedPlayer?.name ?? '-'}
-                    </p>
-                    <p>
-                      <strong>คำที่ถูกท้า:</strong> {selectedChallengedAnswer?.answer ?? '-'}
-                    </p>
-                    <p>
-                      <strong>คำก่อนหน้า:</strong>{' '}
+                  <div className="challenge-chain">
+                    <span className="challenge-chain-prev">
                       {selectedChallengePreviousAnswer?.answer ?? '-'}
-                    </p>
+                    </span>
+                    <span className="challenge-chain-arrow">→</span>
+                    <span className="challenge-chain-target">
+                      <span className="challenge-chain-target-word">
+                        {selectedChallengedAnswer?.answer ?? '-'}
+                      </span>
+                    </span>
+                    <span className="challenge-chain-right">
+                      <span className="challenge-chain-owner">
+                        {selectedChallengedPlayer?.name ?? '-'}
+                      </span>
+                      <span className="challenge-chain-challenger">
+                        <span className="challenge-chain-challenger-label">ถูกชาเลนจ์โดย</span>
+                        <span className="challenge-chain-challenger-name">
+                          {selectedChallenger?.name ?? '-'}
+                        </span>
+                      </span>
+                    </span>
                   </div>
 
                   <div className="action-row challenge-actions">
