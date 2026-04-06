@@ -784,7 +784,7 @@ function App() {
           : 'เวลา'
   const challengeNote =
     isChallengeSelecting
-      ? 'เลือกผู้ชาเลนจ์และคำที่ต้องการชาเลนจ์'
+      ? null
       : isChallengeDebating
         ? `ช่วงโต้วาที ${challengeSegmentIndex + 1}/${CHALLENGE_DEBATE_SEGMENT_COUNT} ตอนนี้ ${challengeSpeakerName} กำลังพูด`
         : isChallengeJudging
@@ -2220,50 +2220,74 @@ function App() {
                       </ComboBox>
                     </div>
 
-                    <div className="challenge-field">
-                      <label htmlFor="challenged-answer">คำที่ถูกชาเลนจ์</label>
-                      <select
-                        ref={challengeChallengedAnswerSelectRef}
-                        id="challenged-answer"
-                        className="text-input challenge-select"
-                        value={challengeState?.challengedAnswerId ?? ''}
-                        onChange={handleChallengeAnswerChange}
-                        onKeyDown={handleChallengeAnswerKeyDown}
-                      >
-                        <option value="">เลือกคำที่ต้องการชาเลนจ์</option>
-                        {challengeableAnswers.map((answerRecord: AnswerRecord) => {
-                          const answerOwner =
-                            playerById.get(answerRecord.playerId)?.name ?? 'ไม่ทราบชื่อ'
-                          const previousAnswer =
-                            answerRecord.previousValidAnswerId
-                              ? answerRecordById.get(answerRecord.previousValidAnswerId)
-                                  ?.answer ?? 'ไม่ทราบคำก่อนหน้า'
-                              : 'ไม่ทราบคำก่อนหน้า'
+                                        <div className="challenge-field">
+                      <label id="challenged-answer-label">คำที่ถูกชาเลนจ์</label>
+                      <div className="challenged-answer-buttons" aria-labelledby="challenged-answer-label">
+                        {challengeableAnswers.length === 0 && (
+                          <div className="empty-note">ไม่มีคำที่สามารถชาเลนจ์ได้</div>
+                        )}
+                        {[...challengeableAnswers]
+                          .reverse()
+                          .slice(0, 3)
+                          .map((answerRecord: AnswerRecord) => {
+                            const isSelected = challengeState?.challengedAnswerId === answerRecord.id
 
-                          return (
-                            <option key={answerRecord.id} value={answerRecord.id}>
-                              {`"${answerRecord.answer}" ของ ${answerOwner} · ต่อจาก "${previousAnswer}"`}
-                            </option>
-                          )
-                        })}
-                      </select>
+                            return (
+                              <button
+                                key={answerRecord.id}
+                                type="button"
+                                className={`secondary-button challenged-answer-button ${isSelected ? 'is-selected' : ''}`}
+                                aria-pressed={isSelected}
+                                onClick={() => {
+                                  updateGameState((current) =>
+                                    updateChallengeSelection(current, {
+                                      challengedAnswerId: answerRecord.id,
+                                    }),
+                                  )
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault()
+                                    updateGameState((current) => {
+                                      const stateWithAnswer = updateChallengeSelection(current, {
+                                        challengedAnswerId: answerRecord.id,
+                                      })
+                                      if (preferredChallengeChallengerId) {
+                                        const stateWithChallenger = updateChallengeSelection(stateWithAnswer, {
+                                          challengerPlayerId: preferredChallengeChallengerId,
+                                        })
+                                        return startChallengeDebate(stateWithChallenger)
+                                      }
+                                      return stateWithAnswer
+                                    })
+                                    if (!preferredChallengeChallengerId) {
+                                      challengeChallengerInputRef.current?.focus()
+                                    }
+                                  }
+                                }}
+                              >
+                                <span className="answer-word">{answerRecord.answer}</span>
+                              </button>
+                            )
+                          })}
+                      </div>
                     </div>
                   </div>
 
-                  {selectedChallengedAnswer && selectedChallengePreviousAnswer && (
-                    <div className="challenge-summary">
-                      <p>
-                        <strong>คำที่ถูกท้า:</strong> {selectedChallengedAnswer.answer}
-                      </p>
-                      <p>
-                        <strong>ผู้ถูกชาเลนจ์:</strong>{' '}
-                        {selectedChallengedPlayer?.name ?? '-'}
-                      </p>
-                      <p>
-                        <strong>คำก่อนหน้า:</strong> {selectedChallengePreviousAnswer.answer}
-                      </p>
-                    </div>
-                  )}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
                   <div className="action-row challenge-actions">
                     <button

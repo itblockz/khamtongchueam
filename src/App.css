@@ -815,14 +815,45 @@ button:disabled {
   background: rgba(255, 255, 255, 0.76);
 }
 
-.challenge-summary {
-  display: grid;
-  gap: 6px;
-  padding: 12px 14px;
-  border-radius: 18px;
-  border: 1px solid rgba(176, 126, 82, 0.14);
-  background: rgba(255, 255, 255, 0.72);
+.challenged-answer-buttons {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
 }
+
+.challenged-answer-button {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 16px;
+  min-height: 48px;
+  border-radius: 99px;
+  text-align: center;
+  border: 2px solid transparent;
+  flex: 1 1 0;
+  white-space: nowrap;
+}
+
+.challenged-answer-button.is-selected {
+  border-color: var(--accent);
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 4px 12px rgba(210, 106, 58, 0.15);
+}
+
+.challenged-answer-button .answer-word {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.challenged-answer-button.is-selected .answer-word {
+  color: var(--accent-strong);
+}
+
+
 
 .challenge-summary p,
 .challenge-debate-status p {
