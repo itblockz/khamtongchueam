@@ -1184,7 +1184,7 @@ export function hostEliminateCurrentPlayer(
           eliminationReason,
           duplicateSyllable: null,
           duplicateSourceAnswer: null,
-          duplicateSubmittedAnswer: null,
+          duplicateSubmittedAnswer: state.currentInput,
           challengeSourceAnswer: null,
           challengeTargetAnswer: null,
         }

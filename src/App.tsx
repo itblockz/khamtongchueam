@@ -172,7 +172,10 @@ function getEliminatedPlayerSummary(
   }
 
   if (player.eliminationReason === 'not_noun') {
-    return `${player.name} ตกรอบเพราะคำไม่ใช่คำนาม`
+    if (player.duplicateSubmittedAnswer) {
+      return `${player.name} ตกรอบเพราะ "${player.duplicateSubmittedAnswer}" ไม่ใช่คำนาม`
+    }
+    return `${player.name} ตกรอบเพราะไม่ใช่คำนาม`
   }
 
   return `${player.name} ตกรอบ`
