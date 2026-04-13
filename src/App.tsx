@@ -282,12 +282,12 @@ function renderEliminatedPlayerSummaryContent(
   if (player && duplicateDetails) {
     return (
       <>
-        <span>{player.name} ตกรอบเพราะคำตอบ "</span>
+        <span>{player.name} ตกรอบเพราะ "</span>
         {renderHighlightedAnswer(
           duplicateDetails.submittedAnswer,
           duplicateDetails.duplicateSyllable,
         )}
-        <span>" ซ้ำกับคำ "</span>
+        <span>" ซ้ำกับ "</span>
         {renderHighlightedAnswer(
           duplicateDetails.sourceAnswer,
           duplicateDetails.duplicateSyllable,
