@@ -27,6 +27,7 @@ import {
   Play,
   ChevronRight,
   X,
+  HelpCircle,
 } from 'lucide-react'
 import './App.css'
 import {
@@ -2099,7 +2100,7 @@ function App() {
                   aria-describedby="setup-help-tooltip"
                   title="วิธีจัดรายชื่อผู้เล่น"
                 >
-                  วิธีใช้
+                  <HelpCircle size={18} aria-hidden="true" />
                 </button>
                 <div
                   className="setup-tooltip-panel"
