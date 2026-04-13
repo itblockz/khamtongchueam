@@ -750,10 +750,10 @@ function App() {
     ? gmOpeningWordDraft
     : gameState.currentInput
   const answerInputLabel = isGmOpeningWordMode
-    ? 'คำตั้งต้นของ GM'
+    ? 'คำตั้งต้นของผู้คุมเกม'
     : `คำตอบของ ${playScreenPlayer?.name ?? ''}`
   const answerInputPlaceholder = isGmOpeningWordMode
-    ? 'พิมพ์คำตั้งต้นของ GM'
+    ? 'พิมพ์คำตั้งต้นของผู้คุมเกม'
     : 'พิมพ์คำตอบของผู้เล่น'
   const canSubmitGmOpeningWord =
     isGmOpeningWordMode &&
@@ -827,7 +827,7 @@ function App() {
           : 'เวลา'
   const displayedTimerValue = isGmOpeningWordMode ? 'รอคำตั้งต้น' : timerValue
   const displayedTimerAriaLabel = isGmOpeningWordMode
-    ? 'เวลารอคำตั้งต้นของ GM'
+    ? 'เวลารอคำตั้งต้นของผู้คุมเกม'
     : timerAriaLabel
   const challengeNote = null
   const currentInputSyllables = currentInputSegmentation?.syllables ?? []
@@ -2137,14 +2137,14 @@ function App() {
                     onClick={handleToggleGmOpeningWord}
                     disabled={isSubmittingTurn}
                     aria-pressed={isGmOpeningWordEnabled}
-                    aria-label="GM คำตั้งต้น"
+                    aria-label="ผู้คุมเกมเริ่ม"
                     title={
                       isGmOpeningWordEnabled
-                        ? 'ปิดโหมด GM คำตั้งต้น'
-                        : 'เปิดโหมด GM คำตั้งต้น'
+                        ? 'ปิดโหมดผู้คุมเกมเริ่ม'
+                        : 'เปิดโหมดผู้คุมเกมเริ่ม'
                     }
                   >
-                    GM คำตั้งต้น
+                    ผู้คุมเกมเริ่ม
                   </button>
                 )}
                 <button
@@ -2203,7 +2203,7 @@ function App() {
                   : isAwaitingRoundSummary
                   ? `${eliminatedPlayerSummary} กดสรุปรอบเพื่อดูตารางคะแนนของ ${playScreenPlayer.name}`
                   : isGmOpeningWordMode
-                  ? `GM พิมพ์คำตั้งต้นของรอบ แล้วกดเริ่มด้วยคำนี้เพื่อเริ่มจับเวลา ${playScreenPlayer.name}`
+                  ? `ผู้คุมเกมพิมพ์คำตั้งต้นของรอบ แล้วกดเริ่มด้วยคำนี้เพื่อเริ่มจับเวลา ${playScreenPlayer.name}`
                   : isAwaitingFirstTurnStart
                   ? `ยืนยันผู้เล่นแล้ว กดเริ่มรอบแรกเพื่อเริ่มจับเวลา ${playScreenPlayer.name}`
                   : isPausedTurn

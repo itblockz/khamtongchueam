@@ -63,7 +63,7 @@ function toggleSyllableDebug() {
 }
 
 function toggleGmOpeningWord() {
-  fireEvent.click(screen.getByRole('button', { name: 'GM คำตั้งต้น' }))
+  fireEvent.click(screen.getByRole('button', { name: 'ผู้คุมเกมเริ่ม' }))
 }
 
 function expectLeaderboardRow(
@@ -501,11 +501,11 @@ describe('คำต้องเชื่อม', () => {
     fillSetupNames(['ออย', 'บีม'])
     fireEvent.click(screen.getByRole('button', { name: 'ยืนยันผู้เล่น' }))
 
-    const toggleButton = screen.getByRole('button', { name: 'GM คำตั้งต้น' })
+    const toggleButton = screen.getByRole('button', { name: 'ผู้คุมเกมเริ่ม' })
 
     expect(toggleButton).toHaveAttribute('aria-pressed', 'true')
     expect(window.localStorage.getItem(GM_OPENING_WORD_STORAGE_KEY)).toBe('true')
-    expect(screen.getByLabelText('คำตั้งต้นของ GM')).toBeEnabled()
+    expect(screen.getByLabelText('คำตั้งต้นของผู้คุมเกม')).toBeEnabled()
 
     fireEvent.click(toggleButton)
 
@@ -519,7 +519,7 @@ describe('คำต้องเชื่อม', () => {
     fireEvent.click(screen.getByRole('button', { name: 'ยืนยันผู้เล่น' }))
 
     expect(
-      screen.getByRole('button', { name: 'GM คำตั้งต้น' }),
+      screen.getByRole('button', { name: 'ผู้คุมเกมเริ่ม' }),
     ).toHaveAttribute('aria-pressed', 'false')
     expect(screen.getByLabelText('คำตอบของ ออย')).toBeDisabled()
   })
@@ -531,7 +531,7 @@ describe('คำต้องเชื่อม', () => {
     fillSetupNames(['ออย', 'บีม'])
     fireEvent.click(screen.getByRole('button', { name: 'ยืนยันผู้เล่น' }))
 
-    const gmOpeningInput = screen.getByLabelText('คำตั้งต้นของ GM')
+    const gmOpeningInput = screen.getByLabelText('คำตั้งต้นของผู้คุมเกม')
 
     expect(gmOpeningInput).toBeEnabled()
     expect(screen.getByRole('button', { name: 'เริ่มด้วยคำนี้' })).toBeInTheDocument()
@@ -563,7 +563,7 @@ describe('คำต้องเชื่อม', () => {
     fillSetupNames(['เอ', 'บี'])
     fireEvent.click(screen.getByRole('button', { name: 'ยืนยันผู้เล่น' }))
 
-    const gmOpeningInput = screen.getByLabelText('คำตั้งต้นของ GM')
+    const gmOpeningInput = screen.getByLabelText('คำตั้งต้นของผู้คุมเกม')
 
     fireEvent.change(gmOpeningInput, { target: { value: 'ปิดระบบ' } })
     fireEvent.submit(gmOpeningInput.closest('form')!)
@@ -571,7 +571,7 @@ describe('คำต้องเชื่อม', () => {
 
     expect(screen.getByRole('alert')).toHaveTextContent(SEGMENTATION_ERROR_TEXT)
     expect(screen.getByRole('heading', { name: 'ถึงตา เอ' })).toBeInTheDocument()
-    expect(screen.getByLabelText('คำตั้งต้นของ GM')).toHaveValue('ปิดระบบ')
+    expect(screen.getByLabelText('คำตั้งต้นของผู้คุมเกม')).toHaveValue('ปิดระบบ')
     expect(screen.getByRole('button', { name: 'เริ่มด้วยคำนี้' })).toBeEnabled()
   })
 
@@ -582,14 +582,14 @@ describe('คำต้องเชื่อม', () => {
     fillSetupNames(['เอ', 'บี'])
     fireEvent.click(screen.getByRole('button', { name: 'ยืนยันผู้เล่น' }))
 
-    const gmOpeningInput = screen.getByLabelText('คำตั้งต้นของ GM')
+    const gmOpeningInput = screen.getByLabelText('คำตั้งต้นของผู้คุมเกม')
 
     fireEvent.change(gmOpeningInput, { target: { value: 'กาแฟ' } })
     await flushSegmentationDebounce()
     toggleGmOpeningWord()
 
     expect(
-      screen.getByRole('button', { name: 'GM คำตั้งต้น' }),
+      screen.getByRole('button', { name: 'ผู้คุมเกมเริ่ม' }),
     ).toHaveAttribute('aria-pressed', 'false')
     expect(screen.getByRole('button', { name: 'เริ่มรอบแรก' })).toBeInTheDocument()
     expect(screen.getByLabelText('คำตอบของ เอ')).toHaveValue('')
@@ -604,7 +604,7 @@ describe('คำต้องเชื่อม', () => {
     fillSetupNames(['ออย', 'บีม'])
     fireEvent.click(screen.getByRole('button', { name: 'ยืนยันผู้เล่น' }))
 
-    const gmOpeningInput = screen.getByLabelText('คำตั้งต้นของ GM')
+    const gmOpeningInput = screen.getByLabelText('คำตั้งต้นของผู้คุมเกม')
 
     fireEvent.change(gmOpeningInput, { target: { value: 'กาแฟ' } })
     fireEvent.submit(gmOpeningInput.closest('form')!)
@@ -617,9 +617,9 @@ describe('คำต้องเชื่อม', () => {
     )
 
     expect(
-      screen.getByRole('button', { name: 'GM คำตั้งต้น' }),
+      screen.getByRole('button', { name: 'ผู้คุมเกมเริ่ม' }),
     ).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.getByLabelText('คำตั้งต้นของ GM')).toHaveValue('')
+    expect(screen.getByLabelText('คำตั้งต้นของผู้คุมเกม')).toHaveValue('')
     expect(screen.getByRole('button', { name: 'เริ่มด้วยคำนี้' })).toBeInTheDocument()
   })
 
