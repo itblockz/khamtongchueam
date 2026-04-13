@@ -76,6 +76,7 @@ const MATCH_ROUNDS_PER_MATCH = 4
 const SYLLABLE_REQUEST_DEBOUNCE_MS = 250
 const SYLLABLE_DEBUG_STORAGE_KEY = 'khamtongchueam:show-syllable-debug'
 const GM_OPENING_WORD_STORAGE_KEY = 'khamtongchueam:gm-opening-word-enabled'
+const SHOW_PREVIOUS_WORD_PROMPT_KEY = 'khamtongchueam:show-previous-word-prompt'
 
 function getTurnDirectionForMatchRound(matchRound: number): TurnDirection {
   return matchRound % 2 === 1 ? 1 : -1
@@ -132,6 +133,18 @@ function getInitialGmOpeningWordEnabled() {
     return window.localStorage.getItem(GM_OPENING_WORD_STORAGE_KEY) !== 'false'
   } catch {
     return true
+  }
+}
+
+function getInitialShowPreviousWordPrompt() {
+  if (typeof window === 'undefined') {
+    return false
+  }
+
+  try {
+    return window.localStorage.getItem(SHOW_PREVIOUS_WORD_PROMPT_KEY) === 'true'
+  } catch {
+    return false
   }
 }
 
@@ -475,16 +488,20 @@ function ChallengeChallengerListBox({
 interface SettingsDropdownProps {
   isGmOpeningEnabled: boolean
   isSyllableDebugVisible: boolean
+  showPreviousWordPrompt: boolean
   onToggleGmOpening: () => void
   onToggleSyllableDebug: () => void
+  onTogglePreviousWordPrompt: () => void
   isSubmittingTurn: boolean
 }
 
 function SettingsDropdown({
   isGmOpeningEnabled,
   isSyllableDebugVisible,
+  showPreviousWordPrompt,
   onToggleGmOpening,
   onToggleSyllableDebug,
+  onTogglePreviousWordPrompt,
   isSubmittingTurn,
 }: SettingsDropdownProps) {
   const [isOpen, setIsOpen] = useState(false)
@@ -570,6 +587,21 @@ function SettingsDropdown({
               {isSyllableDebugVisible ? '✓' : ''}
             </span>
             แสดงการแยกพยางค์
+          </button>
+          <button
+            type="button"
+            className="settings-dropdown-item"
+            onClick={(e) => {
+              e.currentTarget.focus()
+              onTogglePreviousWordPrompt()
+            }}
+            aria-pressed={showPreviousWordPrompt}
+            role="menuitemcheckbox"
+          >
+            <span className="settings-dropdown-item-check" aria-hidden="true">
+              {showPreviousWordPrompt ? '✓' : ''}
+            </span>
+            แสดงคำก่อนหน้า
           </button>
         </div>
       )}
@@ -675,6 +707,9 @@ function App() {
   const [isSyllableDebugVisible, setIsSyllableDebugVisible] = useState(() =>
     getInitialSyllableDebugVisibility(),
   )
+  const [showPreviousWordPrompt, setShowPreviousWordPrompt] = useState(() =>
+    getInitialShowPreviousWordPrompt(),
+  )
   const { gameState, leaderboardScores, roundScoreBreakdownsInMatch } =
     sessionState
   const currentMatchRound =
@@ -716,6 +751,15 @@ function App() {
   const answerRecordById = new Map(
     gameState.answerHistory.map((answerRecord) => [answerRecord.id, answerRecord]),
   )
+  const lastAnswer = (() => {
+    for (let i = gameState.answerHistory.length - 1; i >= 0; i--) {
+      const record = gameState.answerHistory[i]
+      if (!record.invalidatedByChallenge || record.challengeResolved) {
+        return record.answer
+      }
+    }
+    return null
+  })()
   const challengeableAnswers =
     gameState.phase === 'playing' ? getChallengeableAnswers(gameState) : []
   const challengeState =
@@ -2221,6 +2265,11 @@ function App() {
 
       {playScreenPlayer && (gameState.phase === 'playing' || isAwaitingRoundSummary) && (
         <section className="phase-screen play-screen">
+          {showPreviousWordPrompt && lastAnswer && gameState.phase === 'playing' && (
+            <p className="previous-word-prompt">
+              พูดว่าคำที่เชื่อมกับ "{lastAnswer}"
+            </p>
+          )}
           <form className="surface-card answer-panel" onSubmit={handleSubmitTurn}>
             <div className="form-copy">
               <h1 className="sr-only">ถึงตา {playScreenPlayer.name}</h1>
@@ -2244,10 +2293,20 @@ function App() {
                     <SettingsDropdown
                       isGmOpeningEnabled={isGmOpeningWordEnabled}
                       isSyllableDebugVisible={isSyllableDebugVisible}
+                      showPreviousWordPrompt={showPreviousWordPrompt}
                       onToggleGmOpening={handleToggleGmOpeningWord}
                       onToggleSyllableDebug={() =>
                         setIsSyllableDebugVisible((current) => !current)
                       }
+                      onTogglePreviousWordPrompt={() => {
+                        setShowPreviousWordPrompt((current) => {
+                          window.localStorage.setItem(
+                            SHOW_PREVIOUS_WORD_PROMPT_KEY,
+                            String(!current),
+                          )
+                          return !current
+                        })
+                      }}
                       isSubmittingTurn={isSubmittingTurn}
                     />
                   )}
