@@ -2283,10 +2283,10 @@ function App() {
                     className="ghost-button challenge-open-button"
                     onClick={handleOpenChallenge}
                     disabled={!canOpenChallenge}
-                    aria-label="ชาเลนจ์"
-                    title="ชาเลนจ์"
+                    aria-label="ชาเลนจ์ (F2)"
+                    title="ชาเลนจ์ (F2)"
                   >
-                    ชาเลนจ์
+                    ชาเลนจ์ (F2)
                   </button>
                 )}
                 {(gameState.phase === 'playing' || gameState.phase === 'finished') && (
