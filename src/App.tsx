@@ -170,11 +170,11 @@ function getEliminatedPlayerSummary(
 
   if (player.eliminationReason === 'duplicate_syllable') {
     if (player.duplicateSubmittedAnswer && player.duplicateSourceAnswer) {
-      return `${player.name} ตกรอบเพราะคำตอบ "${player.duplicateSubmittedAnswer}" ซ้ำกับคำ "${player.duplicateSourceAnswer}"`
+      return `${player.name} ตกรอบเพราะ "${player.duplicateSubmittedAnswer}" ซ้ำกับ "${player.duplicateSourceAnswer}"`
     }
 
     if (player.duplicateSourceAnswer) {
-      return `${player.name} ตกรอบเพราะซ้ำกับคำ "${player.duplicateSourceAnswer}"`
+      return `${player.name} ตกรอบเพราะซ้ำกับ "${player.duplicateSourceAnswer}"`
     }
 
     return `${player.name} ตกรอบเพราะใช้พยางค์ซ้ำ`
@@ -190,7 +190,7 @@ function getEliminatedPlayerSummary(
 
   if (player.eliminationReason === 'failed_challenge') {
     if (player.challengeTargetAnswer) {
-      return `${player.name} ตกรอบเพราะชาเลนจ์คำ "${player.challengeTargetAnswer}" ไม่สำเร็จ`
+      return `${player.name} ตกรอบเพราะชาเลนจ์ "${player.challengeTargetAnswer}" ไม่สำเร็จ`
     }
 
     return `${player.name} ตกรอบเพราะชาเลนจ์ไม่สำเร็จ`
@@ -198,7 +198,7 @@ function getEliminatedPlayerSummary(
 
   if (player.eliminationReason === 'invalid_connection') {
     if (player.challengeTargetAnswer && player.challengeSourceAnswer) {
-      return `${player.name} ตกรอบเพราะคำ "${player.challengeTargetAnswer}" ไม่เชื่อมกับคำ "${player.challengeSourceAnswer}"`
+      return `${player.name} ตกรอบเพราะ "${player.challengeTargetAnswer}" ไม่เชื่อมกับ "${player.challengeSourceAnswer}"`
     }
 
     return `${player.name} ตกรอบเพราะคำไม่เชื่อมกัน`
