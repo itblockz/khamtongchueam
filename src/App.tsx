@@ -24,7 +24,6 @@ import {
 } from 'react-aria-components'
 import {
   Settings,
-  Play,
   ChevronRight,
   X,
   HelpCircle,
@@ -2664,13 +2663,12 @@ function App() {
                       <button
                         ref={challengeResumeButtonRef}
                         type="button"
-                        className="primary-button symbol-button"
+                        className="primary-button"
                         onClick={handleResumeChallengeDebate}
                         onKeyDown={handleResumeChallengeDebateKeyDown}
                         aria-label={challengeSegmentIndex === 0 ? 'เริ่ม' : 'ต่อ'}
                         title={challengeSegmentIndex === 0 ? 'เริ่ม' : 'ต่อ'}
                       >
-                        <Play size={16} aria-hidden="true" />
                         <span className="button-copy">{challengeSegmentIndex === 0 ? 'เริ่ม' : 'ต่อ'}</span>
                       </button>
                     </div>
