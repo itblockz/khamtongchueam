@@ -54,6 +54,8 @@ function startTwoPlayerGame(firstPlayer: string, secondPlayer: string) {
 }
 
 function toggleSyllableDebug() {
+  const settingsButton = screen.getByRole('button', { name: 'ตั้งค่าเกม' })
+  fireEvent.click(settingsButton)
   const toggleButton =
     screen.queryByRole('button', { name: 'แสดงการแยกพยางค์' }) ??
     screen.queryByRole('button', { name: 'ซ่อนการแยกพยางค์' })
@@ -63,6 +65,8 @@ function toggleSyllableDebug() {
 }
 
 function toggleGmOpeningWord() {
+  const settingsButton = screen.getByRole('button', { name: 'ตั้งค่าเกม' })
+  fireEvent.click(settingsButton)
   fireEvent.click(screen.getByRole('button', { name: 'ผู้คุมเกมเริ่ม' }))
 }
 
@@ -501,6 +505,7 @@ describe('คำต้องเชื่อม', () => {
     fillSetupNames(['ออย', 'บีม'])
     fireEvent.click(screen.getByRole('button', { name: 'ยืนยันผู้เล่น' }))
 
+    fireEvent.click(screen.getByRole('button', { name: 'ตั้งค่าเกม' }))
     const toggleButton = screen.getByRole('button', { name: 'ผู้คุมเกมเริ่ม' })
 
     expect(toggleButton).toHaveAttribute('aria-pressed', 'true')
@@ -518,6 +523,7 @@ describe('คำต้องเชื่อม', () => {
     fillSetupNames(['ออย', 'บีม'])
     fireEvent.click(screen.getByRole('button', { name: 'ยืนยันผู้เล่น' }))
 
+    fireEvent.click(screen.getByRole('button', { name: 'ตั้งค่าเกม' }))
     expect(
       screen.getByRole('button', { name: 'ผู้คุมเกมเริ่ม' }),
     ).toHaveAttribute('aria-pressed', 'false')
@@ -616,6 +622,7 @@ describe('คำต้องเชื่อม', () => {
       screen.getByRole('button', { name: 'เล่นรอบถัดไปด้วยรายชื่อเดิม' }),
     )
 
+    fireEvent.click(screen.getByRole('button', { name: 'ตั้งค่าเกม' }))
     expect(
       screen.getByRole('button', { name: 'ผู้คุมเกมเริ่ม' }),
     ).toHaveAttribute('aria-pressed', 'true')
@@ -738,6 +745,7 @@ describe('คำต้องเชื่อม', () => {
   it('keeps the syllable debug panel hidden by default and toggles it on demand', () => {
     startTwoPlayerGame('ต้น', 'แพรว')
 
+    fireEvent.click(screen.getByRole('button', { name: 'ตั้งค่าเกม' }))
     const showButton = screen.getByRole('button', {
       name: 'แสดงการแยกพยางค์',
     })
@@ -773,6 +781,7 @@ describe('คำต้องเชื่อม', () => {
 
     startTwoPlayerGame('ต้น', 'แพรว')
 
+    fireEvent.click(screen.getByRole('button', { name: 'ตั้งค่าเกม' }))
     expect(
       screen.getByRole('button', { name: 'ซ่อนการแยกพยางค์' }),
     ).toHaveAttribute('aria-pressed', 'true')
@@ -784,6 +793,7 @@ describe('คำต้องเชื่อม', () => {
 
     startTwoPlayerGame('ต้น', 'แพรว')
 
+    fireEvent.click(screen.getByRole('button', { name: 'ตั้งค่าเกม' }))
     expect(
       screen.getByRole('button', { name: 'แสดงการแยกพยางค์' }),
     ).toHaveAttribute('aria-pressed', 'false')

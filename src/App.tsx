@@ -22,6 +22,12 @@ import {
   ListBoxItem,
   Popover,
 } from 'react-aria-components'
+import {
+  Settings,
+  Play,
+  ChevronRight,
+  X,
+} from 'lucide-react'
 import './App.css'
 import {
   acknowledgeRoundSummary,
@@ -462,6 +468,111 @@ function ChallengeChallengerListBox({
         </ListBoxItem>
       )}
     </ListBox>
+  )
+}
+
+interface SettingsDropdownProps {
+  isGmOpeningEnabled: boolean
+  isSyllableDebugVisible: boolean
+  onToggleGmOpening: () => void
+  onToggleSyllableDebug: () => void
+  isSubmittingTurn: boolean
+}
+
+function SettingsDropdown({
+  isGmOpeningEnabled,
+  isSyllableDebugVisible,
+  onToggleGmOpening,
+  onToggleSyllableDebug,
+  isSubmittingTurn,
+}: SettingsDropdownProps) {
+  const [isOpen, setIsOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
+  const buttonRef = useRef<HTMLButtonElement>(null)
+
+  useEffect(() => {
+    if (!isOpen) return
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        menuRef.current &&
+        !menuRef.current.contains(event.target as Node) &&
+        buttonRef.current &&
+        !buttonRef.current.contains(event.target as Node)
+      ) {
+        setIsOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [isOpen])
+
+  const handleKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === 'Escape') {
+      setIsOpen(false)
+      buttonRef.current?.focus()
+    }
+  }
+
+  return (
+    <div className="settings-dropdown">
+      <button
+        ref={buttonRef}
+        type="button"
+        className="ghost-button settings-dropdown-trigger"
+        onClick={() => setIsOpen((v) => !v)}
+        aria-expanded={isOpen}
+        aria-haspopup="menu"
+        aria-label="ตั้งค่าเกม"
+        title="ตั้งค่าเกม"
+      >
+        <Settings size={18} aria-hidden="true" />
+      </button>
+      {isOpen && (
+        <div
+          ref={menuRef}
+          className="settings-dropdown-menu surface-card"
+          role="menu"
+          onKeyDown={handleKeyDown}
+          onBlur={(e) => {
+            if (!menuRef.current?.contains(e.relatedTarget as Node)) {
+              setIsOpen(false)
+            }
+          }}
+        >
+          <button
+            type="button"
+            className="settings-dropdown-item"
+            onClick={(e) => {
+              e.currentTarget.focus()
+              onToggleGmOpening()
+            }}
+            disabled={isSubmittingTurn}
+            aria-pressed={isGmOpeningEnabled}
+            role="menuitemcheckbox"
+          >
+            <span className="settings-dropdown-item-check" aria-hidden="true">
+              {isGmOpeningEnabled ? '✓' : ''}
+            </span>
+            ผู้คุมเกมเริ่ม
+          </button>
+          <button
+            type="button"
+            className="settings-dropdown-item"
+            onClick={(e) => {
+              e.currentTarget.focus()
+              onToggleSyllableDebug()
+            }}
+            aria-pressed={isSyllableDebugVisible}
+            role="menuitemcheckbox"
+          >
+            <span className="settings-dropdown-item-check" aria-hidden="true">
+              {isSyllableDebugVisible ? '✓' : ''}
+            </span>
+            แสดงการแยกพยางค์
+          </button>
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -2070,9 +2181,7 @@ function App() {
                         tabIndex={-1}
                         title="ลบผู้เล่น"
                       >
-                        <span className="button-symbol" aria-hidden="true">
-                          ×
-                        </span>
+                        <X size={14} aria-hidden="true" />
                       </button>
                     </div>
                   </li>
@@ -2130,45 +2239,17 @@ function App() {
                     ชาเลนจ์
                   </button>
                 )}
-                {gameState.phase === 'playing' && (
-                  <button
-                    type="button"
-                    className="ghost-button debug-toggle-button gm-opening-toggle-button"
-                    onClick={handleToggleGmOpeningWord}
-                    disabled={isSubmittingTurn}
-                    aria-pressed={isGmOpeningWordEnabled}
-                    aria-label="ผู้คุมเกมเริ่ม"
-                    title={
-                      isGmOpeningWordEnabled
-                        ? 'ปิดโหมดผู้คุมเกมเริ่ม'
-                        : 'เปิดโหมดผู้คุมเกมเริ่ม'
-                    }
-                  >
-                    ผู้คุมเกมเริ่ม
-                  </button>
-                )}
-                <button
-                  type="button"
-                  className="ghost-button debug-toggle-button"
-                  onClick={() =>
-                    setIsSyllableDebugVisible((current) => !current)
-                  }
-                  aria-pressed={isSyllableDebugVisible}
-                  aria-label={
-                    isSyllableDebugVisible
-                      ? 'ซ่อนการแยกพยางค์'
-                      : 'แสดงการแยกพยางค์'
-                  }
-                  title={
-                    isSyllableDebugVisible
-                      ? 'ซ่อนการแยกพยางค์'
-                      : 'แสดงการแยกพยางค์'
-                  }
-                >
-                  {isSyllableDebugVisible
-                    ? 'ซ่อนการแยกพยางค์'
-                    : 'แสดงการแยกพยางค์'}
-                </button>
+                {(gameState.phase === 'playing' || gameState.phase === 'finished') && (
+                    <SettingsDropdown
+                      isGmOpeningEnabled={isGmOpeningWordEnabled}
+                      isSyllableDebugVisible={isSyllableDebugVisible}
+                      onToggleGmOpening={handleToggleGmOpeningWord}
+                      onToggleSyllableDebug={() =>
+                        setIsSyllableDebugVisible((current) => !current)
+                      }
+                      isSubmittingTurn={isSubmittingTurn}
+                    />
+                  )}
               </div>
               {challengeNote && (
                 <p className="challenge-note" role="status" aria-live="polite">
@@ -2277,43 +2358,34 @@ function App() {
                 <button
                   ref={startFirstTurnButtonRef}
                   type="button"
-                  className="primary-button symbol-button start-turn-button"
+                  className="primary-button start-turn-button"
                   onClick={handleContinueToRoundSummary}
                   onKeyDown={handleStartFirstTurnKeyDown}
                   aria-label="สรุปรอบ"
                   title="สรุปรอบ"
                 >
-                  <span className="button-symbol" aria-hidden="true">
-                    ▶
-                  </span>
                   <span className="button-copy">สรุปรอบ</span>
                 </button>
               ) : isGmOpeningWordMode ? (
                 <button
                   type="submit"
-                  className="primary-button symbol-button start-turn-button gm-opening-submit-button"
+                  className="primary-button start-turn-button gm-opening-submit-button"
                   disabled={!canSubmitGmOpeningWord}
                   aria-label="เริ่มด้วยคำนี้"
                   title="เริ่มด้วยคำนี้"
                 >
-                  <span className="button-symbol" aria-hidden="true">
-                    →
-                  </span>
                   <span className="button-copy">เริ่มด้วยคำนี้</span>
                 </button>
               ) : requiresManualTurnStart ? (
                 <button
                   ref={startFirstTurnButtonRef}
                   type="button"
-                  className="primary-button symbol-button start-turn-button"
+                  className="primary-button start-turn-button"
                   onClick={handleStartFirstTurn}
                   onKeyDown={handleStartFirstTurnKeyDown}
                   aria-label={isAwaitingFirstTurnStart ? 'เริ่มรอบแรก' : 'เริ่มตาถัดไป'}
                   title={isAwaitingFirstTurnStart ? 'เริ่มรอบแรก' : 'เริ่มตาถัดไป'}
                 >
-                  <span className="button-symbol" aria-hidden="true">
-                    ▶
-                  </span>
                   <span className="button-copy">
                     {isAwaitingFirstTurnStart ? 'เริ่มรอบแรก' : 'เริ่มตาถัดไป'}
                   </span>
@@ -2327,9 +2399,7 @@ function App() {
                     aria-label="คำไม่ใช่คำนาม"
                     title="คำไม่ใช่คำนาม"
                   >
-                    <span className="button-symbol" aria-hidden="true">
-                      ✗
-                    </span>
+                    <X size={16} aria-hidden="true" />
                   </button>
                   <button
                     type="submit"
@@ -2338,9 +2408,7 @@ function App() {
                     aria-label="ถัดไป"
                     title="ถัดไป"
                   >
-                    <span className="button-symbol" aria-hidden="true">
-                      →
-                    </span>
+                    <ChevronRight size={16} aria-hidden="true" />
                   </button>
                 </>
               )}
@@ -2497,7 +2565,7 @@ function App() {
                     <span className="challenge-chain-prev">
                       {selectedChallengePreviousAnswer?.answer ?? '-'}
                     </span>
-                    <span className="challenge-chain-arrow">→</span>
+                    <ChevronRight size={16} aria-hidden="true" className="challenge-chain-arrow" />
                     <span className="challenge-chain-target">
                       <span className="challenge-chain-target-word">
                         {selectedChallengedAnswer?.answer ?? '-'}
@@ -2542,7 +2610,7 @@ function App() {
                         aria-label={challengeSegmentIndex === 0 ? 'เริ่ม' : 'ต่อ'}
                         title={challengeSegmentIndex === 0 ? 'เริ่ม' : 'ต่อ'}
                       >
-                        <span className="button-symbol" aria-hidden="true">▶</span>
+                        <Play size={16} aria-hidden="true" />
                         <span className="button-copy">{challengeSegmentIndex === 0 ? 'เริ่ม' : 'ต่อ'}</span>
                       </button>
                     </div>
@@ -2569,7 +2637,7 @@ function App() {
                     <span className="challenge-chain-prev">
                       {selectedChallengePreviousAnswer?.answer ?? '-'}
                     </span>
-                    <span className="challenge-chain-arrow">→</span>
+                    <ChevronRight size={16} aria-hidden="true" className="challenge-chain-arrow" />
                     <span className="challenge-chain-target">
                       <span className="challenge-chain-target-word">
                         {selectedChallengedAnswer?.answer ?? '-'}
@@ -2684,13 +2752,7 @@ function App() {
             <section className="surface-card board-card active-board-card">
               <div className="panel-header compact">
                 <div>
-                  <p className="eyebrow">ยังอยู่ในเกม</p>
-                  <h2>
-                    <span className="headline-symbol" aria-hidden="true">
-                      ◌
-                    </span>
-                    คิวผู้เล่น
-                  </h2>
+                  <h2>ผู้เล่นในเกม</h2>
                 </div>
                 <span className="count-badge">{visiblePlayers.length} คน</span>
               </div>
@@ -2723,13 +2785,7 @@ function App() {
             >
               <div className="panel-header compact">
                 <div>
-                  <p className="eyebrow">หลุดออกจากเกม</p>
-                  <h2>
-                    <span className="headline-symbol" aria-hidden="true">
-                      ×
-                    </span>
-                    ผู้เล่นที่ตกรอบ
-                  </h2>
+                  <h2>ผู้เล่นที่ตกรอบ</h2>
                 </div>
                 <span className="count-badge">{eliminatedPlayers.length} คน</span>
               </div>
