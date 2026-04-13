@@ -2325,7 +2325,7 @@ function App() {
                     className="secondary-button symbol-button compact-symbol-button"
                     onClick={handleHostEliminateNotNoun}
                     aria-label="คำไม่ใช่คำนาม"
-                    title="คำไม่ใช่คำนาม (Host)"
+                    title="คำไม่ใช่คำนาม"
                   >
                     <span className="button-symbol" aria-hidden="true">
                       ✗
