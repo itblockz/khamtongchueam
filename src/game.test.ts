@@ -13,6 +13,7 @@ import {
   getScoreAwards,
   resolveChallenge,
   resumeChallengeDebate,
+  startRoundWithOpeningWord,
   startActiveTurn,
   startChallengeDebate,
   TURN_DURATION_MS,
@@ -90,6 +91,122 @@ describe('advanceTurn', () => {
 
     expect(confirmedState.activePlayerId).toBe('c')
     expect(confirmedState.turnDirection).toBe(-1)
+  })
+
+  it('can start a confirmed round with a GM opening word without advancing the active player', () => {
+    const confirmedState = createConfirmedGameState(
+      [
+        { id: 'a', name: 'A' },
+        { id: 'b', name: 'B' },
+      ],
+      3000,
+    )
+
+    const startedState = startRoundWithOpeningWord(
+      confirmedState,
+      'alpha',
+      ['a', 'lpha'],
+      500,
+      3000,
+    )
+
+    expect(startedState.activePlayerId).toBe('a')
+    expect(startedState.isAwaitingFirstTurnStart).toBe(false)
+    expect(startedState.turnStartedAt).toBe(500)
+    expect(startedState.turnDeadlineAt).toBe(3500)
+    expect(startedState.timeLeftMs).toBe(3000)
+    expect(startedState.players.find((player) => player.id === 'a')?.answers).toEqual([])
+    expect(startedState.usedSyllablesInRound).toEqual(['a', 'lpha'])
+    expect(startedState.answerHistory).toHaveLength(1)
+    expect(startedState.answerHistory[0]).toMatchObject({
+      answer: 'alpha',
+      previousValidAnswerId: null,
+      source: 'gm_seed',
+    })
+  })
+
+  it('links the first player answer to the GM opening word and exposes it to challenge flow', () => {
+    const confirmedState = createConfirmedGameState(
+      [
+        { id: 'a', name: 'A' },
+        { id: 'b', name: 'B' },
+        { id: 'c', name: 'C' },
+      ],
+      3000,
+    )
+
+    const afterOpening = startRoundWithOpeningWord(
+      confirmedState,
+      'alpha',
+      ['a'],
+      100,
+      3000,
+    )
+    const afterFirstSubmit = advanceTurn(afterOpening, submit('bravo', 200, ['b']))
+    const openingRecord = afterFirstSubmit.answerHistory[0]
+    const firstPlayerAnswer = afterFirstSubmit.answerHistory[1]
+
+    expect(openingRecord?.source).toBe('gm_seed')
+    expect(firstPlayerAnswer).toMatchObject({
+      answer: 'bravo',
+      source: 'player',
+      previousValidAnswerId: openingRecord.id,
+    })
+    expect(
+      getChallengeableAnswers(afterFirstSubmit).map((answerRecord) => answerRecord.answer),
+    ).toEqual(['bravo'])
+  })
+
+  it('keeps the GM opening word valid when the first linked player answer is invalidated by challenge', () => {
+    const confirmedState = createConfirmedGameState(
+      [
+        { id: 'a', name: 'A' },
+        { id: 'b', name: 'B' },
+        { id: 'c', name: 'C' },
+      ],
+      3000,
+    )
+
+    const afterOpening = startRoundWithOpeningWord(
+      confirmedState,
+      'alpha',
+      ['a'],
+      100,
+      3000,
+    )
+    const afterFirstSubmit = advanceTurn(afterOpening, submit('bravo', 200, ['b']))
+    const openingRecord = afterFirstSubmit.answerHistory[0]
+    const challengedAnswer = afterFirstSubmit.answerHistory[1]
+    const judgingState = {
+      ...afterFirstSubmit,
+      challenge: {
+        ...afterFirstSubmit.challenge,
+        status: 'judging' as const,
+        challengerPlayerId: 'c',
+        challengedAnswerId: challengedAnswer.id,
+        challengedPlayerId: 'a',
+        previousValidAnswerId: openingRecord.id,
+        currentSpeaker: null,
+        segmentIndex: 0,
+        segmentStartedAt: null,
+        segmentDeadlineAt: null,
+        timeLeftMs: 0,
+        segmentAwaitingContinue: false,
+        awaitingChallengeStart: false,
+      },
+    }
+    const resolvedState = resolveChallenge(judgingState, 'not_connects', 7000)
+
+    expect(
+      resolvedState.answerHistory
+        .filter((answerRecord) => !answerRecord.invalidatedByChallenge)
+        .map((answerRecord) => answerRecord.answer),
+    ).toEqual(['alpha'])
+    expect(
+      resolvedState.answerHistory.find((answerRecord) => answerRecord.answer === 'alpha')
+        ?.source,
+    ).toBe('gm_seed')
+    expect(resolvedState.usedSyllablesInRound).toEqual(['a'])
   })
 
   it('pauses the next turn after an elimination and keeps moving forward across cycle wraps', () => {

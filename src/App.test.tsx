@@ -7,6 +7,7 @@ const MATCH_ROUNDS_PER_MATCH = 4
 const SEGMENTATION_DEBOUNCE_MS = 250
 const CHALLENGE_SEGMENT_MS = 15000
 const SEGMENTATION_ERROR_TEXT = 'ระบบแยกพยางค์ไม่พร้อมใช้งาน'
+const GM_OPENING_WORD_STORAGE_KEY = 'khamtongchueam:gm-opening-word-enabled'
 
 const mockSyllablesByText: Record<string, string[]> = {
   ก: ['ก'],
@@ -59,6 +60,10 @@ function toggleSyllableDebug() {
 
   expect(toggleButton).not.toBeNull()
   fireEvent.click(toggleButton!)
+}
+
+function toggleGmOpeningWord() {
+  fireEvent.click(screen.getByRole('button', { name: 'GM คำตั้งต้น' }))
 }
 
 function expectLeaderboardRow(
@@ -241,6 +246,7 @@ describe('คำต้องเชื่อม', () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-04-03T12:00:00.000Z'))
     window.localStorage.clear()
+    window.localStorage.setItem(GM_OPENING_WORD_STORAGE_KEY, 'false')
 
     vi.stubGlobal(
       'fetch',
@@ -486,6 +492,135 @@ describe('คำต้องเชื่อม', () => {
     expect(screen.getByRole('button', { name: 'สรุปรอบ' })).toHaveFocus()
     await openRoundSummary()
     expect(screen.getByLabelText('ตารางคะแนนสะสม')).toBeInTheDocument()
+  })
+
+  it('keeps the GM opening word toggle on by default and respects localStorage', () => {
+    window.localStorage.removeItem(GM_OPENING_WORD_STORAGE_KEY)
+
+    const firstRender = render(<App />)
+    fillSetupNames(['ออย', 'บีม'])
+    fireEvent.click(screen.getByRole('button', { name: 'ยืนยันผู้เล่น' }))
+
+    const toggleButton = screen.getByRole('button', { name: 'GM คำตั้งต้น' })
+
+    expect(toggleButton).toHaveAttribute('aria-pressed', 'true')
+    expect(window.localStorage.getItem(GM_OPENING_WORD_STORAGE_KEY)).toBe('true')
+    expect(screen.getByLabelText('คำตั้งต้นของ GM')).toBeEnabled()
+
+    fireEvent.click(toggleButton)
+
+    expect(toggleButton).toHaveAttribute('aria-pressed', 'false')
+    expect(window.localStorage.getItem(GM_OPENING_WORD_STORAGE_KEY)).toBe('false')
+
+    firstRender.unmount()
+
+    render(<App />)
+    fillSetupNames(['ออย', 'บีม'])
+    fireEvent.click(screen.getByRole('button', { name: 'ยืนยันผู้เล่น' }))
+
+    expect(
+      screen.getByRole('button', { name: 'GM คำตั้งต้น' }),
+    ).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByLabelText('คำตอบของ ออย')).toBeDisabled()
+  })
+
+  it('lets the GM submit an opening word before the first turn and starts the round immediately', async () => {
+    window.localStorage.removeItem(GM_OPENING_WORD_STORAGE_KEY)
+
+    render(<App />)
+    fillSetupNames(['ออย', 'บีม'])
+    fireEvent.click(screen.getByRole('button', { name: 'ยืนยันผู้เล่น' }))
+
+    const gmOpeningInput = screen.getByLabelText('คำตั้งต้นของ GM')
+
+    expect(gmOpeningInput).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'เริ่มด้วยคำนี้' })).toBeInTheDocument()
+    expect(screen.getByText('รอคำตั้งต้น')).toBeInTheDocument()
+
+    fireEvent.change(gmOpeningInput, { target: { value: 'กาแฟ' } })
+    await flushSegmentationDebounce()
+    toggleSyllableDebug()
+
+    fireEvent.submit(gmOpeningInput.closest('form')!)
+    await flushAsyncWork()
+
+    expect(screen.queryByRole('button', { name: 'เริ่มรอบแรก' })).not.toBeInTheDocument()
+    expect(screen.getByLabelText('คำตอบของ ออย')).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'ถัดไป' })).toBeDisabled()
+
+    const usedSyllablesDebug = within(
+      screen.getByLabelText('พยางค์ที่บันทึกในรอบนี้'),
+    )
+
+    expect(usedSyllablesDebug.getByText('กา')).toBeInTheDocument()
+    expect(usedSyllablesDebug.getByText('แฟ')).toBeInTheDocument()
+  })
+
+  it('shows a backend segmentation error for the GM opening word without starting the round', async () => {
+    window.localStorage.removeItem(GM_OPENING_WORD_STORAGE_KEY)
+
+    render(<App />)
+    fillSetupNames(['เอ', 'บี'])
+    fireEvent.click(screen.getByRole('button', { name: 'ยืนยันผู้เล่น' }))
+
+    const gmOpeningInput = screen.getByLabelText('คำตั้งต้นของ GM')
+
+    fireEvent.change(gmOpeningInput, { target: { value: 'ปิดระบบ' } })
+    fireEvent.submit(gmOpeningInput.closest('form')!)
+    await flushAsyncWork()
+
+    expect(screen.getByRole('alert')).toHaveTextContent(SEGMENTATION_ERROR_TEXT)
+    expect(screen.getByRole('heading', { name: 'ถึงตา เอ' })).toBeInTheDocument()
+    expect(screen.getByLabelText('คำตั้งต้นของ GM')).toHaveValue('ปิดระบบ')
+    expect(screen.getByRole('button', { name: 'เริ่มด้วยคำนี้' })).toBeEnabled()
+  })
+
+  it('clears the GM opening word draft when the toggle is turned off before the round starts', async () => {
+    window.localStorage.removeItem(GM_OPENING_WORD_STORAGE_KEY)
+
+    render(<App />)
+    fillSetupNames(['เอ', 'บี'])
+    fireEvent.click(screen.getByRole('button', { name: 'ยืนยันผู้เล่น' }))
+
+    const gmOpeningInput = screen.getByLabelText('คำตั้งต้นของ GM')
+
+    fireEvent.change(gmOpeningInput, { target: { value: 'กาแฟ' } })
+    await flushSegmentationDebounce()
+    toggleGmOpeningWord()
+
+    expect(
+      screen.getByRole('button', { name: 'GM คำตั้งต้น' }),
+    ).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByRole('button', { name: 'เริ่มรอบแรก' })).toBeInTheDocument()
+    expect(screen.getByLabelText('คำตอบของ เอ')).toHaveValue('')
+    expect(screen.getByLabelText('คำตอบของ เอ')).toBeDisabled()
+    expect(screen.queryByText('รอคำตั้งต้น')).not.toBeInTheDocument()
+  })
+
+  it('keeps the GM opening word toggle enabled across replay and asks for a fresh opening word next round', async () => {
+    window.localStorage.removeItem(GM_OPENING_WORD_STORAGE_KEY)
+
+    render(<App />)
+    fillSetupNames(['ออย', 'บีม'])
+    fireEvent.click(screen.getByRole('button', { name: 'ยืนยันผู้เล่น' }))
+
+    const gmOpeningInput = screen.getByLabelText('คำตั้งต้นของ GM')
+
+    fireEvent.change(gmOpeningInput, { target: { value: 'กาแฟ' } })
+    fireEvent.submit(gmOpeningInput.closest('form')!)
+    await flushAsyncWork()
+    await advanceTimers(3100)
+    await openRoundSummary()
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'เล่นรอบถัดไปด้วยรายชื่อเดิม' }),
+    )
+
+    expect(
+      screen.getByRole('button', { name: 'GM คำตั้งต้น' }),
+    ).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByLabelText('คำตั้งต้นของ GM')).toHaveValue('')
+    expect(screen.getByRole('button', { name: 'เริ่มด้วยคำนี้' })).toBeInTheDocument()
   })
 
   it('eliminates the current player when no input is started within 3 seconds', async () => {

@@ -9,6 +9,7 @@ export type TurnDirection = 1 | -1
 export type ChallengeStatus = 'idle' | 'selecting' | 'debating' | 'judging'
 export type ChallengeSpeaker = 'challenger' | 'challenged'
 export type ChallengeDecision = 'connects' | 'not_connects'
+export type AnswerSource = 'player' | 'gm_seed'
 export type EliminationReason =
   | 'timeout'
   | 'late_submit'
@@ -52,6 +53,7 @@ export interface AnswerRecord {
   playerId: string
   answer: string
   syllables: string[]
+  source: AnswerSource
   previousValidAnswerId: string | null
   invalidatedByChallenge: boolean
   challengeResolved: boolean
@@ -460,15 +462,72 @@ function createAnswerRecord(
   answer: string,
   syllables: string[],
   previousValidAnswerId: string | null,
+  source: AnswerSource = 'player',
 ): AnswerRecord {
   return {
     id: createId(),
     playerId,
     answer,
     syllables,
+    source,
     previousValidAnswerId,
     invalidatedByChallenge: false,
     challengeResolved: false,
+  }
+}
+
+export function startRoundWithOpeningWord(
+  state: GameState,
+  answer: string,
+  syllables: string[],
+  now = Date.now(),
+  durationMs = TURN_DURATION_MS,
+): GameState {
+  if (
+    state.phase !== 'playing' ||
+    state.activePlayerId === null ||
+    !state.isAwaitingFirstTurnStart ||
+    state.turnStartedAt !== null ||
+    state.turnDeadlineAt !== null ||
+    state.isSafeToFinish ||
+    state.challenge.status !== 'idle'
+  ) {
+    return state
+  }
+
+  const normalizedAnswer = answer.trim()
+  const normalizedSyllables = normalizeProvidedSyllables(syllables)
+
+  if (!normalizedAnswer || !normalizedSyllables || normalizedSyllables.length === 0) {
+    return state
+  }
+
+  return {
+    ...state,
+    isAwaitingFirstTurnStart: false,
+    isEliminationPause: false,
+    usedSyllablesInRound: [
+      ...state.usedSyllablesInRound,
+      ...normalizedSyllables,
+    ],
+    usedSyllableEntriesInRound: [
+      ...state.usedSyllableEntriesInRound,
+      ...normalizedSyllables.map((syllable) => ({
+        syllable,
+        answer: normalizedAnswer,
+      })),
+    ],
+    answerHistory: [
+      ...state.answerHistory,
+      createAnswerRecord(
+        state.activePlayerId,
+        normalizedAnswer,
+        normalizedSyllables,
+        null,
+        'gm_seed',
+      ),
+    ],
+    ...buildTurnState(now, durationMs),
   }
 }
 

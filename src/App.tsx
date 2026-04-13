@@ -44,6 +44,7 @@ import {
   prepareRoster,
   resolveChallenge,
   resumeChallengeDebate,
+  startRoundWithOpeningWord,
   startActiveTurn,
   startChallengeDebate,
   confirmChallengeDebate,
@@ -67,6 +68,7 @@ import { useTurnTimer } from './useTurnTimer'
 const MATCH_ROUNDS_PER_MATCH = 4
 const SYLLABLE_REQUEST_DEBOUNCE_MS = 250
 const SYLLABLE_DEBUG_STORAGE_KEY = 'khamtongchueam:show-syllable-debug'
+const GM_OPENING_WORD_STORAGE_KEY = 'khamtongchueam:gm-opening-word-enabled'
 
 function getTurnDirectionForMatchRound(matchRound: number): TurnDirection {
   return matchRound % 2 === 1 ? 1 : -1
@@ -111,6 +113,18 @@ function getInitialSyllableDebugVisibility() {
     return window.localStorage.getItem(SYLLABLE_DEBUG_STORAGE_KEY) === 'true'
   } catch {
     return false
+  }
+}
+
+function getInitialGmOpeningWordEnabled() {
+  if (typeof window === 'undefined') {
+    return true
+  }
+
+  try {
+    return window.localStorage.getItem(GM_OPENING_WORD_STORAGE_KEY) !== 'false'
+  } catch {
+    return true
   }
 }
 
@@ -542,6 +556,10 @@ function App() {
     challengeChallengerActiveOptionId,
     setChallengeChallengerActiveOptionId,
   ] = useState<string | null>(null)
+  const [gmOpeningWordDraft, setGmOpeningWordDraft] = useState('')
+  const [isGmOpeningWordEnabled, setIsGmOpeningWordEnabled] = useState(() =>
+    getInitialGmOpeningWordEnabled(),
+  )
   const [isSyllableDebugVisible, setIsSyllableDebugVisible] = useState(() =>
     getInitialSyllableDebugVisibility(),
   )
@@ -723,6 +741,24 @@ function App() {
     gameState.phase === 'playing' && (isAwaitingFirstTurnStart || isPausedTurn)
   const requiresPrimaryAction =
     requiresManualTurnStart || isAwaitingRoundSummary
+  const isGmOpeningWordMode =
+    gameState.phase === 'playing' &&
+    isAwaitingFirstTurnStart &&
+    isGmOpeningWordEnabled &&
+    !isChallengeActive
+  const editableInputValue = isGmOpeningWordMode
+    ? gmOpeningWordDraft
+    : gameState.currentInput
+  const answerInputLabel = isGmOpeningWordMode
+    ? 'คำตั้งต้นของ GM'
+    : `คำตอบของ ${playScreenPlayer?.name ?? ''}`
+  const answerInputPlaceholder = isGmOpeningWordMode
+    ? 'พิมพ์คำตั้งต้นของ GM'
+    : 'พิมพ์คำตอบของผู้เล่น'
+  const canSubmitGmOpeningWord =
+    isGmOpeningWordMode &&
+    !isSubmittingTurn &&
+    gmOpeningWordDraft.trim().length > 0
   const canSubmitCurrentTurn =
     gameState.phase === 'playing' &&
     !isChallengeActive &&
@@ -789,6 +825,10 @@ function App() {
         : gameState.phase === 'playing'
           ? `เวลาเหลือ ${formatSeconds(gameState.timeLeftMs)} วินาที`
           : 'เวลา'
+  const displayedTimerValue = isGmOpeningWordMode ? 'รอคำตั้งต้น' : timerValue
+  const displayedTimerAriaLabel = isGmOpeningWordMode
+    ? 'เวลารอคำตั้งต้นของ GM'
+    : timerAriaLabel
   const challengeNote = null
   const currentInputSyllables = currentInputSegmentation?.syllables ?? []
   const currentInputSegmentationMeta = currentInputSegmentation
@@ -934,6 +974,11 @@ function App() {
       return
     }
 
+    if (isGmOpeningWordMode) {
+      answerInputRef.current?.focus()
+      return
+    }
+
     if (isAwaitingFirstTurnStart || isPausedTurn) {
       startFirstTurnButtonRef.current?.focus()
       return
@@ -947,6 +992,7 @@ function App() {
     gameState.activePlayerId,
     gameState.turnStartedAt,
     isAwaitingFirstTurnStart,
+    isGmOpeningWordMode,
     gameState.isAwaitingFirstTurnStart,
     isPausedTurn,
     isChallengeSelecting,
@@ -1084,6 +1130,17 @@ function App() {
   }, [isSyllableDebugVisible])
 
   useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        GM_OPENING_WORD_STORAGE_KEY,
+        String(isGmOpeningWordEnabled),
+      )
+    } catch {
+      return
+    }
+  }, [isGmOpeningWordEnabled])
+
+  useEffect(() => {
     if (gameState.phase !== 'finished' || gameState.isAwaitingRoundSummary) {
       return
     }
@@ -1124,13 +1181,13 @@ function App() {
       return
     }
 
-    if (requiresManualTurnStart || isChallengeActive) {
+    if ((requiresManualTurnStart && !isGmOpeningWordMode) || isChallengeActive) {
       setCurrentInputSegmentation(null)
       setIsSegmentingCurrentInput(false)
       return
     }
 
-    const normalizedInput = gameState.currentInput.trim()
+    const normalizedInput = editableInputValue.trim()
 
     if (!normalizedInput) {
       setCurrentInputSegmentation(null)
@@ -1180,9 +1237,10 @@ function App() {
     }
   }, [
     gameState.phase,
-    gameState.currentInput,
+    editableInputValue,
     requiresManualTurnStart,
     isChallengeActive,
+    isGmOpeningWordMode,
   ])
 
   useLayoutEffect(() => {
@@ -1473,6 +1531,7 @@ function App() {
       return
     }
 
+    setGmOpeningWordDraft('')
     setCurrentInputSegmentation(null)
     setSegmentationError(null)
     setIsSegmentingCurrentInput(false)
@@ -1489,6 +1548,23 @@ function App() {
   function handleStartFirstTurn() {
     setSegmentationError(null)
     updateGameState((current) => startActiveTurn(current))
+  }
+
+  function handleToggleGmOpeningWord() {
+    if (isSubmittingTurn) {
+      return
+    }
+
+    setIsGmOpeningWordEnabled((current) => {
+      if (current) {
+        setGmOpeningWordDraft('')
+        setCurrentInputSegmentation(null)
+        setSegmentationError(null)
+        setIsSegmentingCurrentInput(false)
+      }
+
+      return !current
+    })
   }
 
   function handleHostEliminateNotNoun() {
@@ -1564,8 +1640,45 @@ function App() {
     })
   }
 
+  function handleGmOpeningWordChange(event: ChangeEvent<HTMLInputElement>) {
+    setGmOpeningWordDraft(event.target.value)
+  }
+
   async function handleSubmitTurn(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+
+    if (isGmOpeningWordMode) {
+      const openingWord = gmOpeningWordDraft.trim()
+
+      if (!openingWord) {
+        return
+      }
+
+      const submittedAt = Date.now()
+
+      setIsSubmittingTurn(true)
+      setSegmentationError(null)
+
+      try {
+        const segmentation = await getSyllableSegmentation(openingWord)
+
+        updateGameState((current) =>
+          startRoundWithOpeningWord(
+            current,
+            openingWord,
+            segmentation.syllables,
+            submittedAt,
+          ),
+        )
+        setGmOpeningWordDraft('')
+      } catch (error) {
+        setSegmentationError(getSegmentationErrorMessage(error))
+      } finally {
+        setIsSubmittingTurn(false)
+      }
+
+      return
+    }
 
     const submittedAt = Date.now()
     const currentGameState = sessionState.gameState
@@ -1810,6 +1923,7 @@ function App() {
       return
     }
 
+    setGmOpeningWordDraft('')
     setCurrentInputSegmentation(null)
     setSegmentationError(null)
     setIsSegmentingCurrentInput(false)
@@ -1848,6 +1962,7 @@ function App() {
 
   function handleResetAll() {
     segmentationCacheRef.current.clear()
+    setGmOpeningWordDraft('')
     setCurrentInputSegmentation(null)
     setSegmentationError(null)
     setIsSegmentingCurrentInput(false)
@@ -2015,6 +2130,23 @@ function App() {
                     ชาเลนจ์
                   </button>
                 )}
+                {gameState.phase === 'playing' && (
+                  <button
+                    type="button"
+                    className="ghost-button debug-toggle-button gm-opening-toggle-button"
+                    onClick={handleToggleGmOpeningWord}
+                    disabled={isSubmittingTurn}
+                    aria-pressed={isGmOpeningWordEnabled}
+                    aria-label="GM คำตั้งต้น"
+                    title={
+                      isGmOpeningWordEnabled
+                        ? 'ปิดโหมด GM คำตั้งต้น'
+                        : 'เปิดโหมด GM คำตั้งต้น'
+                    }
+                  >
+                    GM คำตั้งต้น
+                  </button>
+                )}
                 <button
                   type="button"
                   className="ghost-button debug-toggle-button"
@@ -2059,7 +2191,7 @@ function App() {
                 </p>
               )}
               <label htmlFor="current-answer" className="sr-only">
-                คำตอบของ {playScreenPlayer.name}
+                {answerInputLabel}
               </label>
               <p className="sr-only">
                 {isChallengeSelecting
@@ -2070,6 +2202,8 @@ function App() {
                       ? 'ครบสองรอบโต้วาทีแล้ว เลือกผลตัดสิน'
                   : isAwaitingRoundSummary
                   ? `${eliminatedPlayerSummary} กดสรุปรอบเพื่อดูตารางคะแนนของ ${playScreenPlayer.name}`
+                  : isGmOpeningWordMode
+                  ? `GM พิมพ์คำตั้งต้นของรอบ แล้วกดเริ่มด้วยคำนี้เพื่อเริ่มจับเวลา ${playScreenPlayer.name}`
                   : isAwaitingFirstTurnStart
                   ? `ยืนยันผู้เล่นแล้ว กดเริ่มรอบแรกเพื่อเริ่มจับเวลา ${playScreenPlayer.name}`
                   : isPausedTurn
@@ -2092,7 +2226,7 @@ function App() {
               {isChallengeDebating && (
                 <p className="sr-only">Enter เพื่อข้ามช่วงโต้วาที</p>
               )}
-              {requiresPrimaryAction && (
+              {requiresPrimaryAction && !isGmOpeningWordMode && (
                 <span className="sr-only">ยังไม่เริ่มจับเวลา</span>
               )}
             </div>
@@ -2101,21 +2235,33 @@ function App() {
               <input
                 ref={answerInputRef}
                 id="current-answer"
-                className="text-input answer-input"
+                className={`text-input answer-input ${
+                  isGmOpeningWordMode ? 'is-gm-opening' : ''
+                }`}
                 type="text"
-                value={gameState.currentInput}
-                onChange={handleAnswerChange}
-                placeholder="พิมพ์คำตอบของผู้เล่น"
+                value={editableInputValue}
+                onChange={
+                  isGmOpeningWordMode
+                    ? handleGmOpeningWordChange
+                    : handleAnswerChange
+                }
+                placeholder={answerInputPlaceholder}
                 autoComplete="off"
-                disabled={requiresPrimaryAction || isSubmittingTurn || isChallengeActive}
+                disabled={
+                  isChallengeActive ||
+                  isSubmittingTurn ||
+                  (!isGmOpeningWordMode && requiresPrimaryAction)
+                }
               />
               <div
-                className={`turn-timer-pill ${timerTone}`}
+                className={`turn-timer-pill ${timerTone} ${
+                  isGmOpeningWordMode ? 'is-gm-opening' : ''
+                }`}
                 aria-live="polite"
-                aria-label={timerAriaLabel}
+                aria-label={displayedTimerAriaLabel}
               >
                 <span>เวลา</span>
-                <strong>{timerValue}</strong>
+                <strong>{displayedTimerValue}</strong>
               </div>
               {isChallengeActive ? (
                 <button
@@ -2127,41 +2273,49 @@ function App() {
                 >
                   <span className="button-copy">กำลังชาเลนจ์</span>
                 </button>
-              ) : requiresPrimaryAction ? (
+              ) : isAwaitingRoundSummary ? (
                 <button
                   ref={startFirstTurnButtonRef}
                   type="button"
                   className="primary-button symbol-button start-turn-button"
-                  onClick={
-                    isAwaitingRoundSummary
-                      ? handleContinueToRoundSummary
-                      : handleStartFirstTurn
-                  }
+                  onClick={handleContinueToRoundSummary}
                   onKeyDown={handleStartFirstTurnKeyDown}
-                  aria-label={
-                    isAwaitingRoundSummary
-                      ? 'สรุปรอบ'
-                      : isAwaitingFirstTurnStart
-                        ? 'เริ่มรอบแรก'
-                        : 'เริ่มตาถัดไป'
-                  }
-                  title={
-                    isAwaitingRoundSummary
-                      ? 'สรุปรอบ'
-                      : isAwaitingFirstTurnStart
-                        ? 'เริ่มรอบแรก'
-                        : 'เริ่มตาถัดไป'
-                  }
+                  aria-label="สรุปรอบ"
+                  title="สรุปรอบ"
+                >
+                  <span className="button-symbol" aria-hidden="true">
+                    ▶
+                  </span>
+                  <span className="button-copy">สรุปรอบ</span>
+                </button>
+              ) : isGmOpeningWordMode ? (
+                <button
+                  type="submit"
+                  className="primary-button symbol-button start-turn-button gm-opening-submit-button"
+                  disabled={!canSubmitGmOpeningWord}
+                  aria-label="เริ่มด้วยคำนี้"
+                  title="เริ่มด้วยคำนี้"
+                >
+                  <span className="button-symbol" aria-hidden="true">
+                    →
+                  </span>
+                  <span className="button-copy">เริ่มด้วยคำนี้</span>
+                </button>
+              ) : requiresManualTurnStart ? (
+                <button
+                  ref={startFirstTurnButtonRef}
+                  type="button"
+                  className="primary-button symbol-button start-turn-button"
+                  onClick={handleStartFirstTurn}
+                  onKeyDown={handleStartFirstTurnKeyDown}
+                  aria-label={isAwaitingFirstTurnStart ? 'เริ่มรอบแรก' : 'เริ่มตาถัดไป'}
+                  title={isAwaitingFirstTurnStart ? 'เริ่มรอบแรก' : 'เริ่มตาถัดไป'}
                 >
                   <span className="button-symbol" aria-hidden="true">
                     ▶
                   </span>
                   <span className="button-copy">
-                    {isAwaitingRoundSummary
-                      ? 'สรุปรอบ'
-                      : isAwaitingFirstTurnStart
-                        ? 'เริ่มรอบแรก'
-                        : 'เริ่มตาถัดไป'}
+                    {isAwaitingFirstTurnStart ? 'เริ่มรอบแรก' : 'เริ่มตาถัดไป'}
                   </span>
                 </button>
               ) : (
