@@ -2266,7 +2266,7 @@ function App() {
         <section className="phase-screen play-screen">
           {showPreviousWordPrompt && lastAnswer && gameState.phase === 'playing' && (
             <p className="previous-word-prompt">
-              พูดว่าคำที่เชื่อมกับ "{lastAnswer}"
+              พูดคำที่เชื่อมกับ "{lastAnswer}"
             </p>
           )}
           <form className="surface-card answer-panel" onSubmit={handleSubmitTurn}>
