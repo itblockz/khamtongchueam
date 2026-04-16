@@ -2260,6 +2260,64 @@ function App() {
 
       {playScreenPlayer && (gameState.phase === 'playing' || isAwaitingRoundSummary) && (
         <section className={`phase-screen play-screen ${showPreviousWordPrompt && lastAnswer && gameState.phase === 'playing' ? 'is-fullscreen-prompt' : ''}`}>
+          <section className="board-grid">
+            <section className="surface-card board-card active-board-card">
+              <div className="panel-header compact">
+                <div>
+                  <h2>ผู้เล่นในเกม</h2>
+                </div>
+                <span className="count-badge">{visiblePlayers.length} คน</span>
+              </div>
+
+              <ol
+                className="player-board active-player-board"
+                aria-label="ผู้เล่นที่ยังไม่ตกรอบ"
+              >
+                {displayedActivePlayers.map((player) => (
+                  <li
+                    className={getActivePlayerCardClass(
+                      player.id,
+                      displayedActivePlayerId,
+                    )}
+                    key={player.id}
+                  >
+                    <strong>{player.name}</strong>
+                    {player.id === displayedActivePlayerId && (
+                      <span className="player-chip-current">ตอนนี้</span>
+                    )}
+                  </li>
+                ))}
+              </ol>
+            </section>
+
+            <section
+              className={`surface-card board-card eliminated-board-card ${eliminatedPlayers.length === 0 ? 'is-empty-collapsed' : ''
+                }`.trim()}
+            >
+              <div className="panel-header compact">
+                <div>
+                  <h2>ผู้เล่นที่ตกรอบ</h2>
+                </div>
+                <span className="count-badge">{eliminatedPlayers.length} คน</span>
+              </div>
+
+              {eliminatedPlayers.length > 0 ? (
+                <ol
+                  className="player-board eliminated-player-board"
+                  aria-label="ผู้เล่นที่ตกรอบ"
+                >
+                  {eliminatedPlayers.map((player) => (
+                    <li className="player-chip is-out" key={player.id}>
+                      <strong>{player.name}</strong>
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                <p className="empty-note">ยังไม่มีใครตกรอบในตอนนี้</p>
+              )}
+            </section>
+          </section>
+
           {showPreviousWordPrompt && lastAnswer && gameState.phase === 'playing' && (
             <p className="previous-word-prompt">
               พูดคำนามที่เชื่อมกับ "{lastAnswer}"
@@ -2803,63 +2861,7 @@ function App() {
             </section>
           )}
 
-          <section className="board-grid">
-            <section className="surface-card board-card active-board-card">
-              <div className="panel-header compact">
-                <div>
-                  <h2>ผู้เล่นในเกม</h2>
-                </div>
-                <span className="count-badge">{visiblePlayers.length} คน</span>
-              </div>
 
-              <ol
-                className="player-board active-player-board"
-                aria-label="ผู้เล่นที่ยังไม่ตกรอบ"
-              >
-                {displayedActivePlayers.map((player) => (
-                  <li
-                    className={getActivePlayerCardClass(
-                      player.id,
-                      displayedActivePlayerId,
-                    )}
-                    key={player.id}
-                  >
-                    <strong>{player.name}</strong>
-                    {player.id === displayedActivePlayerId && (
-                      <span className="player-chip-current">ตอนนี้</span>
-                    )}
-                  </li>
-                ))}
-              </ol>
-            </section>
-
-            <section
-              className={`surface-card board-card eliminated-board-card ${eliminatedPlayers.length === 0 ? 'is-empty-collapsed' : ''
-                }`.trim()}
-            >
-              <div className="panel-header compact">
-                <div>
-                  <h2>ผู้เล่นที่ตกรอบ</h2>
-                </div>
-                <span className="count-badge">{eliminatedPlayers.length} คน</span>
-              </div>
-
-              {eliminatedPlayers.length > 0 ? (
-                <ol
-                  className="player-board eliminated-player-board"
-                  aria-label="ผู้เล่นที่ตกรอบ"
-                >
-                  {eliminatedPlayers.map((player) => (
-                    <li className="player-chip is-out" key={player.id}>
-                      <strong>{player.name}</strong>
-                    </li>
-                  ))}
-                </ol>
-              ) : (
-                <p className="empty-note">ยังไม่มีใครตกรอบในตอนนี้</p>
-              )}
-            </section>
-          </section>
         </section>
       )}
 
