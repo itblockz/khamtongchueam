@@ -715,9 +715,9 @@ function App() {
     gameState.phase === 'finished'
       ? Math.max(sessionState.completedRoundsInMatch, 1)
       : Math.min(
-          sessionState.completedRoundsInMatch + 1,
-          MATCH_ROUNDS_PER_MATCH,
-        )
+        sessionState.completedRoundsInMatch + 1,
+        MATCH_ROUNDS_PER_MATCH,
+      )
   const isMatchComplete =
     sessionState.completedRoundsInMatch >= MATCH_ROUNDS_PER_MATCH
   const replayButtonLabel = isMatchComplete
@@ -824,9 +824,9 @@ function App() {
   const latestEliminatedPlayer =
     eliminatedPlayers.length > 0
       ? [...eliminatedPlayers].sort(
-          (left, right) =>
-            (right.eliminatedOrder ?? 0) - (left.eliminatedOrder ?? 0),
-        )[0]
+        (left, right) =>
+          (right.eliminatedOrder ?? 0) - (left.eliminatedOrder ?? 0),
+      )[0]
       : null
   const eliminatedPlayerSummary = getEliminatedPlayerSummary(
     latestEliminatedPlayer,
@@ -842,46 +842,46 @@ function App() {
   const leaderboardEntries =
     gameState.phase === 'finished'
       ? gameState.players
-          .map((player, index) => ({
-            player,
-            score: leaderboardScores[player.id] ?? 0,
-            roundScores: Array.from(
-              { length: MATCH_ROUNDS_PER_MATCH },
-              (_, roundIndex) => {
-                if (roundIndex >= sessionState.completedRoundsInMatch) {
-                  return null
+        .map((player, index) => ({
+          player,
+          score: leaderboardScores[player.id] ?? 0,
+          roundScores: Array.from(
+            { length: MATCH_ROUNDS_PER_MATCH },
+            (_, roundIndex) => {
+              if (roundIndex >= sessionState.completedRoundsInMatch) {
+                return null
+              }
+
+              return (
+                roundScoreBreakdownsInMatch[roundIndex]?.[player.id] ?? {
+                  totalPoints: 0,
+                  challengeBonus: 0,
                 }
+              )
+            },
+          ),
+          roundPoints: roundAwardMap.get(player.id)?.points ?? 0,
+          placement: roundAwardMap.get(player.id)?.placement ?? null,
+          initialIndex: index,
+        }))
+        .sort((left, right) => {
+          if (right.score !== left.score) {
+            return right.score - left.score
+          }
 
-                return (
-                  roundScoreBreakdownsInMatch[roundIndex]?.[player.id] ?? {
-                    totalPoints: 0,
-                    challengeBonus: 0,
-                  }
-                )
-              },
-            ),
-            roundPoints: roundAwardMap.get(player.id)?.points ?? 0,
-            placement: roundAwardMap.get(player.id)?.placement ?? null,
-            initialIndex: index,
-          }))
-          .sort((left, right) => {
-            if (right.score !== left.score) {
-              return right.score - left.score
-            }
+          if (right.roundPoints !== left.roundPoints) {
+            return right.roundPoints - left.roundPoints
+          }
 
-            if (right.roundPoints !== left.roundPoints) {
-              return right.roundPoints - left.roundPoints
-            }
+          const leftPlacement = left.placement ?? Number.MAX_SAFE_INTEGER
+          const rightPlacement = right.placement ?? Number.MAX_SAFE_INTEGER
 
-            const leftPlacement = left.placement ?? Number.MAX_SAFE_INTEGER
-            const rightPlacement = right.placement ?? Number.MAX_SAFE_INTEGER
+          if (leftPlacement !== rightPlacement) {
+            return leftPlacement - rightPlacement
+          }
 
-            if (leftPlacement !== rightPlacement) {
-              return leftPlacement - rightPlacement
-            }
-
-            return left.initialIndex - right.initialIndex
-          })
+          return left.initialIndex - right.initialIndex
+        })
       : []
   const isAwaitingFirstTurnStart =
     gameState.phase === 'playing' && gameState.isAwaitingFirstTurnStart
@@ -935,51 +935,51 @@ function App() {
       ? 'is-safe'
       : isChallengeSelecting
         ? 'is-pending'
-      : isChallengeDebating
-        ? challengeTimeLeftMs <= 3000
-          ? 'is-urgent'
-          : ''
-      : isChallengeJudging
-        ? 'is-safe'
-      : gameState.phase === 'playing' && isAwaitingFirstTurnStart
-      ? 'is-pending'
-      : gameState.phase === 'playing' && isPausedTurn
-        ? 'is-paused'
-      : gameState.phase === 'playing' && gameState.isSafeToFinish
-        ? 'is-safe'
-        : gameState.phase === 'playing' && gameState.timeLeftMs <= 1000
-          ? 'is-urgent'
-          : ''
+        : isChallengeDebating
+          ? challengeTimeLeftMs <= 3000
+            ? 'is-urgent'
+            : ''
+          : isChallengeJudging
+            ? 'is-safe'
+            : gameState.phase === 'playing' && isAwaitingFirstTurnStart
+              ? 'is-pending'
+              : gameState.phase === 'playing' && isPausedTurn
+                ? 'is-paused'
+                : gameState.phase === 'playing' && gameState.isSafeToFinish
+                  ? 'is-safe'
+                  : gameState.phase === 'playing' && gameState.timeLeftMs <= 1000
+                    ? 'is-urgent'
+                    : ''
   const timerValue = isAwaitingRoundSummary
     ? 'สรุปรอบ'
     : isChallengeSelecting
       ? 'เลือกท้า'
-    : isChallengeDebating
-      ? 'ชาเลนจ์'
-    : isChallengeJudging
-      ? 'ชาเลนจ์'
-    : requiresManualTurnStart
-      ? 'รอเริ่ม'
-      : gameState.phase === 'playing' && gameState.isSafeToFinish
-        ? 'ผ่านแล้ว'
-        : gameState.phase === 'playing'
-          ? `${formatSeconds(gameState.timeLeftMs)}s`
-          : ''
+      : isChallengeDebating
+        ? 'ชาเลนจ์'
+        : isChallengeJudging
+          ? 'ชาเลนจ์'
+          : requiresManualTurnStart
+            ? 'รอเริ่ม'
+            : gameState.phase === 'playing' && gameState.isSafeToFinish
+              ? 'ผ่านแล้ว'
+              : gameState.phase === 'playing'
+                ? `${formatSeconds(gameState.timeLeftMs)}s`
+                : ''
   const timerAriaLabel = isAwaitingRoundSummary
     ? 'เวลา สรุปรอบ'
     : isChallengeSelecting
       ? 'เวลา เลือกการชาเลนจ์'
-    : isChallengeDebating
-      ? 'กำลังชาเลนจ์'
-    : isChallengeJudging
-      ? 'กำลังตัดสินการชาเลนจ์'
-    : requiresManualTurnStart
-      ? 'เวลา รอเริ่ม'
-      : gameState.phase === 'playing' && gameState.isSafeToFinish
-        ? 'เวลา ผ่านแล้ว'
-        : gameState.phase === 'playing'
-          ? `เวลาเหลือ ${formatSeconds(gameState.timeLeftMs)} วินาที`
-          : 'เวลา'
+      : isChallengeDebating
+        ? 'กำลังชาเลนจ์'
+        : isChallengeJudging
+          ? 'กำลังตัดสินการชาเลนจ์'
+          : requiresManualTurnStart
+            ? 'เวลา รอเริ่ม'
+            : gameState.phase === 'playing' && gameState.isSafeToFinish
+              ? 'เวลา ผ่านแล้ว'
+              : gameState.phase === 'playing'
+                ? `เวลาเหลือ ${formatSeconds(gameState.timeLeftMs)} วินาที`
+                : 'เวลา'
   const displayedTimerValue = isGmOpeningWordMode ? 'รอคำตั้งต้น' : timerValue
   const displayedTimerAriaLabel = isGmOpeningWordMode
     ? 'เวลารอคำตั้งต้นของผู้คุมเกม'
@@ -1516,11 +1516,10 @@ function App() {
           current.map((draft, index) =>
             index === draftIndex
               ? {
-                  ...draft,
-                  name: `${draft.name.slice(0, selectionStart)}${
-                    pastedLines[0]
+                ...draft,
+                name: `${draft.name.slice(0, selectionStart)}${pastedLines[0]
                   }${draft.name.slice(selectionEnd)}`,
-                }
+              }
               : draft,
           ),
         )
@@ -1971,12 +1970,12 @@ function App() {
       const nextIndex =
         currentIndex === -1
           ? (event.key === 'ArrowDown'
-              ? 0
-              : filteredChallengeChallengerOptions.length - 1)
+            ? 0
+            : filteredChallengeChallengerOptions.length - 1)
           : Math.min(
-              filteredChallengeChallengerOptions.length - 1,
-              Math.max(0, currentIndex + offset),
-            )
+            filteredChallengeChallengerOptions.length - 1,
+            Math.max(0, currentIndex + offset),
+          )
 
       setChallengeChallengerActiveOptionId(
         filteredChallengeChallengerOptions[nextIndex]?.id ?? null,
@@ -2046,8 +2045,8 @@ function App() {
         current.challenge.challengerPlayerId === nextChallengerId
           ? current
           : updateChallengeSelection(current, {
-              challengerPlayerId: nextChallengerId,
-            })
+            challengerPlayerId: nextChallengerId,
+          })
 
       if (stateWithChallenger.challenge.awaitingChallengeStart) {
         return startChallengeDebate(stateWithChallenger)
@@ -2170,11 +2169,9 @@ function App() {
               <ol className="draft-list">
                 {playerDrafts.map((draft, index) => (
                   <li
-                    className={`draft-item ${
-                      index < playerDrafts.length - 1 ? 'is-draggable' : ''
-                    } ${
-                      draggedDraftId === draft.id ? 'is-dragging' : ''
-                    }`.trim()}
+                    className={`draft-item ${index < playerDrafts.length - 1 ? 'is-draggable' : ''
+                      } ${draggedDraftId === draft.id ? 'is-dragging' : ''
+                      }`.trim()}
                     key={draft.id}
                     ref={(item) => {
                       draftItemRefs.current[draft.id] = item
@@ -2240,9 +2237,8 @@ function App() {
 
             <div className="setup-footer">
               <p
-                className={`validation-note ${
-                  validation.canStart ? 'is-ready' : ''
-                }`}
+                className={`validation-note ${validation.canStart ? 'is-ready' : ''
+                  }`}
               >
                 {getSetupMessage(validation)}
               </p>
@@ -2263,10 +2259,10 @@ function App() {
       )}
 
       {playScreenPlayer && (gameState.phase === 'playing' || isAwaitingRoundSummary) && (
-        <section className="phase-screen play-screen">
+        <section className={`phase-screen play-screen ${showPreviousWordPrompt && lastAnswer && gameState.phase === 'playing' ? 'is-fullscreen-prompt' : ''}`}>
           {showPreviousWordPrompt && lastAnswer && gameState.phase === 'playing' && (
             <p className="previous-word-prompt">
-              พูดคำที่เชื่อมกับ "{lastAnswer}"
+              พูดคำนามที่เชื่อมกับ "{lastAnswer}"
             </p>
           )}
           <form className="surface-card answer-panel" onSubmit={handleSubmitTurn}>
@@ -2275,6 +2271,9 @@ function App() {
               <div className="answer-meta">
                 <p className="round-indicator">
                   รอบ {currentMatchRound}/{MATCH_ROUNDS_PER_MATCH}
+                </p>
+                <p className="player-indicator">
+                  {playScreenPlayer.name}
                 </p>
                 {gameState.phase === 'playing' && (
                   <button
@@ -2289,26 +2288,26 @@ function App() {
                   </button>
                 )}
                 {(gameState.phase === 'playing' || gameState.phase === 'finished') && (
-                    <SettingsDropdown
-                      isGmOpeningEnabled={isGmOpeningWordEnabled}
-                      isSyllableDebugVisible={isSyllableDebugVisible}
-                      showPreviousWordPrompt={showPreviousWordPrompt}
-                      onToggleGmOpening={handleToggleGmOpeningWord}
-                      onToggleSyllableDebug={() =>
-                        setIsSyllableDebugVisible((current) => !current)
-                      }
-                      onTogglePreviousWordPrompt={() => {
-                        setShowPreviousWordPrompt((current) => {
-                          window.localStorage.setItem(
-                            SHOW_PREVIOUS_WORD_PROMPT_KEY,
-                            String(!current),
-                          )
-                          return !current
-                        })
-                      }}
-                      isSubmittingTurn={isSubmittingTurn}
-                    />
-                  )}
+                  <SettingsDropdown
+                    isGmOpeningEnabled={isGmOpeningWordEnabled}
+                    isSyllableDebugVisible={isSyllableDebugVisible}
+                    showPreviousWordPrompt={showPreviousWordPrompt}
+                    onToggleGmOpening={handleToggleGmOpeningWord}
+                    onToggleSyllableDebug={() =>
+                      setIsSyllableDebugVisible((current) => !current)
+                    }
+                    onTogglePreviousWordPrompt={() => {
+                      setShowPreviousWordPrompt((current) => {
+                        window.localStorage.setItem(
+                          SHOW_PREVIOUS_WORD_PROMPT_KEY,
+                          String(!current),
+                        )
+                        return !current
+                      })
+                    }}
+                    isSubmittingTurn={isSubmittingTurn}
+                  />
+                )}
               </div>
               {challengeNote && (
                 <p className="challenge-note" role="status" aria-live="polite">
@@ -2340,18 +2339,18 @@ function App() {
                     ? challengeNote
                     : isChallengeJudging
                       ? 'ครบสองรอบโต้วาทีแล้ว เลือกผลตัดสิน'
-                  : isAwaitingRoundSummary
-                  ? `${eliminatedPlayerSummary} กดสรุปรอบเพื่อดูตารางคะแนนของ ${playScreenPlayer.name}`
-                  : isGmOpeningWordMode
-                  ? `ผู้คุมเกมพิมพ์คำตั้งต้นของรอบ แล้วกดเริ่มด้วยคำนี้เพื่อเริ่มจับเวลา ${playScreenPlayer.name}`
-                  : isAwaitingFirstTurnStart
-                  ? `ยืนยันผู้เล่นแล้ว กดเริ่มรอบแรกเพื่อเริ่มจับเวลา ${playScreenPlayer.name}`
-                  : isPausedTurn
-                    ? getPausedTurnInstructions(
-                        latestEliminatedPlayer,
-                        playScreenPlayer.name,
-                      )
-                    : 'เมื่อเริ่มพิมพ์ตัวแรกทันเวลาแล้ว ระบบจะล็อกคิวไว้ให้ผู้เล่นคนนี้จนกว่าจะส่งคำ'}
+                      : isAwaitingRoundSummary
+                        ? `${eliminatedPlayerSummary} กดสรุปรอบเพื่อดูตารางคะแนนของ ${playScreenPlayer.name}`
+                        : isGmOpeningWordMode
+                          ? `ผู้คุมเกมพิมพ์คำตั้งต้นของรอบ แล้วกดเริ่มด้วยคำนี้เพื่อเริ่มจับเวลา ${playScreenPlayer.name}`
+                          : isAwaitingFirstTurnStart
+                            ? `ยืนยันผู้เล่นแล้ว กดเริ่มรอบแรกเพื่อเริ่มจับเวลา ${playScreenPlayer.name}`
+                            : isPausedTurn
+                              ? getPausedTurnInstructions(
+                                latestEliminatedPlayer,
+                                playScreenPlayer.name,
+                              )
+                              : 'เมื่อเริ่มพิมพ์ตัวแรกทันเวลาแล้ว ระบบจะล็อกคิวไว้ให้ผู้เล่นคนนี้จนกว่าจะส่งคำ'}
               </p>
               {gameState.phase === 'playing' &&
                 canOpenChallenge &&
@@ -2375,9 +2374,8 @@ function App() {
               <input
                 ref={answerInputRef}
                 id="current-answer"
-                className={`text-input answer-input ${
-                  isGmOpeningWordMode ? 'is-gm-opening' : ''
-                }`}
+                className={`text-input answer-input ${isGmOpeningWordMode ? 'is-gm-opening' : ''
+                  }`}
                 type="text"
                 value={editableInputValue}
                 onChange={
@@ -2394,9 +2392,8 @@ function App() {
                 }
               />
               <div
-                className={`turn-timer-pill ${timerTone} ${
-                  isGmOpeningWordMode ? 'is-gm-opening' : ''
-                }`}
+                className={`turn-timer-pill ${timerTone} ${isGmOpeningWordMode ? 'is-gm-opening' : ''
+                  }`}
                 aria-live="polite"
                 aria-label={displayedTimerAriaLabel}
               >
@@ -2518,7 +2515,7 @@ function App() {
                       </ComboBox>
                     </div>
 
-                                        <div className="challenge-field">
+                    <div className="challenge-field">
                       <label id="challenged-answer-label">คำที่ถูกชาเลนจ์</label>
                       <div className="challenged-answer-buttons" aria-labelledby="challenged-answer-label">
                         {challengeableAnswers.length === 0 && (
@@ -2644,47 +2641,47 @@ function App() {
                   </div>
                   <div className="challenge-debate-controls">
                     <div className="challenge-debate-status">
-                    <p className="round-indicator">
-                      ช่วง {challengeSegmentIndex + 1}/{CHALLENGE_DEBATE_SEGMENT_COUNT}
-                    </p>
-                    <div className={`turn-timer-pill ${timerTone}`} aria-live="polite">
-                      <span>เวลา</span>
-                      <strong>{formatSeconds(challengeTimeLeftMs)}s</strong>
-                    </div>
-                    <span className="challenge-debate-speaker">
-                      <strong>{challengeSpeakerName}</strong>
-                      <span className="challenge-debate-speaker-role">
-                        {challengeState?.currentSpeaker === 'challenger' ? '(ผู้ชาเลนจ์)' : '(ผู้ถูกชาเลนจ์)'}
+                      <p className="round-indicator">
+                        ช่วง {challengeSegmentIndex + 1}/{CHALLENGE_DEBATE_SEGMENT_COUNT}
+                      </p>
+                      <div className={`turn-timer-pill ${timerTone}`} aria-live="polite">
+                        <span>เวลา</span>
+                        <strong>{formatSeconds(challengeTimeLeftMs)}s</strong>
+                      </div>
+                      <span className="challenge-debate-speaker">
+                        <strong>{challengeSpeakerName}</strong>
+                        <span className="challenge-debate-speaker-role">
+                          {challengeState?.currentSpeaker === 'challenger' ? '(ผู้ชาเลนจ์)' : '(ผู้ถูกชาเลนจ์)'}
+                        </span>
                       </span>
-                    </span>
-                  </div>
-                  {challengeState?.segmentAwaitingContinue ? (
-                    <div className="action-row challenge-actions">
-                      <button
-                        ref={challengeResumeButtonRef}
-                        type="button"
-                        className="primary-button"
-                        onClick={handleResumeChallengeDebate}
-                        onKeyDown={handleResumeChallengeDebateKeyDown}
-                        aria-label={challengeSegmentIndex === 0 ? 'เริ่ม' : 'ต่อ'}
-                        title={challengeSegmentIndex === 0 ? 'เริ่ม' : 'ต่อ'}
-                      >
-                        <span className="button-copy">{challengeSegmentIndex === 0 ? 'เริ่ม' : 'ต่อ'}</span>
-                      </button>
                     </div>
-                  ) : (
-                    <div className="action-row challenge-actions">
-                      <button
-                        type="button"
-                        className="secondary-button symbol-button"
-                        onClick={handleAdvanceChallengeDebate}
-                        aria-label="จบช่วง"
-                        title="จบช่วง"
-                      >
-                        <span className="button-copy">จบช่วง</span>
-                      </button>
-                    </div>
-                  )}
+                    {challengeState?.segmentAwaitingContinue ? (
+                      <div className="action-row challenge-actions">
+                        <button
+                          ref={challengeResumeButtonRef}
+                          type="button"
+                          className="primary-button"
+                          onClick={handleResumeChallengeDebate}
+                          onKeyDown={handleResumeChallengeDebateKeyDown}
+                          aria-label={challengeSegmentIndex === 0 ? 'เริ่ม' : 'ต่อ'}
+                          title={challengeSegmentIndex === 0 ? 'เริ่ม' : 'ต่อ'}
+                        >
+                          <span className="button-copy">{challengeSegmentIndex === 0 ? 'เริ่ม' : 'ต่อ'}</span>
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="action-row challenge-actions">
+                        <button
+                          type="button"
+                          className="secondary-button symbol-button"
+                          onClick={handleAdvanceChallengeDebate}
+                          aria-label="จบช่วง"
+                          title="จบช่วง"
+                        >
+                          <span className="button-copy">จบช่วง</span>
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -2837,9 +2834,8 @@ function App() {
             </section>
 
             <section
-              className={`surface-card board-card eliminated-board-card ${
-                eliminatedPlayers.length === 0 ? 'is-empty-collapsed' : ''
-              }`.trim()}
+              className={`surface-card board-card eliminated-board-card ${eliminatedPlayers.length === 0 ? 'is-empty-collapsed' : ''
+                }`.trim()}
             >
               <div className="panel-header compact">
                 <div>
@@ -2892,9 +2888,8 @@ function App() {
                   {leaderboardEntries.map((entry) => (
                     <tr
                       key={entry.player.id}
-                      className={`${entry.player.status === 'winner' ? 'is-winner' : ''} ${
-                        entry.roundPoints > 0 ? 'is-awarded' : ''
-                      }`.trim()}
+                      className={`${entry.player.status === 'winner' ? 'is-winner' : ''} ${entry.roundPoints > 0 ? 'is-awarded' : ''
+                        }`.trim()}
                       aria-label={`คะแนนสะสมของ ${entry.player.name}`}
                     >
                       <th scope="row">
@@ -2917,7 +2912,7 @@ function App() {
                             <span className="leaderboard-round-score-value">
                               {roundScore.totalPoints -
                                 roundScore.challengeBonus >
-                              0 ? (
+                                0 ? (
                                 <>
                                   <span>
                                     {roundScore.totalPoints -
