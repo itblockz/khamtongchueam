@@ -1090,25 +1090,6 @@ function App() {
     }
   }, [])
 
-  const syncTransientUiForHistorySnapshot = useCallback((snapshot: HistorySnapshot) => {
-    const restoredChallengerName =
-      snapshot.sessionState.gameState.phase === 'playing' &&
-        snapshot.sessionState.gameState.challenge.status === 'selecting' &&
-        snapshot.sessionState.gameState.challenge.challengerPlayerId
-        ? snapshot.sessionState.gameState.players.find(
-          (player) =>
-            player.id === snapshot.sessionState.gameState.challenge.challengerPlayerId,
-        )?.name ?? ''
-        : ''
-
-    challengeHistoryRestorePauseRef.current =
-      snapshot.sessionState.gameState.phase === 'playing' &&
-      snapshot.sessionState.gameState.challenge.status === 'debating' &&
-      snapshot.sessionState.gameState.challenge.segmentStartedAt !== null
-    setChallengeChallengerSearchValue(restoredChallengerName)
-    setChallengeChallengerActiveOptionId(null)
-  }, [])
-
   async function getSyllableSegmentation(
     text: string,
     signal?: AbortSignal,
@@ -1231,17 +1212,65 @@ function App() {
   const canRedoGameHistory = gameState.phase !== 'setup' && canRedo
 
   const handleUndo = useCallback(() => {
-    const previousSnapshot = historyState.past[historyState.past.length - 1]
+    if (!canUndoGameHistory) {
+      return
+    }
 
-    if (!canUndoGameHistory || !previousSnapshot) {
+    const currentGameState = historySnapshot.sessionState.gameState
+
+    const isTimerRunning = currentGameState.phase === 'playing' &&
+      currentGameState.turnStartedAt !== null &&
+      !currentGameState.isHistoryRestorePause
+
+    if (isTimerRunning || currentGameState.isSafeToFinish) {
+      if (currentGameState.isHistoryRestorePause) {
+        return
+      }
+
+      clearTransientUiState()
+
+      const restoredGameState = pauseGameStateForHistoryRestore(
+        currentGameState,
+        Date.now(),
+      )
+
+      if (restoredGameState === currentGameState) {
+        return
+      }
+
+      updatePresent((current) => ({
+        ...current,
+        sessionState: {
+          ...current.sessionState,
+          gameState: restoredGameState,
+        },
+      }))
+      return
+    }
+
+    if (currentGameState.phase === 'finished') {
+      const previousSnapshot = historyState.past[historyState.past.length - 1]
+      if (!previousSnapshot) {
+        return
+      }
+
+      clearTransientUiState()
+
+      const restoredSnapshot = previousSnapshot.sessionState.gameState.isHistoryRestorePause
+        ? previousSnapshot
+        : restoreHistorySnapshot(previousSnapshot)
+
+      undoPresent(() => restoredSnapshot)
+      return
+    }
+
+    const previousSnapshot = historyState.past[historyState.past.length - 1]
+    if (!previousSnapshot) {
       return
     }
 
     clearTransientUiState()
-    syncTransientUiForHistorySnapshot(previousSnapshot)
 
-    // Reuse the snapshot directly if it is already a restored/paused state,
-    // otherwise wrap it in a new restoration point.
     const restoredSnapshot = previousSnapshot.sessionState.gameState.isHistoryRestorePause
       ? previousSnapshot
       : restoreHistorySnapshot(previousSnapshot)
@@ -1250,24 +1279,25 @@ function App() {
   }, [
     canUndoGameHistory,
     clearTransientUiState,
+    historySnapshot,
     historyState.past,
     restoreHistorySnapshot,
-    syncTransientUiForHistorySnapshot,
     undoPresent,
+    updatePresent,
   ])
 
   const handleRedo = useCallback(() => {
-    const nextSnapshot = historyState.future[0]
+    if (!canRedoGameHistory) {
+      return
+    }
 
-    if (!canRedoGameHistory || !nextSnapshot) {
+    const nextSnapshot = historyState.future[0]
+    if (!nextSnapshot) {
       return
     }
 
     clearTransientUiState()
-    syncTransientUiForHistorySnapshot(nextSnapshot)
 
-    // Similar to undo, we restore (pause) the state we are redoing into
-    // if it wasn't already paused.
     const restoredSnapshot = nextSnapshot.sessionState.gameState.isHistoryRestorePause
       ? nextSnapshot
       : restoreHistorySnapshot(nextSnapshot)
@@ -1277,9 +1307,8 @@ function App() {
     canRedoGameHistory,
     clearTransientUiState,
     historyState.future,
-    redoPresent,
     restoreHistorySnapshot,
-    syncTransientUiForHistorySnapshot,
+    redoPresent,
   ])
 
   useTurnTimer({

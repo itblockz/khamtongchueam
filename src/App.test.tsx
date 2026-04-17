@@ -1524,7 +1524,7 @@ describe('คำต้องเชื่อม', () => {
     expectLeaderboardRow('ต้น', [1, '-', '-', '-'], 1)
   })
 
-  it('shows undo and redo only after confirm, and timer ticks do not create extra history entries', async () => {
+  it('pauses running first turn without reverting, undo disabled at round start', async () => {
     render(<App />)
 
     expect(screen.queryByRole('button', { name: 'Undo' })).not.toBeInTheDocument()
@@ -1540,14 +1540,14 @@ describe('คำต้องเชื่อม', () => {
     await advanceTimers(1200)
 
     fireEvent.click(getUndoButton())
+    await flushAsyncWork()
 
-    expect(screen.getByRole('button', { name: 'เริ่มรอบแรก' })).toBeInTheDocument()
-    expect(screen.getByLabelText('คำตอบของ เอ')).toBeDisabled()
-    expect(getUndoButton()).toBeDisabled()
-    expect(getRedoButton()).toBeEnabled()
+    expect(screen.getByRole('heading', { name: 'ถึงตา เอ' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'เริ่มตาถัดไป' })).toBeInTheDocument()
+    expect(getRedoButton()).toBeDisabled()
   })
 
-  it('undos a submitted answer to a paused restore point and redoes it back to the next player', async () => {
+  it('pauses current turn when undo pressed during running timer', async () => {
     startTwoPlayerGame('เอ', 'บี')
 
     await submitAnswer('เอ', 'กาแฟ')
@@ -1556,19 +1556,15 @@ describe('คำต้องเชื่อม', () => {
     fireEvent.click(getUndoButton())
     await flushAsyncWork()
 
-    expect(screen.getByRole('heading', { name: 'ถึงตา เอ' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'ถึงตา บี' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'เริ่มตาถัดไป' })).toBeInTheDocument()
-    expect(screen.getByText('ย้อนกลับมาที่จุดก่อนหน้า กดเริ่มเพื่อจับเวลาอีกครั้ง')).toBeInTheDocument()
-    expect(screen.getByLabelText('คำตอบของ เอ')).toBeDisabled()
+    expect(getRedoButton()).toBeDisabled()
 
     await triggerRedoShortcut()
+    await flushAsyncWork()
 
     expect(screen.getByRole('heading', { name: 'ถึงตา บี' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'เริ่มตาถัดไป' })).toBeInTheDocument()
-    expect(
-      screen.getByText('ย้อนกลับมาที่จุดก่อนหน้า กดเริ่มเพื่อจับเวลาอีกครั้ง'),
-    ).toBeInTheDocument()
-    expect(screen.getByLabelText('คำตอบของ บี')).toBeDisabled()
   })
 
   it('grants safe-to-finish immediately when typing after resuming an undo-restored turn', async () => {
@@ -1577,30 +1573,26 @@ describe('คำต้องเชื่อม', () => {
     await submitAnswer('เอ', 'กาแฟ')
     await waitForTurn('บี')
 
-    // Undo the submitted answer — turn is now paused at history-restore point
     fireEvent.click(getUndoButton())
     await flushAsyncWork()
 
     expect(screen.getByRole('button', { name: 'เริ่มตาถัดไป' })).toBeInTheDocument()
-    expect(screen.getByLabelText('คำตอบของ เอ')).toBeDisabled()
+    expect(screen.getByLabelText('คำตอบของ บี')).toBeDisabled()
 
-    // Start the restored turn
     fireEvent.click(screen.getByRole('button', { name: 'เริ่มตาถัดไป' }))
 
-    // Verify timer is running (input enabled)
-    expect(screen.getByLabelText('คำตอบของ เอ')).toBeEnabled()
+    expect(screen.getByLabelText('คำตอบของ บี')).toBeEnabled()
     expect(screen.getByRole('button', { name: 'ถัดไป' })).toBeDisabled()
 
-    // First keystroke should grant isSafeToFinish — submit button becomes enabled
-    fireEvent.change(screen.getByLabelText('คำตอบของ เอ'), {
-      target: { value: 'น' },
+    fireEvent.change(screen.getByLabelText('คำตอบของ บี'), {
+      target: { value: 'ส' },
     })
 
     expect(screen.getByRole('button', { name: 'ถัดไป' })).toBeEnabled()
   })
 
 
-  it('undos a timeout from round summary back to the paused restored turn and can redo to the summary again', async () => {
+  it('allows undoing a timeout and redoing to summary', async () => {
     startTwoPlayerGame('เอ', 'บี')
 
     await advanceTimers(3100)
@@ -1611,7 +1603,7 @@ describe('คำต้องเชื่อม', () => {
 
     expect(screen.getByRole('heading', { name: 'ถึงตา เอ' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'เริ่มตาถัดไป' })).toBeInTheDocument()
-    expect(screen.getByText('ย้อนกลับมาที่จุดก่อนหน้า กดเริ่มเพื่อจับเวลาอีกครั้ง')).toBeInTheDocument()
+    expect(getRedoButton()).toBeEnabled()
 
     fireEvent.click(getRedoButton())
     await flushAsyncWork()
@@ -1619,7 +1611,7 @@ describe('คำต้องเชื่อม', () => {
     expect(screen.getByRole('button', { name: 'สรุปรอบ' })).toBeInTheDocument()
   })
 
-  it('undoes and redoes a resolved challenge across the judgement boundary', async () => {
+  it('allows undoing a resolved challenge and redoing it back', async () => {
     render(<App />)
     fillSetupNames(['เอ', 'บี', 'ซี'])
     fireEvent.click(screen.getByRole('button', { name: 'ยืนยันผู้เล่น' }))
@@ -1648,6 +1640,7 @@ describe('คำต้องเชื่อม', () => {
     expect(
       screen.getByRole('button', { name: 'ตัดสินว่าไม่เชื่อม' }),
     ).toBeInTheDocument()
+    expect(getRedoButton()).toBeEnabled()
 
     fireEvent.click(getRedoButton())
     await flushAsyncWork()
@@ -1656,7 +1649,7 @@ describe('คำต้องเชื่อม', () => {
     expect(screen.getByRole('button', { name: 'เริ่มตาถัดไป' })).toBeInTheDocument()
   })
 
-  it('undoes from the leaderboard back to the round summary and then the pre-timeout turn', async () => {
+  it('allows undoing from leaderboard to summary and to pre-timeout turn', async () => {
     startTwoPlayerGame('เอ', 'บี')
 
     await advanceTimers(3100)
@@ -1667,6 +1660,7 @@ describe('คำต้องเชื่อม', () => {
     await flushAsyncWork()
 
     expect(screen.getByRole('button', { name: 'สรุปรอบ' })).toBeInTheDocument()
+    expect(getRedoButton()).toBeEnabled()
 
     fireEvent.click(getUndoButton())
     await flushAsyncWork()
@@ -1686,8 +1680,7 @@ describe('คำต้องเชื่อม', () => {
     fireEvent.change(answerInput, { target: { value: 'สับปะรด' } })
     await triggerUndoShortcut(answerInput)
 
-    // Should undo back to "เอ" round summary/start turn point
-    expect(screen.getByRole('heading', { name: 'ถึงตา เอ' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'ถึงตา บี' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'เริ่มตาถัดไป' })).toBeInTheDocument()
   })
 
