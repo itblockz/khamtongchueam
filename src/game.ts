@@ -51,6 +51,7 @@ interface UsedSyllableEntry {
 export interface AnswerRecord {
   id: string
   playerId: string
+  playerName: string
   answer: string
   syllables: string[]
   source: AnswerSource
@@ -188,7 +189,7 @@ function findDuplicateSyllableEntry(
     usedSyllableEntriesInRound.map((entry) => [entry.syllable, entry]),
   )
 
-  const uniqueNextSyllables = [...new Set(nextSyllables)]
+  const uniqueNextSyllables = Array.from(new Set(nextSyllables))
 
   for (const syllable of uniqueNextSyllables) {
     const matchedEntry = seenSyllables.get(syllable)
@@ -492,6 +493,7 @@ function finalizePlayingState(
 
 function createAnswerRecord(
   playerId: string,
+  playerName: string,
   answer: string,
   syllables: string[],
   previousValidAnswerId: string | null,
@@ -500,6 +502,7 @@ function createAnswerRecord(
   return {
     id: createId(),
     playerId,
+    playerName,
     answer,
     syllables,
     source,
@@ -554,6 +557,7 @@ export function startRoundWithOpeningWord(
       ...state.answerHistory,
       createAnswerRecord(
         state.activePlayerId,
+        'ผู้คุมเกม',
         normalizedAnswer,
         normalizedSyllables,
         null,
@@ -1460,6 +1464,8 @@ export function advanceTurn(
     return state
   }
 
+  const player = state.players[currentIndex]
+
   if (action.type === 'timeout' && state.isSafeToFinish) {
     return state
   }
@@ -1554,9 +1560,10 @@ export function advanceTurn(
           ...state.answerHistory,
           createAnswerRecord(
             state.activePlayerId,
+            player.name,
             answer,
             nextSyllables,
-            getValidAnswerHistory(state.answerHistory).at(-1)?.id ?? null,
+            getValidAnswerHistory(state.answerHistory)[getValidAnswerHistory(state.answerHistory).length - 1]?.id ?? null,
           ),
         ]
       }

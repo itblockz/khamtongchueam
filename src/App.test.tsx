@@ -1599,6 +1599,7 @@ describe('คำต้องเชื่อม', () => {
     expect(screen.getByRole('button', { name: 'ถัดไป' })).toBeEnabled()
   })
 
+
   it('undos a timeout from round summary back to the paused restored turn and can redo to the summary again', async () => {
     startTwoPlayerGame('เอ', 'บี')
 
@@ -1674,18 +1675,20 @@ describe('คำต้องเชื่อม', () => {
     expect(screen.getByRole('button', { name: 'เริ่มตาถัดไป' })).toBeInTheDocument()
   })
 
-  it('keeps Ctrl+Z inside a text input from hijacking app undo history', async () => {
+  it('triggers app undo when pressing Ctrl+Z inside a text input', async () => {
     startTwoPlayerGame('เอ', 'บี')
 
-    const answerInput = screen.getByLabelText('คำตอบของ เอ')
+    await submitAnswer('เอ', 'กาแฟ')
+    await waitForTurn('บี')
 
-    fireEvent.change(answerInput, { target: { value: 'กาแฟ' } })
+    const answerInput = screen.getByLabelText('คำตอบของ บี')
+
+    fireEvent.change(answerInput, { target: { value: 'สับปะรด' } })
     await triggerUndoShortcut(answerInput)
 
+    // Should undo back to "เอ" round summary/start turn point
     expect(screen.getByRole('heading', { name: 'ถึงตา เอ' })).toBeInTheDocument()
-    expect(answerInput).toHaveValue('กาแฟ')
-    expect(screen.queryByRole('button', { name: 'เริ่มรอบแรก' })).not.toBeInTheDocument()
-    expect(getUndoButton()).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'เริ่มตาถัดไป' })).toBeInTheDocument()
   })
 
   it('clears undo and redo history when replaying the same players or resetting everything', async () => {

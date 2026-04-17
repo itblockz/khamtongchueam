@@ -60,7 +60,7 @@ export function useUndoRedoHistory<T>(
 
   const undoPresent = useCallback((mapSnapshot?: (snapshot: T) => T) => {
     setHistoryState((current) => {
-      const previousPresent = current.past.at(-1)
+      const previousPresent = current.past[current.past.length - 1]
 
       if (previousPresent === undefined) {
         return current

@@ -300,23 +300,7 @@ function renderEliminatedPlayerSummaryContent(
     )
   }
 
-  if (false && player && duplicateDetails) {
-    return (
-      <>
-        <span>{player.name} ตกรอบเพราะ "</span>
-        {renderHighlightedAnswer(
-          duplicateDetails.submittedAnswer,
-          duplicateDetails.duplicateSyllable,
-        )}
-        <span>" ซ้ำกับ "</span>
-        {renderHighlightedAnswer(
-          duplicateDetails.sourceAnswer,
-          duplicateDetails.duplicateSyllable,
-        )}
-        <span>"</span>
-      </>
-    )
-  }
+
 
   return getEliminatedPlayerSummary(player)
 }
@@ -475,35 +459,7 @@ function createInitialHistorySnapshot(): HistorySnapshot {
   }
 }
 
-function isEditableUndoRedoTarget(target: EventTarget | null) {
-  if (!(target instanceof HTMLElement)) {
-    return false
-  }
 
-  if (target.isContentEditable) {
-    return true
-  }
-
-  if (target instanceof HTMLTextAreaElement) {
-    return !target.disabled && !target.readOnly
-  }
-
-  if (target instanceof HTMLInputElement) {
-    const editableTypes = new Set([
-      'text',
-      'search',
-      'email',
-      'url',
-      'tel',
-      'password',
-      'number',
-    ])
-
-    return editableTypes.has(target.type) && !target.disabled && !target.readOnly
-  }
-
-  return false
-}
 
 interface ChallengeChallengerListBoxProps {
   activeSuggestionId: string | null
@@ -1137,8 +1093,8 @@ function App() {
   const syncTransientUiForHistorySnapshot = useCallback((snapshot: HistorySnapshot) => {
     const restoredChallengerName =
       snapshot.sessionState.gameState.phase === 'playing' &&
-      snapshot.sessionState.gameState.challenge.status === 'selecting' &&
-      snapshot.sessionState.gameState.challenge.challengerPlayerId
+        snapshot.sessionState.gameState.challenge.status === 'selecting' &&
+        snapshot.sessionState.gameState.challenge.challengerPlayerId
         ? snapshot.sessionState.gameState.players.find(
           (player) =>
             player.id === snapshot.sessionState.gameState.challenge.challengerPlayerId,
@@ -1264,7 +1220,7 @@ function App() {
               : {
                 ...current.uiState,
                 gmOpeningWordDraft: nextGmOpeningWordDraft,
-          },
+              },
         }
       })
       challengeHistoryRestorePauseRef.current = false
@@ -1275,7 +1231,7 @@ function App() {
   const canRedoGameHistory = gameState.phase !== 'setup' && canRedo
 
   const handleUndo = useCallback(() => {
-    const previousSnapshot = historyState.past.at(-1)
+    const previousSnapshot = historyState.past[historyState.past.length - 1]
 
     if (!canUndoGameHistory || !previousSnapshot) {
       return
@@ -1283,7 +1239,13 @@ function App() {
 
     clearTransientUiState()
     syncTransientUiForHistorySnapshot(previousSnapshot)
-    const restoredSnapshot = restoreHistorySnapshot(previousSnapshot)
+
+    // Reuse the snapshot directly if it is already a restored/paused state,
+    // otherwise wrap it in a new restoration point.
+    const restoredSnapshot = previousSnapshot.sessionState.gameState.isHistoryRestorePause
+      ? previousSnapshot
+      : restoreHistorySnapshot(previousSnapshot)
+
     undoPresent(() => restoredSnapshot)
   }, [
     canUndoGameHistory,
@@ -1303,7 +1265,13 @@ function App() {
 
     clearTransientUiState()
     syncTransientUiForHistorySnapshot(nextSnapshot)
-    const restoredSnapshot = restoreHistorySnapshot(nextSnapshot)
+
+    // Similar to undo, we restore (pause) the state we are redoing into
+    // if it wasn't already paused.
+    const restoredSnapshot = nextSnapshot.sessionState.gameState.isHistoryRestorePause
+      ? nextSnapshot
+      : restoreHistorySnapshot(nextSnapshot)
+
     redoPresent(() => restoredSnapshot)
   }, [
     canRedoGameHistory,
@@ -1440,7 +1408,7 @@ function App() {
 
         event.preventDefault()
         clearTransientUiState()
-        commitGameAction((current) => beginChallengeSelection(current))
+        applyEphemeralGameUpdate((current) => beginChallengeSelection(current))
         return
       }
 
@@ -1450,7 +1418,7 @@ function App() {
         }
 
         event.preventDefault()
-        commitGameAction((current) => cancelChallenge(current))
+        applyEphemeralGameUpdate((current) => cancelChallenge(current))
         return
       }
 
@@ -1504,7 +1472,7 @@ function App() {
     }
 
     function handleUndoRedoKeyDown(event: globalThis.KeyboardEvent) {
-      if (event.defaultPrevented || event.altKey) {
+      if (event.defaultPrevented || event.altKey || event.repeat) {
         return
       }
 
@@ -1512,15 +1480,16 @@ function App() {
         return
       }
 
-      if (isEditableUndoRedoTarget(event.target)) {
+      const isKeyZ = event.code === 'KeyZ' || event.key.toLocaleLowerCase() === 'z'
+      const isKeyY = event.code === 'KeyY' || event.key.toLocaleLowerCase() === 'y'
+
+      if (!isKeyZ && !isKeyY) {
         return
       }
 
-      if (event.key.toLocaleLowerCase() !== 'z') {
-        return
-      }
+      const isRedo = isKeyY || (isKeyZ && event.shiftKey)
 
-      if (event.shiftKey) {
+      if (isRedo) {
         if (!canRedoGameHistory || isSubmittingTurn) {
           return
         }
@@ -1530,12 +1499,14 @@ function App() {
         return
       }
 
-      if (!canUndoGameHistory || isSubmittingTurn) {
-        return
-      }
+      if (isKeyZ && !event.shiftKey) {
+        if (!canUndoGameHistory || isSubmittingTurn) {
+          return
+        }
 
-      event.preventDefault()
-      handleUndo()
+        event.preventDefault()
+        handleUndo()
+      }
     }
 
     window.addEventListener('keydown', handleUndoRedoKeyDown)
@@ -1818,7 +1789,7 @@ function App() {
   ) {
     const pastedText = event.clipboardData.getData('text')
     const pastedLines = pastedText
-      .split(/\r?\n/u)
+      .split(/\r?\n/)
       .map((line) => line.trim())
       .filter((line) => line.length > 0)
     const selectionStart =
@@ -2035,11 +2006,12 @@ function App() {
 
   function handleStartFirstTurn() {
     setSegmentationError(null)
-    commitGameAction((current) =>
-      current.isHistoryRestorePause
-        ? resumePausedTurnFromHistory(current)
-        : startActiveTurn(current),
-    )
+
+    if (gameState.isHistoryRestorePause) {
+      applyEphemeralGameUpdate(resumePausedTurnFromHistory)
+    } else {
+      commitGameAction(startActiveTurn)
+    }
   }
 
   function handleToggleGmOpeningWord() {
@@ -2158,12 +2130,12 @@ function App() {
 
         commitGameAction(
           (current) =>
-          startRoundWithOpeningWord(
-            current,
-            openingWord,
-            segmentation.syllables,
-            submittedAt,
-          ),
+            startRoundWithOpeningWord(
+              current,
+              openingWord,
+              segmentation.syllables,
+              submittedAt,
+            ),
           { nextGmOpeningWordDraft: '' },
         )
       } catch (error) {
@@ -2232,12 +2204,12 @@ function App() {
     setIsSegmentingCurrentInput(false)
     setIsSubmittingTurn(false)
 
-    commitGameAction((current) => beginChallengeSelection(current))
+    applyEphemeralGameUpdate((current) => beginChallengeSelection(current))
   }
 
   function handleCancelChallenge() {
     resetChallengeChallengerTypeahead()
-    commitGameAction((current) => cancelChallenge(current))
+    applyEphemeralGameUpdate((current) => cancelChallenge(current))
   }
 
   function handleChallengeChallengerChange(nextKey: Key | null) {
@@ -2769,10 +2741,10 @@ function App() {
                               ? 'ย้อนประวัติสำเร็จ รอเริ่มจับเวลาใหม่'
                               : isPausedTurn
                                 ? getPausedTurnInstructions(
-                                latestEliminatedPlayer,
-                                playScreenPlayer.name,
-                              )
-                              : 'เมื่อเริ่มพิมพ์ตัวแรกทันเวลาแล้ว ระบบจะล็อกคิวไว้ให้ผู้เล่นคนนี้จนกว่าจะส่งคำ'}
+                                  latestEliminatedPlayer,
+                                  playScreenPlayer.name,
+                                )
+                                : 'เมื่อเริ่มพิมพ์ตัวแรกทันเวลาแล้ว ระบบจะล็อกคิวไว้ให้ผู้เล่นคนนี้จนกว่าจะส่งคำ'}
               </p>
               {gameState.phase === 'playing' &&
                 canOpenChallenge &&
