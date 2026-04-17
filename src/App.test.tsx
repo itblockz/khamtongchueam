@@ -246,11 +246,11 @@ async function submitAnswer(playerName: string, answer: string) {
 }
 
 function getUndoButton() {
-  return screen.getByRole('button', { name: 'Undo' })
+  return screen.getByRole('button', { name: 'ย้อนกลับ' })
 }
 
 function getRedoButton() {
-  return screen.getByRole('button', { name: 'Redo' })
+  return screen.getByRole('button', { name: 'ทำซ้ำ' })
 }
 
 async function triggerUndoShortcut(target: EventTarget = window) {
@@ -1527,7 +1527,7 @@ describe('คำต้องเชื่อม', () => {
   it('pauses running first turn without reverting, undo disabled at round start', async () => {
     render(<App />)
 
-    expect(screen.queryByRole('button', { name: 'Undo' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'ย้อนกลับ' })).not.toBeInTheDocument()
     fillSetupNames(['เอ', 'บี'])
     fireEvent.click(screen.getByRole('button', { name: 'ยืนยันผู้เล่น' }))
 
@@ -1703,7 +1703,7 @@ describe('คำต้องเชื่อม', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'เริ่มใหม่' }))
 
-    expect(screen.queryByRole('button', { name: 'Undo' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'ย้อนกลับ' })).not.toBeInTheDocument()
     expect(screen.getByLabelText('ชื่อผู้เล่น 1')).toBeInTheDocument()
   })
 })

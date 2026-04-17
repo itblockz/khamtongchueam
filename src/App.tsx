@@ -2688,20 +2688,28 @@ function App() {
                       className="ghost-button history-action-button"
                       onClick={handleUndo}
                       disabled={!canUndoGameHistory || isSubmittingTurn}
-                      aria-label="Undo"
-                      title="Undo (Ctrl/Cmd+Z)"
+                      aria-label="ย้อนกลับ"
+                      title="ย้อนกลับ (Ctrl/Cmd+Z)"
                     >
-                      Undo
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M3 10h10a5 5 0 0 1 5 5v2" />
+                        <polyline points="3 10 7 6" />
+                        <polyline points="3 10 7 14" />
+                      </svg>
                     </button>
                     <button
                       type="button"
                       className="ghost-button history-action-button"
                       onClick={handleRedo}
                       disabled={!canRedoGameHistory || isSubmittingTurn}
-                      aria-label="Redo"
-                      title="Redo (Shift+Ctrl/Cmd+Z)"
+                      aria-label="ทำซ้ำ"
+                      title="ทำซ้ำ (Shift+Ctrl/Cmd+Z)"
                     >
-                      Redo
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M21 10H11a5 5 0 0 0-5 5v2" />
+                        <polyline points="21 10 17 6" />
+                        <polyline points="21 10 17 14" />
+                      </svg>
                     </button>
                     <SettingsDropdown
                       isGmOpeningEnabled={isGmOpeningWordEnabled}
@@ -3299,26 +3307,34 @@ function App() {
             </div>
 
             <div className="action-row">
-              <button
-                type="button"
-                className="ghost-button history-action-button"
-                onClick={handleUndo}
-                disabled={!canUndoGameHistory || isSubmittingTurn}
-                aria-label="Undo"
-                title="Undo (Ctrl/Cmd+Z)"
-              >
-                Undo
-              </button>
-              <button
-                type="button"
-                className="ghost-button history-action-button"
-                onClick={handleRedo}
-                disabled={!canRedoGameHistory || isSubmittingTurn}
-                aria-label="Redo"
-                title="Redo (Shift+Ctrl/Cmd+Z)"
-              >
-                Redo
-              </button>
+<button
+                      type="button"
+                      className="ghost-button history-action-button"
+                      onClick={handleUndo}
+                      disabled={!canUndoGameHistory || isSubmittingTurn}
+                      aria-label="ย้อนกลับ"
+                      title="ย้อนกลับ (Ctrl/Cmd+Z)"
+                    >
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M3 10h10a5 5 0 0 1 5 5v2" />
+                        <polyline points="3 10 7 6" />
+                        <polyline points="3 10 7 14" />
+                      </svg>
+                    </button>
+                    <button
+                      type="button"
+                      className="ghost-button history-action-button"
+                      onClick={handleRedo}
+                      disabled={!canRedoGameHistory || isSubmittingTurn}
+                      aria-label="ทำซ้ำ"
+                      title="ทำซ้ำ (Shift+Ctrl/Cmd+Z)"
+                    >
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M21 10H11a5 5 0 0 0-5 5v2" />
+                        <polyline points="21 10 17 6" />
+                        <polyline points="21 10 17 14" />
+                      </svg>
+                    </button>
               <button
                 ref={leaderboardActionButtonRef}
                 type="button"
