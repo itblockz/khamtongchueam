@@ -6,12 +6,16 @@ import {
   applyScoreAwards,
   beginChallengeSelection,
   CHALLENGE_DEBATE_SEGMENT_COUNT,
+  confirmChallengeDebate,
   createConfirmedGameState,
   createGameState,
   getChallengeableAnswers,
   getFinalPlacements,
+  pauseGameStateForHistoryRestore,
   getScoreAwards,
   resolveChallenge,
+  resumePausedChallengeFromHistory,
+  resumePausedTurnFromHistory,
   resumeChallengeDebate,
   startRoundWithOpeningWord,
   startActiveTurn,
@@ -91,6 +95,59 @@ describe('advanceTurn', () => {
 
     expect(confirmedState.activePlayerId).toBe('c')
     expect(confirmedState.turnDirection).toBe(-1)
+  })
+
+  it('pauses a running turn for history restore and resumes with the remaining time', () => {
+    const initialState = createConfirmedGameState(
+      [
+        { id: 'a', name: 'A' },
+        { id: 'b', name: 'B' },
+      ],
+      3000,
+    )
+    const startedState = startActiveTurn(initialState, 500, 3000)
+    const restoredState = pauseGameStateForHistoryRestore(startedState, 1700)
+    const resumedState = resumePausedTurnFromHistory(restoredState, 2000)
+
+    expect(restoredState.turnStartedAt).toBeNull()
+    expect(restoredState.turnDeadlineAt).toBeNull()
+    expect(restoredState.timeLeftMs).toBe(1800)
+    expect(restoredState.isHistoryRestorePause).toBe(true)
+    expect(resumedState.turnStartedAt).toBe(2000)
+    expect(resumedState.turnDeadlineAt).toBe(3800)
+    expect(resumedState.timeLeftMs).toBe(1800)
+    expect(resumedState.isHistoryRestorePause).toBe(false)
+  })
+
+  it('pauses a running challenge debate for history restore and resumes the same segment time', () => {
+    const initialState = createGameState(
+      [
+        { id: 'a', name: 'A' },
+        { id: 'b', name: 'B' },
+        { id: 'c', name: 'C' },
+      ],
+      0,
+    )
+    const afterA = advanceTurn(initialState, submit('alpha', 100, ['a']))
+    const afterB = advanceTurn(afterA, submit('bravo', 200, ['b']))
+    const selectingState = beginChallengeSelection(afterB)
+    const selectedState = updateChallengeSelection(selectingState, {
+      challengerPlayerId: 'a',
+      challengedAnswerId: getChallengeableAnswers(afterB)[0]?.id ?? null,
+    })
+    const debatingState = confirmChallengeDebate(selectedState)
+    const runningDebateState = resumeChallengeDebate(debatingState, 1000, 15000)
+    const restoredState = pauseGameStateForHistoryRestore(runningDebateState, 4200)
+    const resumedState = resumePausedChallengeFromHistory(restoredState, 5000)
+
+    expect(restoredState.challenge.segmentStartedAt).toBeNull()
+    expect(restoredState.challenge.segmentDeadlineAt).toBeNull()
+    expect(restoredState.challenge.segmentAwaitingContinue).toBe(true)
+    expect(restoredState.challenge.timeLeftMs).toBe(11800)
+    expect(resumedState.challenge.segmentStartedAt).toBe(5000)
+    expect(resumedState.challenge.segmentDeadlineAt).toBe(16800)
+    expect(resumedState.challenge.segmentAwaitingContinue).toBe(false)
+    expect(resumedState.challenge.timeLeftMs).toBe(11800)
   })
 
   it('can start a confirmed round with a GM opening word without advancing the active player', () => {
@@ -525,7 +582,10 @@ describe('advanceTurn', () => {
       challengerPlayerId: 'a',
       challengedAnswerId: challengedAnswer?.id ?? null,
     })
-    const debatingState = startChallengeDebate(selectedState, 1000)
+    const debatingState = resumeChallengeDebate(
+      confirmChallengeDebate(selectedState),
+      1000,
+    )
     const judgingState = advanceDebateToJudging(debatingState)
     const resolvedState = resolveChallenge(judgingState, 'not_connects', 7000)
 
@@ -567,7 +627,10 @@ describe('advanceTurn', () => {
       challengerPlayerId: 'c',
       challengedAnswerId: challengedAnswer?.id ?? null,
     })
-    const debatingState = startChallengeDebate(selectedState, 1000)
+    const debatingState = resumeChallengeDebate(
+      confirmChallengeDebate(selectedState),
+      1000,
+    )
     const judgingState = advanceDebateToJudging(debatingState)
     const resolvedState = resolveChallenge(judgingState, 'connects', 7000)
 
@@ -606,7 +669,10 @@ describe('advanceTurn', () => {
       challengerPlayerId: 'a',
       challengedAnswerId: challengedAnswer.id,
     })
-    const debatingState = startChallengeDebate(selectedState, 1000)
+    const debatingState = resumeChallengeDebate(
+      confirmChallengeDebate(selectedState),
+      1000,
+    )
     const judgingState = advanceDebateToJudging(debatingState)
     const finishedState = resolveChallenge(judgingState, 'not_connects', 7000)
 

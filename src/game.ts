@@ -94,6 +94,8 @@ export interface GameState {
   challenge: ChallengeState
   challengeBonusPointsByPlayerId: Record<string, number>
   isEliminationPause: boolean
+  isHistoryRestorePause: boolean
+  isTurnResumedFromHistory: boolean
 }
 
 export interface LeaderboardAward {
@@ -125,6 +127,7 @@ function buildTurnState(now: number, durationMs: number) {
     turnDeadlineAt: now + durationMs,
     timeLeftMs: durationMs,
     isSafeToFinish: false,
+    isTurnResumedFromHistory: false,
   }
 }
 
@@ -135,6 +138,18 @@ function buildPausedTurnState(durationMs: number) {
     turnDeadlineAt: null,
     timeLeftMs: durationMs,
     isSafeToFinish: false,
+    isTurnResumedFromHistory: false,
+  }
+}
+
+function buildRunningTurnState(now: number, remainingMs: number, resumedFromHistory = false) {
+  return {
+    currentInput: '',
+    turnStartedAt: now,
+    turnDeadlineAt: now + remainingMs,
+    timeLeftMs: remainingMs,
+    isSafeToFinish: false,
+    isTurnResumedFromHistory: resumedFromHistory,
   }
 }
 
@@ -355,6 +370,22 @@ function buildJudgingChallengeState(challenge: ChallengeState): ChallengeState {
   }
 }
 
+function getRemainingTurnTime(state: GameState, now: number) {
+  if (state.turnDeadlineAt === null) {
+    return state.timeLeftMs
+  }
+
+  return Math.max(0, state.turnDeadlineAt - now)
+}
+
+function getRemainingChallengeTime(state: GameState, now: number) {
+  if (state.challenge.segmentDeadlineAt === null) {
+    return state.challenge.timeLeftMs
+  }
+
+  return Math.max(0, state.challenge.segmentDeadlineAt - now)
+}
+
 function getNextEliminatedOrder(players: Player[]) {
   return players.filter((player) => player.status === 'eliminated').length + 1
 }
@@ -423,6 +454,7 @@ function finalizePlayingState(
       answerHistory: nextAnswerHistory,
       challenge: createIdleChallengeState(),
       challengeBonusPointsByPlayerId: nextChallengeBonusPointsByPlayerId,
+      isHistoryRestorePause: false,
     }
   }
 
@@ -454,6 +486,7 @@ function finalizePlayingState(
       ? buildPausedTurnState(durationMs)
       : buildTurnState(now, durationMs)),
     isEliminationPause: shouldPauseNextTurn,
+    isHistoryRestorePause: false,
   }
 }
 
@@ -528,6 +561,7 @@ export function startRoundWithOpeningWord(
       ),
     ],
     ...buildTurnState(now, durationMs),
+    isHistoryRestorePause: false,
   }
 }
 
@@ -538,9 +572,9 @@ function markChallengeResolved(
   return answerHistory.map((record) =>
     record.id === challengedAnswerId
       ? {
-          ...record,
-          challengeResolved: true,
-        }
+        ...record,
+        challengeResolved: true,
+      }
       : record,
   )
 }
@@ -602,6 +636,8 @@ function buildChallengeSelectionState(
       challenge: createIdleChallengeState(),
       challengeBonusPointsByPlayerId: {},
       isEliminationPause: false,
+      isHistoryRestorePause: false,
+      isTurnResumedFromHistory: false,
     }).map((answerRecord) => answerRecord.id),
   )
 
@@ -619,8 +655,8 @@ function buildChallengeSelectionState(
 
   const nextChallengerPlayerId =
     challengerPlayerId &&
-    activePlayerIds.has(challengerPlayerId) &&
-    challengerPlayerId !== nextChallengedPlayerId
+      activePlayerIds.has(challengerPlayerId) &&
+      challengerPlayerId !== nextChallengedPlayerId
       ? challengerPlayerId
       : null
 
@@ -671,6 +707,8 @@ export function createSetupState(): GameState {
     challenge: createIdleChallengeState(),
     challengeBonusPointsByPlayerId: {},
     isEliminationPause: false,
+    isHistoryRestorePause: false,
+    isTurnResumedFromHistory: false,
   }
 }
 
@@ -722,6 +760,7 @@ export function createGameState(
     challenge: createIdleChallengeState(),
     challengeBonusPointsByPlayerId: {},
     isEliminationPause: false,
+    isHistoryRestorePause: false,
     ...buildTurnState(now, durationMs),
   }
 }
@@ -748,6 +787,7 @@ export function createConfirmedGameState(
     challenge: createIdleChallengeState(),
     challengeBonusPointsByPlayerId: {},
     isEliminationPause: false,
+    isHistoryRestorePause: false,
     ...buildPausedTurnState(durationMs),
   }
 }
@@ -772,7 +812,83 @@ export function startActiveTurn(
     ...state,
     isAwaitingFirstTurnStart: false,
     isEliminationPause: false,
+    isHistoryRestorePause: false,
     ...buildTurnState(now, durationMs),
+  }
+}
+
+export function pauseGameStateForHistoryRestore(
+  state: GameState,
+  now = Date.now(),
+): GameState {
+  if (state.phase !== 'playing') {
+    return state
+  }
+
+  if (
+    state.challenge.status === 'debating' &&
+    state.challenge.segmentStartedAt !== null &&
+    !state.challenge.segmentAwaitingContinue
+  ) {
+    const remainingMs = getRemainingChallengeTime(state, now)
+
+    return {
+      ...state,
+      challenge: {
+        ...state.challenge,
+        segmentStartedAt: null,
+        segmentDeadlineAt: null,
+        timeLeftMs: remainingMs,
+        segmentAwaitingContinue: true,
+      },
+      isHistoryRestorePause: false,
+    }
+  }
+
+  if (
+    state.activePlayerId === null ||
+    state.isAwaitingFirstTurnStart ||
+    state.challenge.status !== 'idle' ||
+    state.turnStartedAt === null
+  ) {
+    return state
+  }
+
+  const remainingMs = getRemainingTurnTime(state, now)
+
+  return {
+    ...state,
+    currentInput: '',
+    turnStartedAt: null,
+    turnDeadlineAt: null,
+    timeLeftMs: remainingMs,
+    isSafeToFinish: false,
+    isEliminationPause: false,
+    isHistoryRestorePause: true,
+  }
+}
+
+export function resumePausedTurnFromHistory(
+  state: GameState,
+  now = Date.now(),
+): GameState {
+  if (
+    state.phase !== 'playing' ||
+    state.activePlayerId === null ||
+    state.turnStartedAt !== null ||
+    state.turnDeadlineAt !== null ||
+    !state.isHistoryRestorePause ||
+    state.challenge.status !== 'idle'
+  ) {
+    return state
+  }
+
+  return {
+    ...state,
+    isAwaitingFirstTurnStart: false,
+    isEliminationPause: false,
+    isHistoryRestorePause: false,
+    ...buildRunningTurnState(now, state.timeLeftMs, true),
   }
 }
 
@@ -801,16 +917,24 @@ export function applyInputChange(
     return state
   }
 
+  const hasTyped = nextValue.length > 0
+
   const typedInTime =
     !state.isSafeToFinish &&
-    nextValue.length > 0 &&
+    hasTyped &&
     state.turnDeadlineAt !== null &&
     now <= state.turnDeadlineAt
+
+  const safeToFinish =
+    state.isSafeToFinish ||
+    typedInTime ||
+    (state.isTurnResumedFromHistory && hasTyped)
 
   return {
     ...state,
     currentInput: nextValue,
-    isSafeToFinish: state.isSafeToFinish || typedInTime,
+    isSafeToFinish: safeToFinish,
+    isTurnResumedFromHistory: state.isTurnResumedFromHistory && !hasTyped,
   }
 }
 
@@ -934,6 +1058,7 @@ export function beginChallengeSelection(
       challengeableAnswers[0]?.id ?? null,
     ),
     isEliminationPause: false,
+    isHistoryRestorePause: false,
     ...buildPausedTurnState(durationMs),
   }
 }
@@ -949,6 +1074,7 @@ export function cancelChallenge(
   return {
     ...state,
     challenge: createIdleChallengeState(),
+    isHistoryRestorePause: false,
     ...buildPausedTurnState(durationMs),
   }
 }
@@ -975,6 +1101,7 @@ export function updateChallengeSelection(
   return {
     ...state,
     challenge: nextChallenge,
+    isHistoryRestorePause: false,
   }
 }
 
@@ -993,6 +1120,7 @@ export function confirmChallengeDebate(state: GameState) {
   return {
     ...state,
     challenge: buildDebatingChallengeState(state.challenge, 0, CHALLENGE_DEBATE_SEGMENT_DURATION_MS, 0, true),
+    isHistoryRestorePause: false,
   }
 }
 
@@ -1001,20 +1129,37 @@ export function startChallengeDebate(
   now = Date.now(),
   durationMs = CHALLENGE_DEBATE_SEGMENT_DURATION_MS,
 ) {
-  if (state.phase !== 'playing' || state.challenge.status !== 'selecting') {
+  if (state.phase !== 'playing') {
     return state
+  }
+
+  if (state.challenge.status === 'selecting') {
+    if (
+      !state.challenge.challengerPlayerId ||
+      !state.challenge.challengedAnswerId ||
+      !state.challenge.challengedPlayerId ||
+      !state.challenge.previousValidAnswerId
+    ) {
+      return state
+    }
+
+    return {
+      ...state,
+      challenge: buildDebatingChallengeState(
+        state.challenge,
+        now,
+        durationMs,
+        0,
+      ),
+      isHistoryRestorePause: false,
+    }
   }
 
   if (
-    !state.challenge.challengerPlayerId ||
-    !state.challenge.challengedAnswerId ||
-    !state.challenge.challengedPlayerId ||
-    !state.challenge.previousValidAnswerId
+    state.challenge.status !== 'debating' ||
+    !state.challenge.segmentAwaitingContinue ||
+    state.challenge.segmentStartedAt !== null
   ) {
-    return state
-  }
-
-  if (!state.challenge.awaitingChallengeStart) {
     return state
   }
 
@@ -1022,12 +1167,12 @@ export function startChallengeDebate(
     ...state,
     challenge: {
       ...state.challenge,
-      awaitingChallengeStart: false,
       segmentAwaitingContinue: false,
       segmentStartedAt: now,
       segmentDeadlineAt: now + durationMs,
       timeLeftMs: durationMs,
     },
+    isHistoryRestorePause: false,
   }
 }
 
@@ -1050,6 +1195,7 @@ export function tickChallengeDebate(
       ...state.challenge,
       timeLeftMs,
     },
+    isHistoryRestorePause: false,
   }
 }
 
@@ -1073,10 +1219,9 @@ export function advanceChallengeDebate(
     return {
       ...state,
       challenge: buildJudgingChallengeState(state.challenge),
+      isHistoryRestorePause: false,
     }
   }
-
-  const shouldAwaitContinue = nextSegmentIndex > 0
 
   return {
     ...state,
@@ -1085,8 +1230,8 @@ export function advanceChallengeDebate(
       now,
       durationMs,
       nextSegmentIndex,
-      shouldAwaitContinue,
     ),
+    isHistoryRestorePause: false,
   }
 }
 
@@ -1112,6 +1257,32 @@ export function resumeChallengeDebate(
       segmentDeadlineAt: now + durationMs,
       timeLeftMs: durationMs,
     },
+    isHistoryRestorePause: false,
+  }
+}
+
+export function resumePausedChallengeFromHistory(
+  state: GameState,
+  now = Date.now(),
+): GameState {
+  if (
+    state.phase !== 'playing' ||
+    state.challenge.status !== 'debating' ||
+    !state.challenge.segmentAwaitingContinue ||
+    state.challenge.segmentStartedAt !== null
+  ) {
+    return state
+  }
+
+  return {
+    ...state,
+    challenge: {
+      ...state.challenge,
+      segmentAwaitingContinue: false,
+      segmentStartedAt: now,
+      segmentDeadlineAt: now + state.challenge.timeLeftMs,
+    },
+    isHistoryRestorePause: false,
   }
 }
 
@@ -1179,17 +1350,17 @@ export function resolveChallenge(
     decision === 'not_connects'
       ? buildUsedSyllableStateFromAnswerHistory(nextAnswerHistory)
       : {
-          usedSyllablesInRound: state.usedSyllablesInRound,
-          usedSyllableEntriesInRound: state.usedSyllableEntriesInRound,
-        }
+        usedSyllablesInRound: state.usedSyllablesInRound,
+        usedSyllableEntriesInRound: state.usedSyllableEntriesInRound,
+      }
   const nextChallengeBonusPointsByPlayerId =
     decision === 'not_connects'
       ? {
-          ...state.challengeBonusPointsByPlayerId,
-          [challengerPlayerId]:
-            (state.challengeBonusPointsByPlayerId[challengerPlayerId] ?? 0) +
-            CHALLENGE_BONUS_POINTS,
-        }
+        ...state.challengeBonusPointsByPlayerId,
+        [challengerPlayerId]:
+          (state.challengeBonusPointsByPlayerId[challengerPlayerId] ?? 0) +
+          CHALLENGE_BONUS_POINTS,
+      }
       : state.challengeBonusPointsByPlayerId
 
   return finalizePlayingState(
@@ -1236,17 +1407,17 @@ export function hostEliminateCurrentPlayer(
   const nextPlayers = state.players.map((player, index) =>
     index === currentIndex
       ? {
-          ...player,
-          status: 'eliminated' as const,
-          eliminatedAtTurnCycle: state.turnCycle,
-          eliminatedOrder: nextEliminatedOrder,
-          eliminationReason,
-          duplicateSyllable: null,
-          duplicateSourceAnswer: null,
-          duplicateSubmittedAnswer: state.currentInput,
-          challengeSourceAnswer: null,
-          challengeTargetAnswer: null,
-        }
+        ...player,
+        status: 'eliminated' as const,
+        eliminatedAtTurnCycle: state.turnCycle,
+        eliminatedOrder: nextEliminatedOrder,
+        eliminationReason,
+        duplicateSyllable: null,
+        duplicateSourceAnswer: null,
+        duplicateSubmittedAnswer: state.currentInput,
+        challengeSourceAnswer: null,
+        challengeTargetAnswer: null,
+      }
       : player,
   )
 
@@ -1316,17 +1487,17 @@ export function advanceTurn(
       nextPlayers = state.players.map((player, index) =>
         index === currentIndex
           ? {
-              ...player,
-              status: 'eliminated' as const,
-              eliminatedAtTurnCycle: state.turnCycle,
-              eliminatedOrder: nextEliminatedOrder,
-              eliminationReason: 'late_submit' as const,
-              duplicateSyllable: null,
-              duplicateSourceAnswer: null,
-              duplicateSubmittedAnswer: null,
-              challengeSourceAnswer: null,
-              challengeTargetAnswer: null,
-            }
+            ...player,
+            status: 'eliminated' as const,
+            eliminatedAtTurnCycle: state.turnCycle,
+            eliminatedOrder: nextEliminatedOrder,
+            eliminationReason: 'late_submit' as const,
+            duplicateSyllable: null,
+            duplicateSourceAnswer: null,
+            duplicateSubmittedAnswer: null,
+            challengeSourceAnswer: null,
+            challengeTargetAnswer: null,
+          }
           : player,
       )
     } else {
@@ -1346,17 +1517,17 @@ export function advanceTurn(
         nextPlayers = state.players.map((player, index) =>
           index === currentIndex
             ? {
-                ...player,
-                status: 'eliminated' as const,
-                eliminatedAtTurnCycle: state.turnCycle,
-                eliminatedOrder: nextEliminatedOrder,
-                eliminationReason: 'duplicate_syllable' as const,
-                duplicateSyllable: duplicateSyllableEntry.syllable,
-                duplicateSourceAnswer: duplicateSyllableEntry.answer,
-                duplicateSubmittedAnswer: answer,
-                challengeSourceAnswer: null,
-                challengeTargetAnswer: null,
-              }
+              ...player,
+              status: 'eliminated' as const,
+              eliminatedAtTurnCycle: state.turnCycle,
+              eliminatedOrder: nextEliminatedOrder,
+              eliminationReason: 'duplicate_syllable' as const,
+              duplicateSyllable: duplicateSyllableEntry.syllable,
+              duplicateSourceAnswer: duplicateSyllableEntry.answer,
+              duplicateSubmittedAnswer: answer,
+              challengeSourceAnswer: null,
+              challengeTargetAnswer: null,
+            }
             : player,
         )
       } else {
@@ -1374,9 +1545,9 @@ export function advanceTurn(
         nextPlayers = state.players.map((player, index) =>
           index === currentIndex
             ? {
-                ...player,
-                answers: [...player.answers, answer],
-              }
+              ...player,
+              answers: [...player.answers, answer],
+            }
             : player,
         )
         nextAnswerHistory = [
@@ -1395,17 +1566,17 @@ export function advanceTurn(
     nextPlayers = state.players.map((player, index) =>
       index === currentIndex
         ? {
-            ...player,
-            status: 'eliminated' as const,
-            eliminatedAtTurnCycle: state.turnCycle,
-            eliminatedOrder: nextEliminatedOrder,
-            eliminationReason: 'timeout' as const,
-            duplicateSyllable: null,
-            duplicateSourceAnswer: null,
-            duplicateSubmittedAnswer: null,
-            challengeSourceAnswer: null,
-            challengeTargetAnswer: null,
-          }
+          ...player,
+          status: 'eliminated' as const,
+          eliminatedAtTurnCycle: state.turnCycle,
+          eliminatedOrder: nextEliminatedOrder,
+          eliminationReason: 'timeout' as const,
+          duplicateSyllable: null,
+          duplicateSourceAnswer: null,
+          duplicateSubmittedAnswer: null,
+          challengeSourceAnswer: null,
+          challengeTargetAnswer: null,
+        }
         : player,
     )
   }

@@ -53,9 +53,11 @@ import {
   startRoundWithOpeningWord,
   startActiveTurn,
   startChallengeDebate,
-  confirmChallengeDebate,
   hostEliminateCurrentPlayer,
+  pauseGameStateForHistoryRestore,
   tickChallengeDebate,
+  resumePausedChallengeFromHistory,
+  resumePausedTurnFromHistory,
   updateChallengeSelection,
   type AnswerRecord,
   type GameState,
@@ -70,6 +72,7 @@ import {
   segmentThaiText,
 } from './syllableClient'
 import { useTurnTimer } from './useTurnTimer'
+import { useUndoRedoHistory } from './useUndoRedoHistory'
 
 const MATCH_ROUNDS_PER_MATCH = 4
 const SYLLABLE_REQUEST_DEBOUNCE_MS = 250
@@ -170,11 +173,11 @@ function getEliminatedPlayerSummary(
 
   if (player.eliminationReason === 'duplicate_syllable') {
     if (player.duplicateSubmittedAnswer && player.duplicateSourceAnswer) {
-      return `${player.name} ตกรอบเพราะ "${player.duplicateSubmittedAnswer}" ซ้ำกับ "${player.duplicateSourceAnswer}"`
+      return `${player.name} ตกรอบเพราะคำตอบ "${player.duplicateSubmittedAnswer}" ซ้ำกับคำ "${player.duplicateSourceAnswer}"`
     }
 
     if (player.duplicateSourceAnswer) {
-      return `${player.name} ตกรอบเพราะซ้ำกับ "${player.duplicateSourceAnswer}"`
+      return `${player.name} ตกรอบเพราะคำตอบซ้ำกับคำ "${player.duplicateSourceAnswer}"`
     }
 
     return `${player.name} ตกรอบเพราะใช้พยางค์ซ้ำ`
@@ -190,7 +193,7 @@ function getEliminatedPlayerSummary(
 
   if (player.eliminationReason === 'failed_challenge') {
     if (player.challengeTargetAnswer) {
-      return `${player.name} ตกรอบเพราะชาเลนจ์ "${player.challengeTargetAnswer}" ไม่สำเร็จ`
+      return `${player.name} ตกรอบเพราะชาเลนจ์คำ "${player.challengeTargetAnswer}" ไม่สำเร็จ`
     }
 
     return `${player.name} ตกรอบเพราะชาเลนจ์ไม่สำเร็จ`
@@ -198,7 +201,7 @@ function getEliminatedPlayerSummary(
 
   if (player.eliminationReason === 'invalid_connection') {
     if (player.challengeTargetAnswer && player.challengeSourceAnswer) {
-      return `${player.name} ตกรอบเพราะ "${player.challengeTargetAnswer}" ไม่เชื่อมกับ "${player.challengeSourceAnswer}"`
+      return `${player.name} ตกรอบเพราะคำ "${player.challengeTargetAnswer}" ไม่เชื่อมกับคำ "${player.challengeSourceAnswer}"`
     }
 
     return `${player.name} ตกรอบเพราะคำไม่เชื่อมกัน`
@@ -280,6 +283,24 @@ function renderEliminatedPlayerSummaryContent(
   const duplicateDetails = getDuplicateSyllableDetails(player)
 
   if (player && duplicateDetails) {
+    return (
+      <>
+        <span>{player.name} ตกรอบเพราะคำตอบ "</span>
+        {renderHighlightedAnswer(
+          duplicateDetails.submittedAnswer,
+          duplicateDetails.duplicateSyllable,
+        )}
+        <span>" ซ้ำกับคำ "</span>
+        {renderHighlightedAnswer(
+          duplicateDetails.sourceAnswer,
+          duplicateDetails.duplicateSyllable,
+        )}
+        <span>"</span>
+      </>
+    )
+  }
+
+  if (false && player && duplicateDetails) {
     return (
       <>
         <span>{player.name} ตกรอบเพราะ "</span>
@@ -425,12 +446,64 @@ interface SessionState {
   completedRoundsInMatch: number
 }
 
+interface HistoryUiState {
+  gmOpeningWordDraft: string
+}
+
+interface HistorySnapshot {
+  sessionState: SessionState
+  uiState: HistoryUiState
+}
+
 interface RoundScoreBreakdown {
   totalPoints: number
   challengeBonus: number
 }
 
 type ChallengeChallengerOption = GameState['players'][number]
+
+function createInitialHistoryUiState(): HistoryUiState {
+  return {
+    gmOpeningWordDraft: '',
+  }
+}
+
+function createInitialHistorySnapshot(): HistorySnapshot {
+  return {
+    sessionState: createInitialSessionState(),
+    uiState: createInitialHistoryUiState(),
+  }
+}
+
+function isEditableUndoRedoTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) {
+    return false
+  }
+
+  if (target.isContentEditable) {
+    return true
+  }
+
+  if (target instanceof HTMLTextAreaElement) {
+    return !target.disabled && !target.readOnly
+  }
+
+  if (target instanceof HTMLInputElement) {
+    const editableTypes = new Set([
+      'text',
+      'search',
+      'email',
+      'url',
+      'tel',
+      'password',
+      'number',
+    ])
+
+    return editableTypes.has(target.type) && !target.disabled && !target.readOnly
+  }
+
+  return false
+}
 
 interface ChallengeChallengerListBoxProps {
   activeSuggestionId: string | null
@@ -506,6 +579,19 @@ function SettingsDropdown({
   const [isOpen, setIsOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
   const buttonRef = useRef<HTMLButtonElement>(null)
+  const closeIfFocusLeftDropdown = useCallback(() => {
+    const activeElement = document.activeElement
+
+    if (
+      activeElement instanceof Node &&
+      (menuRef.current?.contains(activeElement) ||
+        buttonRef.current?.contains(activeElement))
+    ) {
+      return
+    }
+
+    setIsOpen(false)
+  }, [])
 
   useEffect(() => {
     if (!isOpen) return
@@ -551,9 +637,17 @@ function SettingsDropdown({
           role="menu"
           onKeyDown={handleKeyDown}
           onBlur={(e) => {
-            if (!menuRef.current?.contains(e.relatedTarget as Node)) {
-              setIsOpen(false)
+            const nextTarget = e.relatedTarget
+
+            if (
+              nextTarget instanceof Node &&
+              (menuRef.current?.contains(nextTarget) ||
+                buttonRef.current?.contains(nextTarget))
+            ) {
+              return
             }
+
+            window.setTimeout(closeIfFocusLeftDropdown, 0)
           }}
         >
           <button
@@ -565,7 +659,6 @@ function SettingsDropdown({
             }}
             disabled={isSubmittingTurn}
             aria-pressed={isGmOpeningEnabled}
-            role="menuitemcheckbox"
           >
             <span className="settings-dropdown-item-check" aria-hidden="true">
               {isGmOpeningEnabled ? '✓' : ''}
@@ -580,12 +673,13 @@ function SettingsDropdown({
               onToggleSyllableDebug()
             }}
             aria-pressed={isSyllableDebugVisible}
-            role="menuitemcheckbox"
           >
             <span className="settings-dropdown-item-check" aria-hidden="true">
               {isSyllableDebugVisible ? '✓' : ''}
             </span>
-            แสดงการแยกพยางค์
+            {isSyllableDebugVisible
+              ? 'ซ่อนการแยกพยางค์'
+              : 'แสดงการแยกพยางค์'}
           </button>
           <button
             type="button"
@@ -595,7 +689,6 @@ function SettingsDropdown({
               onTogglePreviousWordPrompt()
             }}
             aria-pressed={showPreviousWordPrompt}
-            role="menuitemcheckbox"
           >
             <span className="settings-dropdown-item-check" aria-hidden="true">
               {showPreviousWordPrompt ? '✓' : ''}
@@ -669,9 +762,17 @@ function App() {
   const [playerDrafts, setPlayerDrafts] = useState<PlayerDraft[]>(() =>
     ensureTrailingBlankDraft(createInitialDrafts()),
   )
-  const [sessionState, setSessionState] = useState<SessionState>(() =>
-    createInitialSessionState(),
-  )
+  const {
+    historyState,
+    present: historySnapshot,
+    canUndo,
+    canRedo,
+    resetHistory,
+    updatePresent,
+    commitPresent,
+    undoPresent,
+    redoPresent,
+  } = useUndoRedoHistory(createInitialHistorySnapshot())
   const answerInputRef = useRef<HTMLInputElement>(null)
   const startFirstTurnButtonRef = useRef<HTMLButtonElement>(null)
   const leaderboardActionButtonRef = useRef<HTMLButtonElement>(null)
@@ -679,6 +780,7 @@ function App() {
   const challengeChallengedAnswerSelectRef = useRef<HTMLSelectElement>(null)
   const challengeDecisionButtonRef = useRef<HTMLButtonElement>(null)
   const challengeResumeButtonRef = useRef<HTMLButtonElement>(null)
+  const challengeHistoryRestorePauseRef = useRef(false)
   const playerInputRefs = useRef<Record<string, HTMLInputElement | null>>({})
   const draftItemRefs = useRef<Record<string, HTMLLIElement | null>>({})
   const draftItemPositionSnapshotRef = useRef<Record<string, number>>({})
@@ -699,7 +801,6 @@ function App() {
     challengeChallengerActiveOptionId,
     setChallengeChallengerActiveOptionId,
   ] = useState<string | null>(null)
-  const [gmOpeningWordDraft, setGmOpeningWordDraft] = useState('')
   const [isGmOpeningWordEnabled, setIsGmOpeningWordEnabled] = useState(() =>
     getInitialGmOpeningWordEnabled(),
   )
@@ -709,6 +810,8 @@ function App() {
   const [showPreviousWordPrompt, setShowPreviousWordPrompt] = useState(() =>
     getInitialShowPreviousWordPrompt(),
   )
+  const { sessionState, uiState } = historySnapshot
+  const gmOpeningWordDraft = uiState.gmOpeningWordDraft
   const { gameState, leaderboardScores, roundScoreBreakdownsInMatch } =
     sessionState
   const currentMatchRound =
@@ -984,7 +1087,13 @@ function App() {
   const displayedTimerAriaLabel = isGmOpeningWordMode
     ? 'เวลารอคำตั้งต้นของผู้คุมเกม'
     : timerAriaLabel
-  const challengeNote = null
+  const challengeNote = isChallengeSelecting
+    ? 'เลือกผู้ชาเลนจ์และคำที่ต้องการชาเลนจ์'
+    : isChallengeDebating && challengeSpeakerName
+      ? `${challengeSpeakerName} กำลังพูด`
+      : isChallengeJudging
+        ? 'ครบสองรอบโต้วาทีแล้ว เลือกผลตัดสิน'
+        : null
   const currentInputSyllables = currentInputSegmentation?.syllables ?? []
   const currentInputSegmentationMeta = currentInputSegmentation
     ? `${currentInputSegmentation.engine} · ${currentInputSegmentation.modelVersion}`
@@ -992,6 +1101,55 @@ function App() {
 
   const resetChallengeChallengerTypeahead = useCallback(() => {
     setChallengeChallengerSearchValue('')
+    setChallengeChallengerActiveOptionId(null)
+  }, [])
+
+  const clearTransientUiState = useCallback(() => {
+    challengeHistoryRestorePauseRef.current = false
+    setDraggedDraftId(null)
+    draftItemPositionSnapshotRef.current = {}
+    setCurrentInputSegmentation(null)
+    setSegmentationError(null)
+    setIsSegmentingCurrentInput(false)
+    setIsSubmittingTurn(false)
+    resetChallengeChallengerTypeahead()
+  }, [resetChallengeChallengerTypeahead])
+
+  const restoreHistorySnapshot = useCallback((snapshot: HistorySnapshot) => {
+    const restoredGameState = pauseGameStateForHistoryRestore(
+      snapshot.sessionState.gameState,
+      Date.now(),
+    )
+
+    if (restoredGameState === snapshot.sessionState.gameState) {
+      return snapshot
+    }
+
+    return {
+      ...snapshot,
+      sessionState: {
+        ...snapshot.sessionState,
+        gameState: restoredGameState,
+      },
+    }
+  }, [])
+
+  const syncTransientUiForHistorySnapshot = useCallback((snapshot: HistorySnapshot) => {
+    const restoredChallengerName =
+      snapshot.sessionState.gameState.phase === 'playing' &&
+      snapshot.sessionState.gameState.challenge.status === 'selecting' &&
+      snapshot.sessionState.gameState.challenge.challengerPlayerId
+        ? snapshot.sessionState.gameState.players.find(
+          (player) =>
+            player.id === snapshot.sessionState.gameState.challenge.challengerPlayerId,
+        )?.name ?? ''
+        : ''
+
+    challengeHistoryRestorePauseRef.current =
+      snapshot.sessionState.gameState.phase === 'playing' &&
+      snapshot.sessionState.gameState.challenge.status === 'debating' &&
+      snapshot.sessionState.gameState.challenge.segmentStartedAt !== null
+    setChallengeChallengerSearchValue(restoredChallengerName)
     setChallengeChallengerActiveOptionId(null)
   }, [])
 
@@ -1026,26 +1184,135 @@ function App() {
     return result
   }
 
-  function replaceGameState(nextGameState: GameState) {
-    setSessionState((current) =>
-      applyFinishedSessionState(current, nextGameState),
-    )
-  }
-
-  const updateGameState = useCallback(
+  const applyEphemeralGameUpdate = useCallback(
     (updater: (currentGameState: GameState) => GameState) => {
-      setSessionState((current) => {
-        const nextGameState = updater(current.gameState)
+      updatePresent((current) => {
+        const nextGameState = updater(current.sessionState.gameState)
 
-        if (nextGameState === current.gameState) {
+        if (nextGameState === current.sessionState.gameState) {
           return current
         }
 
-        return applyFinishedSessionState(current, nextGameState)
+        return {
+          ...current,
+          sessionState: applyFinishedSessionState(
+            current.sessionState,
+            nextGameState,
+          ),
+        }
       })
     },
-    [],
+    [updatePresent],
   )
+
+  const setGmOpeningWordDraft = useCallback(
+    (nextValue: string | ((current: string) => string)) => {
+      updatePresent((current) => {
+        const resolvedValue =
+          typeof nextValue === 'function'
+            ? nextValue(current.uiState.gmOpeningWordDraft)
+            : nextValue
+
+        if (resolvedValue === current.uiState.gmOpeningWordDraft) {
+          return current
+        }
+
+        return {
+          ...current,
+          uiState: {
+            ...current.uiState,
+            gmOpeningWordDraft: resolvedValue,
+          },
+        }
+      })
+    },
+    [updatePresent],
+  )
+
+  const commitGameAction = useCallback(
+    (
+      updater: (currentGameState: GameState) => GameState,
+      options?: {
+        nextGmOpeningWordDraft?: string | ((current: string) => string)
+      },
+    ) => {
+      commitPresent((current) => {
+        const nextGameState = updater(current.sessionState.gameState)
+        const nextSessionState =
+          nextGameState === current.sessionState.gameState
+            ? current.sessionState
+            : applyFinishedSessionState(current.sessionState, nextGameState)
+        const nextGmOpeningWordDraft =
+          options?.nextGmOpeningWordDraft === undefined
+            ? current.uiState.gmOpeningWordDraft
+            : typeof options.nextGmOpeningWordDraft === 'function'
+              ? options.nextGmOpeningWordDraft(current.uiState.gmOpeningWordDraft)
+              : options.nextGmOpeningWordDraft
+
+        if (
+          nextSessionState === current.sessionState &&
+          nextGmOpeningWordDraft === current.uiState.gmOpeningWordDraft
+        ) {
+          return current
+        }
+
+        return {
+          sessionState: nextSessionState,
+          uiState:
+            nextGmOpeningWordDraft === current.uiState.gmOpeningWordDraft
+              ? current.uiState
+              : {
+                ...current.uiState,
+                gmOpeningWordDraft: nextGmOpeningWordDraft,
+          },
+        }
+      })
+      challengeHistoryRestorePauseRef.current = false
+    },
+    [commitPresent],
+  )
+  const canUndoGameHistory = gameState.phase !== 'setup' && canUndo
+  const canRedoGameHistory = gameState.phase !== 'setup' && canRedo
+
+  const handleUndo = useCallback(() => {
+    const previousSnapshot = historyState.past.at(-1)
+
+    if (!canUndoGameHistory || !previousSnapshot) {
+      return
+    }
+
+    clearTransientUiState()
+    syncTransientUiForHistorySnapshot(previousSnapshot)
+    const restoredSnapshot = restoreHistorySnapshot(previousSnapshot)
+    undoPresent(() => restoredSnapshot)
+  }, [
+    canUndoGameHistory,
+    clearTransientUiState,
+    historyState.past,
+    restoreHistorySnapshot,
+    syncTransientUiForHistorySnapshot,
+    undoPresent,
+  ])
+
+  const handleRedo = useCallback(() => {
+    const nextSnapshot = historyState.future[0]
+
+    if (!canRedoGameHistory || !nextSnapshot) {
+      return
+    }
+
+    clearTransientUiState()
+    syncTransientUiForHistorySnapshot(nextSnapshot)
+    const restoredSnapshot = restoreHistorySnapshot(nextSnapshot)
+    redoPresent(() => restoredSnapshot)
+  }, [
+    canRedoGameHistory,
+    clearTransientUiState,
+    historyState.future,
+    redoPresent,
+    restoreHistorySnapshot,
+    syncTransientUiForHistorySnapshot,
+  ])
 
   useTurnTimer({
     durationMs: TURN_DURATION_MS,
@@ -1053,7 +1320,7 @@ function App() {
     safeToFinish: gameState.phase === 'playing' && gameState.isSafeToFinish,
     startedAt: gameState.phase === 'playing' ? gameState.turnStartedAt : null,
     onTick: (timeLeftMs, startedAt) => {
-      updateGameState((current) => {
+      applyEphemeralGameUpdate((current) => {
         if (
           current.phase !== 'playing' ||
           current.turnStartedAt !== startedAt
@@ -1068,7 +1335,7 @@ function App() {
       })
     },
     onExpire: (startedAt) => {
-      updateGameState((current) => {
+      commitGameAction((current) => {
         if (
           current.phase !== 'playing' ||
           current.isSafeToFinish ||
@@ -1094,12 +1361,12 @@ function App() {
         ? challengeState?.segmentStartedAt ?? null
         : null,
     onTick: (timeLeftMs, startedAt) => {
-      updateGameState((current) =>
+      applyEphemeralGameUpdate((current) =>
         tickChallengeDebate(current, timeLeftMs, startedAt),
       )
     },
     onExpire: (startedAt) => {
-      updateGameState((current) =>
+      commitGameAction((current) =>
         advanceChallengeDebate(current, startedAt),
       )
     },
@@ -1172,12 +1439,8 @@ function App() {
         }
 
         event.preventDefault()
-        setCurrentInputSegmentation(null)
-        setSegmentationError(null)
-        setIsSegmentingCurrentInput(false)
-        setIsSubmittingTurn(false)
-
-        updateGameState((current) => beginChallengeSelection(current))
+        clearTransientUiState()
+        commitGameAction((current) => beginChallengeSelection(current))
         return
       }
 
@@ -1187,7 +1450,7 @@ function App() {
         }
 
         event.preventDefault()
-        updateGameState((current) => cancelChallenge(current))
+        commitGameAction((current) => cancelChallenge(current))
         return
       }
 
@@ -1196,7 +1459,17 @@ function App() {
       }
 
       event.preventDefault()
-      updateGameState((current) => {
+      commitGameAction((current) => {
+        if (
+          current.phase === 'playing' &&
+          current.challenge.status === 'debating' &&
+          current.challenge.segmentAwaitingContinue
+        ) {
+          return challengeHistoryRestorePauseRef.current
+            ? resumePausedChallengeFromHistory(current)
+            : resumeChallengeDebate(current)
+        }
+
         if (
           current.phase !== 'playing' ||
           current.challenge.status !== 'debating' ||
@@ -1219,9 +1492,63 @@ function App() {
     }
   }, [
     canOpenChallenge,
+    clearTransientUiState,
+    commitGameAction,
     isChallengeSelecting,
     isChallengeDebating,
-    updateGameState,
+  ])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    function handleUndoRedoKeyDown(event: globalThis.KeyboardEvent) {
+      if (event.defaultPrevented || event.altKey) {
+        return
+      }
+
+      if (!event.ctrlKey && !event.metaKey) {
+        return
+      }
+
+      if (isEditableUndoRedoTarget(event.target)) {
+        return
+      }
+
+      if (event.key.toLocaleLowerCase() !== 'z') {
+        return
+      }
+
+      if (event.shiftKey) {
+        if (!canRedoGameHistory || isSubmittingTurn) {
+          return
+        }
+
+        event.preventDefault()
+        handleRedo()
+        return
+      }
+
+      if (!canUndoGameHistory || isSubmittingTurn) {
+        return
+      }
+
+      event.preventDefault()
+      handleUndo()
+    }
+
+    window.addEventListener('keydown', handleUndoRedoKeyDown)
+
+    return () => {
+      window.removeEventListener('keydown', handleUndoRedoKeyDown)
+    }
+  }, [
+    canRedoGameHistory,
+    canUndoGameHistory,
+    handleRedo,
+    handleUndo,
+    isSubmittingTurn,
   ])
 
   useEffect(() => {
@@ -1685,23 +2012,34 @@ function App() {
       return
     }
 
-    setGmOpeningWordDraft('')
     setCurrentInputSegmentation(null)
     setSegmentationError(null)
     setIsSegmentingCurrentInput(false)
+    resetChallengeChallengerTypeahead()
+    challengeHistoryRestorePauseRef.current = false
 
-    replaceGameState(
-      createConfirmedGameState(
-        prepareRoster(playerDrafts),
-        TURN_DURATION_MS,
-        getTurnDirectionForMatchRound(1),
-      ),
-    )
+    resetHistory({
+      sessionState: {
+        gameState: createConfirmedGameState(
+          prepareRoster(playerDrafts),
+          TURN_DURATION_MS,
+          getTurnDirectionForMatchRound(1),
+        ),
+        leaderboardScores: {},
+        roundScoreBreakdownsInMatch: [],
+        completedRoundsInMatch: 0,
+      },
+      uiState: createInitialHistoryUiState(),
+    })
   }
 
   function handleStartFirstTurn() {
     setSegmentationError(null)
-    updateGameState((current) => startActiveTurn(current))
+    commitGameAction((current) =>
+      current.isHistoryRestorePause
+        ? resumePausedTurnFromHistory(current)
+        : startActiveTurn(current),
+    )
   }
 
   function handleToggleGmOpeningWord() {
@@ -1709,32 +2047,34 @@ function App() {
       return
     }
 
-    setIsGmOpeningWordEnabled((current) => {
-      if (current) {
-        setGmOpeningWordDraft('')
-        setCurrentInputSegmentation(null)
-        setSegmentationError(null)
-        setIsSegmentingCurrentInput(false)
-      }
+    if (isGmOpeningWordEnabled) {
+      setGmOpeningWordDraft('')
+      setCurrentInputSegmentation(null)
+      setSegmentationError(null)
+      setIsSegmentingCurrentInput(false)
+    }
 
-      return !current
-    })
+    setIsGmOpeningWordEnabled((current) => !current)
   }
 
   function handleHostEliminateNotNoun() {
-    updateGameState((current) => hostEliminateCurrentPlayer(current, 'not_noun'))
+    commitGameAction((current) => hostEliminateCurrentPlayer(current, 'not_noun'))
   }
 
   function handleContinueToRoundSummary() {
-    updateGameState((current) => acknowledgeRoundSummary(current))
+    commitGameAction((current) => acknowledgeRoundSummary(current))
   }
 
   function handleResumeChallengeDebate() {
-    updateGameState((current) => resumeChallengeDebate(current))
+    commitGameAction((current) =>
+      challengeHistoryRestorePauseRef.current
+        ? resumePausedChallengeFromHistory(current)
+        : resumeChallengeDebate(current),
+    )
   }
 
   function handleAdvanceChallengeDebate() {
-    updateGameState((current) => {
+    commitGameAction((current) => {
       if (
         current.phase !== 'playing' ||
         current.challenge.status !== 'debating' ||
@@ -1781,7 +2121,7 @@ function App() {
   function handleAnswerChange(event: ChangeEvent<HTMLInputElement>) {
     const { value } = event.target
 
-    updateGameState((current) => {
+    applyEphemeralGameUpdate((current) => {
       if (
         current.phase !== 'playing' ||
         current.isAwaitingFirstTurnStart ||
@@ -1816,15 +2156,16 @@ function App() {
       try {
         const segmentation = await getSyllableSegmentation(openingWord)
 
-        updateGameState((current) =>
+        commitGameAction(
+          (current) =>
           startRoundWithOpeningWord(
             current,
             openingWord,
             segmentation.syllables,
             submittedAt,
           ),
+          { nextGmOpeningWordDraft: '' },
         )
-        setGmOpeningWordDraft('')
       } catch (error) {
         setSegmentationError(getSegmentationErrorMessage(error))
       } finally {
@@ -1857,7 +2198,7 @@ function App() {
     try {
       const segmentation = await getSyllableSegmentation(answer)
 
-      updateGameState((current) => {
+      commitGameAction((current) => {
         if (
           current.phase !== 'playing' ||
           current.isAwaitingFirstTurnStart ||
@@ -1891,12 +2232,12 @@ function App() {
     setIsSegmentingCurrentInput(false)
     setIsSubmittingTurn(false)
 
-    updateGameState((current) => beginChallengeSelection(current))
+    commitGameAction((current) => beginChallengeSelection(current))
   }
 
   function handleCancelChallenge() {
     resetChallengeChallengerTypeahead()
-    updateGameState((current) => cancelChallenge(current))
+    commitGameAction((current) => cancelChallenge(current))
   }
 
   function handleChallengeChallengerChange(nextKey: Key | null) {
@@ -1908,7 +2249,7 @@ function App() {
 
     setChallengeChallengerSearchValue(nextChallenger?.name ?? '')
     setChallengeChallengerActiveOptionId(nextValue || null)
-    updateGameState((current) =>
+    applyEphemeralGameUpdate((current) =>
       updateChallengeSelection(current, {
         challengerPlayerId: nextValue || null,
       }),
@@ -1947,7 +2288,7 @@ function App() {
       return
     }
 
-    updateGameState((current) =>
+    applyEphemeralGameUpdate((current) =>
       updateChallengeSelection(current, {
         challengerPlayerId: null,
       }),
@@ -2009,7 +2350,7 @@ function App() {
         ) ?? null
       setChallengeChallengerSearchValue(nextChallenger?.name ?? '')
       setChallengeChallengerActiveOptionId(nextChallengerId)
-      updateGameState((current) =>
+      applyEphemeralGameUpdate((current) =>
         updateChallengeSelection(current, {
           challengerPlayerId: nextChallengerId,
         }),
@@ -2028,13 +2369,9 @@ function App() {
     }
 
     resetChallengeChallengerTypeahead()
-    updateGameState((current) => {
+    commitGameAction((current) => {
       if (current.phase !== 'playing') {
         return current
-      }
-
-      if (current.challenge.status === 'debating' && current.challenge.segmentAwaitingContinue) {
-        return startChallengeDebate(current)
       }
 
       if (current.challenge.status !== 'selecting') {
@@ -2048,16 +2385,12 @@ function App() {
             challengerPlayerId: nextChallengerId,
           })
 
-      if (stateWithChallenger.challenge.awaitingChallengeStart) {
-        return startChallengeDebate(stateWithChallenger)
-      }
-
-      return confirmChallengeDebate(stateWithChallenger)
+      return startChallengeDebate(stateWithChallenger)
     })
   }
 
   function handleChallengeDecision(decision: 'connects' | 'not_connects') {
-    updateGameState((current) => resolveChallenge(current, decision))
+    commitGameAction((current) => resolveChallenge(current, decision))
   }
 
   function handleChallengeDecisionKeyDown(
@@ -2077,25 +2410,25 @@ function App() {
       return
     }
 
-    setGmOpeningWordDraft('')
     setCurrentInputSegmentation(null)
     setSegmentationError(null)
     setIsSegmentingCurrentInput(false)
+    resetChallengeChallengerTypeahead()
+    challengeHistoryRestorePauseRef.current = false
 
-    setSessionState((current) => {
-      if (
-        current.completedRoundsInMatch >= MATCH_ROUNDS_PER_MATCH
-      ) {
-        segmentationCacheRef.current.clear()
-      }
+    const shouldStartNewMatch =
+      sessionState.completedRoundsInMatch >= MATCH_ROUNDS_PER_MATCH
 
-      const shouldStartNewMatch =
-        current.completedRoundsInMatch >= MATCH_ROUNDS_PER_MATCH
-      const nextMatchRound = shouldStartNewMatch
-        ? 1
-        : current.completedRoundsInMatch + 1
+    if (shouldStartNewMatch) {
+      segmentationCacheRef.current.clear()
+    }
 
-      return {
+    const nextMatchRound = shouldStartNewMatch
+      ? 1
+      : sessionState.completedRoundsInMatch + 1
+
+    resetHistory({
+      sessionState: {
         gameState: createConfirmedGameState(
           prepareRoster(playerDrafts),
           TURN_DURATION_MS,
@@ -2103,26 +2436,28 @@ function App() {
         ),
         leaderboardScores: shouldStartNewMatch
           ? {}
-          : current.leaderboardScores,
+          : sessionState.leaderboardScores,
         roundScoreBreakdownsInMatch: shouldStartNewMatch
           ? []
-          : current.roundScoreBreakdownsInMatch,
+          : sessionState.roundScoreBreakdownsInMatch,
         completedRoundsInMatch: shouldStartNewMatch
           ? 0
-          : current.completedRoundsInMatch,
-      }
+          : sessionState.completedRoundsInMatch,
+      },
+      uiState: createInitialHistoryUiState(),
     })
   }
 
   function handleResetAll() {
     segmentationCacheRef.current.clear()
-    setGmOpeningWordDraft('')
     setCurrentInputSegmentation(null)
     setSegmentationError(null)
     setIsSegmentingCurrentInput(false)
     setIsSubmittingTurn(false)
+    resetChallengeChallengerTypeahead()
+    challengeHistoryRestorePauseRef.current = false
     setPlayerDrafts(ensureTrailingBlankDraft(createInitialDrafts()))
-    setSessionState(createInitialSessionState())
+    resetHistory(createInitialHistorySnapshot())
   }
 
   return (
@@ -2339,37 +2674,64 @@ function App() {
                     className="ghost-button challenge-open-button"
                     onClick={handleOpenChallenge}
                     disabled={!canOpenChallenge}
-                    aria-label="ชาเลนจ์ (F2)"
+                    aria-label="ชาเลนจ์"
                     title="ชาเลนจ์ (F2)"
                   >
-                    ชาเลนจ์ (F2)
+                    ชาเลนจ์
                   </button>
                 )}
                 {(gameState.phase === 'playing' || gameState.phase === 'finished') && (
-                  <SettingsDropdown
-                    isGmOpeningEnabled={isGmOpeningWordEnabled}
-                    isSyllableDebugVisible={isSyllableDebugVisible}
-                    showPreviousWordPrompt={showPreviousWordPrompt}
-                    onToggleGmOpening={handleToggleGmOpeningWord}
-                    onToggleSyllableDebug={() =>
-                      setIsSyllableDebugVisible((current) => !current)
-                    }
-                    onTogglePreviousWordPrompt={() => {
-                      setShowPreviousWordPrompt((current) => {
-                        window.localStorage.setItem(
-                          SHOW_PREVIOUS_WORD_PROMPT_KEY,
-                          String(!current),
-                        )
-                        return !current
-                      })
-                    }}
-                    isSubmittingTurn={isSubmittingTurn}
-                  />
+                  <div className="history-toolbar" role="group" aria-label="ประวัติการเล่น">
+                    <button
+                      type="button"
+                      className="ghost-button history-action-button"
+                      onClick={handleUndo}
+                      disabled={!canUndoGameHistory || isSubmittingTurn}
+                      aria-label="Undo"
+                      title="Undo (Ctrl/Cmd+Z)"
+                    >
+                      Undo
+                    </button>
+                    <button
+                      type="button"
+                      className="ghost-button history-action-button"
+                      onClick={handleRedo}
+                      disabled={!canRedoGameHistory || isSubmittingTurn}
+                      aria-label="Redo"
+                      title="Redo (Shift+Ctrl/Cmd+Z)"
+                    >
+                      Redo
+                    </button>
+                    <SettingsDropdown
+                      isGmOpeningEnabled={isGmOpeningWordEnabled}
+                      isSyllableDebugVisible={isSyllableDebugVisible}
+                      showPreviousWordPrompt={showPreviousWordPrompt}
+                      onToggleGmOpening={handleToggleGmOpeningWord}
+                      onToggleSyllableDebug={() =>
+                        setIsSyllableDebugVisible((current) => !current)
+                      }
+                      onTogglePreviousWordPrompt={() => {
+                        setShowPreviousWordPrompt((current) => {
+                          window.localStorage.setItem(
+                            SHOW_PREVIOUS_WORD_PROMPT_KEY,
+                            String(!current),
+                          )
+                          return !current
+                        })
+                      }}
+                      isSubmittingTurn={isSubmittingTurn}
+                    />
+                  </div>
                 )}
               </div>
               {challengeNote && (
                 <p className="challenge-note" role="status" aria-live="polite">
                   {challengeNote}
+                </p>
+              )}
+              {gameState.phase === 'playing' && gameState.isHistoryRestorePause && (
+                <p className="pause-note history-restore-note" role="status" aria-live="polite">
+                  ย้อนกลับมาที่จุดก่อนหน้า กดเริ่มเพื่อจับเวลาอีกครั้ง
                 </p>
               )}
               {isAwaitingRoundSummary && (
@@ -2403,8 +2765,10 @@ function App() {
                           ? `ผู้คุมเกมพิมพ์คำตั้งต้นของรอบ แล้วกดเริ่มด้วยคำนี้เพื่อเริ่มจับเวลา ${playScreenPlayer.name}`
                           : isAwaitingFirstTurnStart
                             ? `ยืนยันผู้เล่นแล้ว กดเริ่มรอบแรกเพื่อเริ่มจับเวลา ${playScreenPlayer.name}`
-                            : isPausedTurn
-                              ? getPausedTurnInstructions(
+                            : gameState.isHistoryRestorePause
+                              ? 'ย้อนประวัติสำเร็จ รอเริ่มจับเวลาใหม่'
+                              : isPausedTurn
+                                ? getPausedTurnInstructions(
                                 latestEliminatedPlayer,
                                 playScreenPlayer.name,
                               )
@@ -2575,58 +2939,51 @@ function App() {
 
                     <div className="challenge-field">
                       <label id="challenged-answer-label">คำที่ถูกชาเลนจ์</label>
-                      <div className="challenged-answer-buttons" aria-labelledby="challenged-answer-label">
-                        {challengeableAnswers.length === 0 && (
-                          <div className="empty-note">ไม่มีคำที่สามารถชาเลนจ์ได้</div>
-                        )}
+                      <select
+                        ref={challengeChallengedAnswerSelectRef}
+                        className="text-input challenge-select"
+                        aria-labelledby="challenged-answer-label"
+                        value={challengeState?.challengedAnswerId ?? ''}
+                        disabled={challengeableAnswers.length === 0}
+                        onChange={(event) => {
+                          const nextAnswerId = event.target.value || null
+
+                          applyEphemeralGameUpdate((current) =>
+                            updateChallengeSelection(current, {
+                              challengedAnswerId: nextAnswerId,
+                            }),
+                          )
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key !== 'Enter') {
+                            return
+                          }
+
+                          event.preventDefault()
+
+                          if (!preferredChallengeChallengerId) {
+                            challengeChallengerInputRef.current?.focus()
+                            return
+                          }
+
+                          handleStartChallenge(preferredChallengeChallengerId)
+                        }}
+                      >
+                        <option value="" disabled>
+                          เลือกคำที่ถูกชาเลนจ์
+                        </option>
                         {[...challengeableAnswers]
                           .reverse()
                           .slice(0, 3)
-                          .map((answerRecord: AnswerRecord) => {
-                            const isSelected = challengeState?.challengedAnswerId === answerRecord.id
-
-                            return (
-                              <button
-                                key={answerRecord.id}
-                                type="button"
-                                className={`secondary-button challenged-answer-button ${isSelected ? 'is-selected' : ''}`}
-                                aria-pressed={isSelected}
-                                onClick={() => {
-                                  updateGameState((current) =>
-                                    updateChallengeSelection(current, {
-                                      challengedAnswerId: answerRecord.id,
-                                    }),
-                                  )
-                                }}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') {
-                                    e.preventDefault()
-                                    updateGameState((current) => {
-                                      const stateWithAnswer = updateChallengeSelection(current, {
-                                        challengedAnswerId: answerRecord.id,
-                                      })
-                                      if (preferredChallengeChallengerId) {
-                                        const stateWithChallenger = updateChallengeSelection(stateWithAnswer, {
-                                          challengerPlayerId: preferredChallengeChallengerId,
-                                        })
-                                        if (stateWithChallenger.challenge.awaitingChallengeStart) {
-                                          return startChallengeDebate(stateWithChallenger)
-                                        }
-                                        return confirmChallengeDebate(stateWithChallenger)
-                                      }
-                                      return stateWithAnswer
-                                    })
-                                    if (!preferredChallengeChallengerId) {
-                                      challengeChallengerInputRef.current?.focus()
-                                    }
-                                  }
-                                }}
-                              >
-                                <span className="answer-word">{answerRecord.answer}</span>
-                              </button>
-                            )
-                          })}
-                      </div>
+                          .map((answerRecord: AnswerRecord) => (
+                            <option key={answerRecord.id} value={answerRecord.id}>
+                              "{answerRecord.answer}" ของ {answerRecord.playerName}
+                            </option>
+                          ))}
+                      </select>
+                      {challengeableAnswers.length === 0 && (
+                        <div className="empty-note">ไม่มีคำที่สามารถชาเลนจ์ได้</div>
+                      )}
                     </div>
                   </div>
 
@@ -2655,10 +3012,10 @@ function App() {
                         )
                       }
                       disabled={!canStartVisibleChallenge}
-                      aria-label={challengeState?.awaitingChallengeStart ? 'เริ่มการชาเลนจ์' : 'ยืนยันการชาเลนจ์'}
-                      title={challengeState?.awaitingChallengeStart ? 'เริ่มการชาเลนจ์' : 'ยืนยันการชาเลนจ์'}
+                      aria-label="เริ่มการชาเลนจ์"
+                      title="เริ่มการชาเลนจ์"
                     >
-                      <span className="button-copy">{challengeState?.awaitingChallengeStart ? 'เริ่มการชาเลนจ์' : 'ยืนยันการชาเลนจ์'}</span>
+                      <span className="button-copy">เริ่มการชาเลนจ์</span>
                     </button>
                     <button
                       type="button"
@@ -2941,6 +3298,26 @@ function App() {
             </div>
 
             <div className="action-row">
+              <button
+                type="button"
+                className="ghost-button history-action-button"
+                onClick={handleUndo}
+                disabled={!canUndoGameHistory || isSubmittingTurn}
+                aria-label="Undo"
+                title="Undo (Ctrl/Cmd+Z)"
+              >
+                Undo
+              </button>
+              <button
+                type="button"
+                className="ghost-button history-action-button"
+                onClick={handleRedo}
+                disabled={!canRedoGameHistory || isSubmittingTurn}
+                aria-label="Redo"
+                title="Redo (Shift+Ctrl/Cmd+Z)"
+              >
+                Redo
+              </button>
               <button
                 ref={leaderboardActionButtonRef}
                 type="button"
