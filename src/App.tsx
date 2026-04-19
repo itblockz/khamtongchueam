@@ -1055,7 +1055,7 @@ function App() {
   const timerValue = isAwaitingRoundSummary
     ? "สรุปรอบ"
     : isChallengeSelecting
-      ? "เลือกท้า"
+      ? "ชาเลนจ์"
       : isChallengeDebating
         ? "ชาเลนจ์"
         : isChallengeJudging
