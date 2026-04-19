@@ -594,7 +594,7 @@ function SettingsDropdown({
             <span className="settings-dropdown-item-check" aria-hidden="true">
               {isSyllableDebugVisible ? "✓" : ""}
             </span>
-            <span>ดีบักพยางค์</span>
+            <span>แสดงการแยกพยางค์</span>
           </button>
         </div>
       )}
