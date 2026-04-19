@@ -2759,16 +2759,7 @@ function App() {
                       {challengeNote}
                     </p>
                   )}
-                  {gameState.phase === "playing" &&
-                    gameState.isHistoryRestorePause && (
-                      <p
-                        className="pause-note history-restore-note"
-                        role="status"
-                        aria-live="polite"
-                      >
-                        ย้อนกลับมาที่จุดก่อนหน้า กดเริ่มเพื่อจับเวลาอีกครั้ง
-                      </p>
-                    )}
+
                   {isAwaitingRoundSummary && (
                     <p className="pause-note" role="status" aria-live="polite">
                       {eliminatedPlayerSummaryContent}
