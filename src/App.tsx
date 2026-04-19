@@ -2673,7 +2673,6 @@ function App() {
                     <p className="round-indicator">
                       รอบ {currentMatchRound}/{MATCH_ROUNDS_PER_MATCH}
                     </p>
-                    <p className="player-indicator">{playScreenPlayer.name}</p>
                     {gameState.phase === "playing" && (
                       <div className="action-row-toolbar">
                         <button
