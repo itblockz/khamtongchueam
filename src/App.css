@@ -1182,6 +1182,36 @@ button:disabled {
   opacity: 0.7;
 }
 
+.stage-content.is-elimination .stage-word {
+  background: linear-gradient(135deg, var(--danger) 0%, #8b2d1d 100%);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  text-shadow: 0 10px 30px rgba(180, 72, 55, 0.15);
+}
+
+.stage-content.is-elimination .stage-instruction {
+  font-size: 1.4rem;
+  opacity: 1;
+  color: var(--ink);
+  margin-top: 12px;
+}
+
+.stage-instruction .duplicate-syllable-mark {
+  background-color: var(--accent);
+  color: white;
+  padding: 2px 6px;
+  border-radius: 6px;
+  font-weight: 800;
+}
+
+.elimination-target-word,
+.duplicate-answer-text {
+  font-size: 1.6rem;
+  font-weight: 800;
+  color: var(--ink);
+}
+
 .stage-player-sequence {
   display: flex;
   align-items: center;

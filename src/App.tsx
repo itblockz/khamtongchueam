@@ -211,6 +211,78 @@ function getInitialFocusSidebarOpen() {
   }
 }
 
+function renderEliminationReasonDetail(
+  player: GameState["players"][number] | null,
+): ReactNode {
+  if (!player) return null;
+
+  if (player.eliminationReason === "duplicate_syllable") {
+    const details = getDuplicateSyllableDetails(player);
+    if (details) {
+      return (
+        <>
+          {renderHighlightedAnswer(details.submittedAnswer, details.duplicateSyllable)}
+          {" ซ้ำกับ "}
+          {renderHighlightedAnswer(details.sourceAnswer, details.duplicateSyllable)}
+        </>
+      );
+    }
+    return "ใช้พยางค์ซ้ำ";
+  }
+
+  if (player.eliminationReason === "late_submit") {
+    return "ส่งคำช้าเกินเวลา";
+  }
+
+  if (player.eliminationReason === "timeout") {
+    return "ไม่ทันเวลา";
+  }
+
+  if (player.eliminationReason === "failed_challenge") {
+    if (player.challengeTargetAnswer) {
+      return (
+        <>
+          ชาเลนจ์คำ <span className="elimination-target-word">{player.challengeTargetAnswer}</span> ไม่สำเร็จ
+        </>
+      );
+    }
+    return "ชาเลนจ์ไม่สำเร็จ";
+  }
+
+  if (player.eliminationReason === "invalid_connection") {
+    if (player.challengeTargetAnswer && player.challengeSourceAnswer) {
+      return (
+        <>
+          คำ <span className="elimination-target-word">{player.challengeTargetAnswer}</span> ไม่เชื่อมกับคำ <span className="elimination-target-word">{player.challengeSourceAnswer}</span>
+        </>
+      );
+    }
+    return "คำไม่เชื่อมกัน";
+  }
+
+  if (player.eliminationReason === "not_noun") {
+    if (player.duplicateSubmittedAnswer) {
+      return (
+        <>
+          <span className="elimination-target-word">{player.duplicateSubmittedAnswer}</span> ไม่ใช่คำนาม
+        </>
+      );
+    }
+    return "ไม่ใช่คำนาม";
+  }
+
+  const reasonMap: Record<string, string> = {
+    timeout: "ไม่ทันเวลา",
+    late_submit: "ส่งคำช้าเกินเวลา",
+    duplicate_syllable: "ใช้พยางค์ซ้ำ",
+    failed_challenge: "ชาเลนจ์ไม่สำเร็จ",
+    invalid_connection: "คำไม่เชื่อมกัน",
+    not_noun: "ไม่ใช่คำนาม",
+  };
+
+  return (player.eliminationReason && reasonMap[player.eliminationReason]) || "ผิดกติกา";
+}
+
 function getEliminatedPlayerSummary(
   player: GameState["players"][number] | null,
 ) {
@@ -2649,7 +2721,16 @@ function App() {
                     </span>
                   </div>
 
-                  {lastAnswer && gameState.phase === "playing" ? (
+                  {isPausedTurn && gameState.isEliminationPause && latestEliminatedPlayer ? (
+                    <div className="stage-content is-elimination">
+                      <div className="stage-word-wrapper">
+                        <h1 className="stage-word">{latestEliminatedPlayer.name} ตกรอบ</h1>
+                      </div>
+                      <div className="stage-instruction">
+                        {renderEliminationReasonDetail(latestEliminatedPlayer)}
+                      </div>
+                    </div>
+                  ) : lastAnswer && gameState.phase === "playing" ? (
                     <div className="stage-content">
                       <div className="stage-word-wrapper">
                         <h1 className="stage-word">{lastAnswer}</h1>
@@ -2769,16 +2850,6 @@ function App() {
                     </p>
                   )}
 
-                  {isAwaitingRoundSummary && (
-                    <p className="pause-note" role="status" aria-live="polite">
-                      {eliminatedPlayerSummaryContent}
-                    </p>
-                  )}
-                  {isPausedTurn && gameState.isEliminationPause && (
-                    <p className="pause-note" role="status" aria-live="polite">
-                      {eliminatedPlayerSummaryContent}
-                    </p>
-                  )}
                   {segmentationError && (
                     <p className="segmentation-error" role="alert">
                       {segmentationError}
