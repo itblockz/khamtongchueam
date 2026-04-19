@@ -390,17 +390,6 @@ function ensureTrailingBlankDraft(playerDrafts: PlayerDraft[]) {
   return nextDrafts;
 }
 
-function getActivePlayerCardClass(
-  playerId: string,
-  activePlayerId: string | null,
-) {
-  if (playerId === activePlayerId) {
-    return "player-chip is-active";
-  }
-
-  return "player-chip";
-}
-
 interface SessionState {
   gameState: GameState;
   leaderboardScores: Record<string, number>;
@@ -893,10 +882,7 @@ function App() {
     selectedChallengePreviousAnswer !== null;
   const visiblePlayers =
     isAwaitingRoundSummary && winner !== null ? [winner] : activePlayers;
-  const displayedActivePlayers =
-    currentMatchRound % 2 === 0 && !isAwaitingRoundSummary
-      ? [...visiblePlayers].reverse()
-      : visiblePlayers;
+
   const displayedActivePlayerId = isChallengeActive
     ? null
     : gameState.activePlayerId;
@@ -2588,46 +2574,37 @@ function App() {
                   <div className="sidebar-scroll-area">
                     <section className="sidebar-group">
                       <ol
-                        className="player-board active-player-board"
-                        aria-label="ผู้เล่นที่ยังไม่ตกรอบ"
+                        className="player-board focus-player-board"
+                        aria-label="ลำดับผู้เล่น"
                       >
-                        {displayedActivePlayers.map((player) => (
-                          <li
-                            className={getActivePlayerCardClass(
-                              player.id,
-                              displayedActivePlayerId,
-                            )}
-                            key={player.id}
-                          >
-                            <strong className="sidebar-player-name">
-                              {player.name}
-                            </strong>
-                            {player.id === displayedActivePlayerId && (
-                              <span className="player-chip-current">
-                                ตอนนี้
-                              </span>
-                            )}
-                          </li>
-                        ))}
-                      </ol>
-                    </section>
+                        {gameState.players.map((player) => {
+                          const isCurrent = player.id === displayedActivePlayerId;
+                          const isEliminated = player.status === "eliminated";
 
-                    {eliminatedPlayers.length > 0 && (
-                      <section className="sidebar-group">
-                        <ol
-                          className="player-board eliminated-player-board"
-                          aria-label="ผู้เล่นที่ตกรอบ"
-                        >
-                          {eliminatedPlayers.map((player) => (
-                            <li className="player-chip is-out" key={player.id}>
+                          return (
+                            <li
+                              className={`player-chip ${isCurrent ? "is-current" : ""} ${isEliminated ? "is-out" : ""
+                                }`}
+                              key={player.id}
+                            >
                               <strong className="sidebar-player-name">
                                 {player.name}
                               </strong>
+                              {isCurrent && (
+                                <span className="player-chip-current">
+                                  ตอนนี้
+                                </span>
+                              )}
+                              {isEliminated && (
+                                <span className="player-chip-out-label">
+                                  ตกรอบ
+                                </span>
+                              )}
                             </li>
-                          ))}
-                        </ol>
-                      </section>
-                    )}
+                          );
+                        })}
+                      </ol>
+                    </section>
                   </div>
                 </aside>
 

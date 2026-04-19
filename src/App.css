@@ -1693,34 +1693,49 @@ button:disabled {
   line-height: 1.05;
 }
 
-.player-chip-current {
+.player-chip-current,
+.player-chip-out-label {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   min-height: 24px;
-  padding: 0 8px;
+  padding: 0 10px;
   border-radius: 999px;
-  font-size: 0.74rem;
-  font-weight: 700;
+  font-size: 0.72rem;
+  font-weight: 800;
   line-height: 1;
-  border: 1px solid rgba(176, 126, 82, 0.14);
-  background: rgba(243, 232, 216, 0.92);
+  white-space: nowrap;
 }
 
 .player-chip-current {
   color: #fffaf4;
-  border-color: rgba(210, 106, 58, 0.24);
+  border: 1px solid rgba(210, 106, 58, 0.24);
   background: linear-gradient(180deg, #e18c60 0%, #c96539 100%);
+  box-shadow: 0 2px 6px rgba(210, 106, 58, 0.2);
 }
 
-.player-chip.is-active {
-  border-color: rgba(210, 106, 58, 0.2);
-  background: linear-gradient(180deg, #fff5ee 0%, #f8ede4 100%);
+.player-chip-out-label {
+  background: rgba(180, 72, 55, 0.1);
+  color: #b44837;
+  border: 1px solid rgba(180, 72, 55, 0.2);
+}
+
+.player-chip.is-current {
+  border-color: rgba(210, 106, 58, 0.4);
+  background: linear-gradient(180deg, #fff5ee 0%, #fef2e9 100%);
+  box-shadow: 0 4px 12px rgba(210, 106, 58, 0.08);
 }
 
 .player-chip.is-out {
-  border-color: rgba(180, 72, 55, 0.18);
-  background: linear-gradient(180deg, #fff6f3 0%, #f5e3dc 100%);
+  opacity: 0.7;
+  background: rgba(240, 240, 240, 0.4);
+  border-color: rgba(0, 0, 0, 0.05);
+}
+
+.player-chip.is-out .sidebar-player-name {
+  color: var(--muted);
+  text-decoration: line-through;
+  opacity: 0.6;
 }
 
 .eliminated-board-card.is-empty-collapsed {
