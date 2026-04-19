@@ -2306,67 +2306,346 @@ function App() {
           <section
             className={`phase-screen play-screen ${showPreviousWordPrompt && lastAnswer && gameState.phase === "playing" ? "is-fullscreen-prompt" : ""}`}
           >
-            <section className="board-grid">
-              <section className="surface-card board-card active-board-card">
-                <div className="panel-header compact">
-                  <div>
-                    <h2>ผู้เล่นในเกม</h2>
-                  </div>
-                  <span className="count-badge">
-                    {visiblePlayers.length} คน
-                  </span>
-                </div>
-
-                <ol
-                  className="player-board active-player-board"
-                  aria-label="ผู้เล่นที่ยังไม่ตกรอบ"
-                >
-                  {displayedActivePlayers.map((player) => (
-                    <li
-                      className={getActivePlayerCardClass(
-                        player.id,
-                        displayedActivePlayerId,
-                      )}
-                      key={player.id}
-                    >
-                      <strong>{player.name}</strong>
-                      {player.id === displayedActivePlayerId && (
-                        <span className="player-chip-current">ตอนนี้</span>
-                      )}
-                    </li>
-                  ))}
-                </ol>
-              </section>
-
+            {isChallengeActive ? (
               <section
-                className={`surface-card board-card eliminated-board-card ${eliminatedPlayers.length === 0 ? "is-empty-collapsed" : ""
-                  }`.trim()}
+                className="surface-card board-card challenge-standalone-card"
+                aria-label="ชาเลนจ์"
               >
-                <div className="panel-header compact">
-                  <div>
-                    <h2>ผู้เล่นที่ตกรอบ</h2>
-                  </div>
-                  <span className="count-badge">
-                    {eliminatedPlayers.length} คน
-                  </span>
+                <div className="panel-header compact challenge-header-unified">
+                  <h2 className="challenge-title">ชาเลนจ์คำไม่เชื่อม</h2>
                 </div>
 
-                {eliminatedPlayers.length > 0 ? (
+                {isChallengeSelecting && (
+                  <div className="challenge-content">
+                    <div className="challenge-field-grid">
+                      <div className="challenge-field">
+                        <ComboBox<ChallengeChallengerOption>
+                          id="challenge-challenger-search"
+                          className="challenge-challenger-combobox"
+                          allowsEmptyCollection
+                          defaultFilter={matchesChallengeTypeaheadCandidate}
+                          inputValue={challengeChallengerSearchValue}
+                          menuTrigger="focus"
+                          onInputChange={handleChallengeChallengerSearchChange}
+                          onSelectionChange={handleChallengeChallengerChange}
+                          selectedKey={challengeState?.challengerPlayerId ?? null}
+                        >
+                          <Label>พิมพ์ชื่อผู้ชาเลนจ์</Label>
+                          <Input
+                            ref={challengeChallengerInputRef}
+                            className="text-input challenge-search-input"
+                            onKeyDown={handleChallengeChallengerInputKeyDown}
+                            placeholder="พิมพ์ชื่อผู้ชาเลนจ์"
+                            autoComplete="off"
+                          />
+                          <Popover className="challenge-challenger-popover">
+                            <ChallengeChallengerListBox
+                              activeSuggestionId={preferredChallengeChallengerId}
+                              options={challengeChallengerOptions}
+                            />
+                          </Popover>
+                        </ComboBox>
+                      </div>
+
+                      <div className="challenge-field">
+                        <label id="challenged-answer-label">
+                          คำที่ถูกชาเลนจ์
+                        </label>
+                        <select
+                          ref={challengeChallengedAnswerSelectRef}
+                          className="text-input challenge-select"
+                          aria-labelledby="challenged-answer-label"
+                          value={challengeState?.challengedAnswerId ?? ""}
+                          disabled={challengeableAnswers.length === 0}
+                          onChange={(event) => {
+                            const nextAnswerId = event.target.value || null;
+
+                            applyEphemeralGameUpdate((current) =>
+                              updateChallengeSelection(current, {
+                                challengedAnswerId: nextAnswerId,
+                              }),
+                            );
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key !== "Enter") {
+                              return;
+                            }
+
+                            event.preventDefault();
+
+                            if (!preferredChallengeChallengerId) {
+                              challengeChallengerInputRef.current?.focus();
+                              return;
+                            }
+
+                            handleStartChallenge(preferredChallengeChallengerId);
+                          }}
+                        >
+                          <option value="" disabled>
+                            เลือกคำที่ถูกชาเลนจ์
+                          </option>
+                          {[...challengeableAnswers]
+                            .reverse()
+                            .slice(0, 3)
+                            .map((answerRecord: AnswerRecord) => (
+                              <option
+                                key={answerRecord.id}
+                                value={answerRecord.id}
+                              >
+                                "{answerRecord.answer}" ของ{" "}
+                                {answerRecord.playerName}
+                              </option>
+                            ))}
+                        </select>
+                        {challengeableAnswers.length === 0 && (
+                          <div className="empty-note">
+                            ไม่มีคำที่สามารถชาเลนจ์ได้
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="action-row challenge-actions">
+                      <button
+                        type="button"
+                        className="primary-button symbol-button"
+                        onClick={() =>
+                          handleStartChallenge(
+                            preferredChallengeChallengerId ?? undefined,
+                          )
+                        }
+                        disabled={!canStartVisibleChallenge}
+                        aria-label="เริ่มการชาเลนจ์"
+                        title="เริ่มการชาเลนจ์"
+                      >
+                        <span className="button-copy">เริ่มการชาเลนจ์</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="secondary-button symbol-button"
+                        onClick={handleCancelChallenge}
+                        aria-label="ยกเลิกการชาเลนจ์"
+                        title="ยกเลิกการชาเลนจ์"
+                      >
+                        <span className="button-copy">ยกเลิก</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {isChallengeDebating && (
+                  <div className="challenge-content">
+                    <div className="challenge-chain">
+                      <span className="challenge-chain-prev">
+                        {selectedChallengePreviousAnswer?.answer ?? "-"}
+                      </span>
+                      <ChevronRight
+                        size={16}
+                        aria-hidden="true"
+                        className="challenge-chain-arrow"
+                      />
+                      <span className="challenge-chain-target">
+                        <span className="challenge-chain-target-word">
+                          {selectedChallengedAnswer?.answer ?? "-"}
+                        </span>
+                      </span>
+                      <span className="challenge-chain-right">
+                        <span className="challenge-chain-owner">
+                          {selectedChallengedPlayer?.name ?? "-"}
+                        </span>
+                        <span className="challenge-chain-challenger">
+                          <span className="challenge-chain-challenger-label">
+                            ถูกชาเลนจ์โดย
+                          </span>
+                          <span className="challenge-chain-challenger-name">
+                            {selectedChallenger?.name ?? "-"}
+                          </span>
+                        </span>
+                      </span>
+                    </div>
+                    <div className="challenge-debate-controls">
+                      <div className="challenge-debate-status">
+                        <p className="round-indicator">
+                          ช่วง {challengeSegmentIndex + 1}/
+                          {CHALLENGE_DEBATE_SEGMENT_COUNT}
+                        </p>
+                        <div
+                          className={`turn-timer-pill ${timerTone}`}
+                          aria-live="polite"
+                        >
+                          <span>เวลา</span>
+                          <strong>{formatSeconds(challengeTimeLeftMs)}s</strong>
+                        </div>
+                        <span className="challenge-debate-speaker">
+                          <strong>{challengeSpeakerName}</strong>
+                          <span className="challenge-debate-speaker-role">
+                            {challengeState?.currentSpeaker === "challenger"
+                              ? "(ผู้ชาเลนจ์)"
+                              : "(ผู้ถูกชาเลนจ์)"}
+                          </span>
+                        </span>
+                      </div>
+                      {challengeState?.segmentAwaitingContinue ? (
+                        <div className="action-row challenge-actions">
+                          <button
+                            ref={challengeResumeButtonRef}
+                            type="button"
+                            className="primary-button"
+                            onClick={handleResumeChallengeDebate}
+                            onKeyDown={handleResumeChallengeDebateKeyDown}
+                            aria-label={
+                              challengeSegmentIndex === 0 ? "เริ่ม" : "ต่อ"
+                            }
+                            title={
+                              challengeSegmentIndex === 0 ? "เริ่ม" : "ต่อ"
+                            }
+                          >
+                            <span className="button-copy">
+                              {challengeSegmentIndex === 0 ? "เริ่ม" : "ต่อ"}
+                            </span>
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="action-row challenge-actions">
+                          <button
+                            type="button"
+                            className="secondary-button symbol-button"
+                            onClick={handleAdvanceChallengeDebate}
+                            aria-label="จบช่วง"
+                            title="จบช่วง"
+                          >
+                            <span className="button-copy">จบช่วง</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {isChallengeJudging && (
+                  <div className="challenge-content">
+                    <div className="challenge-chain">
+                      <span className="challenge-chain-prev">
+                        {selectedChallengePreviousAnswer?.answer ?? "-"}
+                      </span>
+                      <ChevronRight
+                        size={16}
+                        aria-hidden="true"
+                        className="challenge-chain-arrow"
+                      />
+                      <span className="challenge-chain-target">
+                        <span className="challenge-chain-target-word">
+                          {selectedChallengedAnswer?.answer ?? "-"}
+                        </span>
+                      </span>
+                      <span className="challenge-chain-right">
+                        <span className="challenge-chain-owner">
+                          {selectedChallengedPlayer?.name ?? "-"}
+                        </span>
+                        <span className="challenge-chain-challenger">
+                          <span className="challenge-chain-challenger-label">
+                            ถูกชาเลนจ์โดย
+                          </span>
+                          <span className="challenge-chain-challenger-name">
+                            {selectedChallenger?.name ?? "-"}
+                          </span>
+                        </span>
+                      </span>
+                    </div>
+
+                    <div className="action-row challenge-actions">
+                      <button
+                        ref={challengeDecisionButtonRef}
+                        type="button"
+                        className="primary-button symbol-button"
+                        onClick={() => handleChallengeDecision("connects")}
+                        onKeyDown={(event) =>
+                          handleChallengeDecisionKeyDown("connects", event)
+                        }
+                        aria-label="ตัดสินว่าเชื่อม"
+                        title="ตัดสินว่าเชื่อม"
+                      >
+                        <span className="button-copy">เชื่อม</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="secondary-button symbol-button"
+                        onClick={() => handleChallengeDecision("not_connects")}
+                        onKeyDown={(event) =>
+                          handleChallengeDecisionKeyDown("not_connects", event)
+                        }
+                        aria-label="ตัดสินว่าไม่เชื่อม"
+                        title="ตัดสินว่าไม่เชื่อม"
+                      >
+                        <span className="button-copy">ไม่เชื่อม</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </section>
+            ) : (
+              <section className="board-grid">
+                <section className="surface-card board-card active-board-card">
+                  <div className="panel-header compact">
+                    <div>
+                      <h2>ผู้เล่นในเกม</h2>
+                    </div>
+                    <span className="count-badge">
+                      {visiblePlayers.length} คน
+                    </span>
+                  </div>
+
                   <ol
-                    className="player-board eliminated-player-board"
-                    aria-label="ผู้เล่นที่ตกรอบ"
+                    className="player-board active-player-board"
+                    aria-label="ผู้เล่นที่ยังไม่ตกรอบ"
                   >
-                    {eliminatedPlayers.map((player) => (
-                      <li className="player-chip is-out" key={player.id}>
+                    {displayedActivePlayers.map((player) => (
+                      <li
+                        className={getActivePlayerCardClass(
+                          player.id,
+                          displayedActivePlayerId,
+                        )}
+                        key={player.id}
+                      >
                         <strong>{player.name}</strong>
+                        {player.id === displayedActivePlayerId && (
+                          <span className="player-chip-current">ตอนนี้</span>
+                        )}
                       </li>
                     ))}
                   </ol>
-                ) : (
-                  <p className="empty-note">ยังไม่มีใครตกรอบในตอนนี้</p>
-                )}
+                </section>
+
+                <section
+                  className={`surface-card board-card eliminated-board-card ${eliminatedPlayers.length === 0 ? "is-empty-collapsed" : ""
+                    }`.trim()}
+                >
+                  <div className="panel-header compact">
+                    <div>
+                      <h2>ผู้เล่นที่ตกรอบ</h2>
+                    </div>
+                    <span className="count-badge">
+                      {eliminatedPlayers.length} คน
+                    </span>
+                  </div>
+
+                  {eliminatedPlayers.length > 0 ? (
+                    <ol
+                      className="player-board eliminated-player-board"
+                      aria-label="ผู้เล่นที่ตกรอบ"
+                    >
+                      {eliminatedPlayers.map((player) => (
+                        <li className="player-chip is-out" key={player.id}>
+                          <strong>{player.name}</strong>
+                        </li>
+                      ))}
+                    </ol>
+                  ) : (
+                    <p className="empty-note">ยังไม่มีใครตกรอบในตอนนี้</p>
+                  )}
+                </section>
               </section>
-            </section>
+            )}
 
             {showPreviousWordPrompt &&
               lastAnswer &&
@@ -2661,296 +2940,6 @@ function App() {
                 </div>
               </form>
 
-              {isChallengeActive && (
-                <div className="challenge-card" aria-label="ชาเลนจ์">
-                  <div className="challenge-header-unified">
-                    <h2 className="challenge-title">ชาเลนจ์คำไม่เชื่อม</h2>
-                  </div>
-
-                  {isChallengeSelecting && (
-                    <div className="challenge-content">
-                      <div className="challenge-field-grid">
-                        <div className="challenge-field">
-                          <ComboBox<ChallengeChallengerOption>
-                            id="challenge-challenger-search"
-                            className="challenge-challenger-combobox"
-                            allowsEmptyCollection
-                            defaultFilter={matchesChallengeTypeaheadCandidate}
-                            inputValue={challengeChallengerSearchValue}
-                            menuTrigger="focus"
-                            onInputChange={
-                              handleChallengeChallengerSearchChange
-                            }
-                            onSelectionChange={handleChallengeChallengerChange}
-                            selectedKey={
-                              challengeState?.challengerPlayerId ?? null
-                            }
-                          >
-                            <Label>พิมพ์ชื่อผู้ชาเลนจ์</Label>
-                            <Input
-                              ref={challengeChallengerInputRef}
-                              className="text-input challenge-search-input"
-                              onKeyDown={handleChallengeChallengerInputKeyDown}
-                              placeholder="พิมพ์ชื่อผู้ชาเลนจ์"
-                              autoComplete="off"
-                            />
-                            <Popover className="challenge-challenger-popover">
-                              <ChallengeChallengerListBox
-                                activeSuggestionId={
-                                  preferredChallengeChallengerId
-                                }
-                                options={challengeChallengerOptions}
-                              />
-                            </Popover>
-                          </ComboBox>
-                        </div>
-
-                        <div className="challenge-field">
-                          <label id="challenged-answer-label">
-                            คำที่ถูกชาเลนจ์
-                          </label>
-                          <select
-                            ref={challengeChallengedAnswerSelectRef}
-                            className="text-input challenge-select"
-                            aria-labelledby="challenged-answer-label"
-                            value={challengeState?.challengedAnswerId ?? ""}
-                            disabled={challengeableAnswers.length === 0}
-                            onChange={(event) => {
-                              const nextAnswerId = event.target.value || null;
-
-                              applyEphemeralGameUpdate((current) =>
-                                updateChallengeSelection(current, {
-                                  challengedAnswerId: nextAnswerId,
-                                }),
-                              );
-                            }}
-                            onKeyDown={(event) => {
-                              if (event.key !== "Enter") {
-                                return;
-                              }
-
-                              event.preventDefault();
-
-                              if (!preferredChallengeChallengerId) {
-                                challengeChallengerInputRef.current?.focus();
-                                return;
-                              }
-
-                              handleStartChallenge(
-                                preferredChallengeChallengerId,
-                              );
-                            }}
-                          >
-                            <option value="" disabled>
-                              เลือกคำที่ถูกชาเลนจ์
-                            </option>
-                            {[...challengeableAnswers]
-                              .reverse()
-                              .slice(0, 3)
-                              .map((answerRecord: AnswerRecord) => (
-                                <option
-                                  key={answerRecord.id}
-                                  value={answerRecord.id}
-                                >
-                                  "{answerRecord.answer}" ของ{" "}
-                                  {answerRecord.playerName}
-                                </option>
-                              ))}
-                          </select>
-                          {challengeableAnswers.length === 0 && (
-                            <div className="empty-note">
-                              ไม่มีคำที่สามารถชาเลนจ์ได้
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="action-row challenge-actions">
-                        <button
-                          type="button"
-                          className="primary-button symbol-button"
-                          onClick={() =>
-                            handleStartChallenge(
-                              preferredChallengeChallengerId ?? undefined,
-                            )
-                          }
-                          disabled={!canStartVisibleChallenge}
-                          aria-label="เริ่มการชาเลนจ์"
-                          title="เริ่มการชาเลนจ์"
-                        >
-                          <span className="button-copy">เริ่มการชาเลนจ์</span>
-                        </button>
-                        <button
-                          type="button"
-                          className="secondary-button symbol-button"
-                          onClick={handleCancelChallenge}
-                          aria-label="ยกเลิกการชาเลนจ์"
-                          title="ยกเลิกการชาเลนจ์"
-                        >
-                          <span className="button-copy">ยกเลิก</span>
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {isChallengeDebating && (
-                    <div className="challenge-content">
-                      <div className="challenge-chain">
-                        <span className="challenge-chain-prev">
-                          {selectedChallengePreviousAnswer?.answer ?? "-"}
-                        </span>
-                        <ChevronRight
-                          size={16}
-                          aria-hidden="true"
-                          className="challenge-chain-arrow"
-                        />
-                        <span className="challenge-chain-target">
-                          <span className="challenge-chain-target-word">
-                            {selectedChallengedAnswer?.answer ?? "-"}
-                          </span>
-                        </span>
-                        <span className="challenge-chain-right">
-                          <span className="challenge-chain-owner">
-                            {selectedChallengedPlayer?.name ?? "-"}
-                          </span>
-                          <span className="challenge-chain-challenger">
-                            <span className="challenge-chain-challenger-label">
-                              ถูกชาเลนจ์โดย
-                            </span>
-                            <span className="challenge-chain-challenger-name">
-                              {selectedChallenger?.name ?? "-"}
-                            </span>
-                          </span>
-                        </span>
-                      </div>
-                      <div className="challenge-debate-controls">
-                        <div className="challenge-debate-status">
-                          <p className="round-indicator">
-                            ช่วง {challengeSegmentIndex + 1}/
-                            {CHALLENGE_DEBATE_SEGMENT_COUNT}
-                          </p>
-                          <div
-                            className={`turn-timer-pill ${timerTone}`}
-                            aria-live="polite"
-                          >
-                            <span>เวลา</span>
-                            <strong>
-                              {formatSeconds(challengeTimeLeftMs)}s
-                            </strong>
-                          </div>
-                          <span className="challenge-debate-speaker">
-                            <strong>{challengeSpeakerName}</strong>
-                            <span className="challenge-debate-speaker-role">
-                              {challengeState?.currentSpeaker === "challenger"
-                                ? "(ผู้ชาเลนจ์)"
-                                : "(ผู้ถูกชาเลนจ์)"}
-                            </span>
-                          </span>
-                        </div>
-                        {challengeState?.segmentAwaitingContinue ? (
-                          <div className="action-row challenge-actions">
-                            <button
-                              ref={challengeResumeButtonRef}
-                              type="button"
-                              className="primary-button"
-                              onClick={handleResumeChallengeDebate}
-                              onKeyDown={handleResumeChallengeDebateKeyDown}
-                              aria-label={
-                                challengeSegmentIndex === 0 ? "เริ่ม" : "ต่อ"
-                              }
-                              title={
-                                challengeSegmentIndex === 0 ? "เริ่ม" : "ต่อ"
-                              }
-                            >
-                              <span className="button-copy">
-                                {challengeSegmentIndex === 0 ? "เริ่ม" : "ต่อ"}
-                              </span>
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="action-row challenge-actions">
-                            <button
-                              type="button"
-                              className="secondary-button symbol-button"
-                              onClick={handleAdvanceChallengeDebate}
-                              aria-label="จบช่วง"
-                              title="จบช่วง"
-                            >
-                              <span className="button-copy">จบช่วง</span>
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {isChallengeJudging && (
-                    <div className="challenge-content">
-                      <div className="challenge-chain">
-                        <span className="challenge-chain-prev">
-                          {selectedChallengePreviousAnswer?.answer ?? "-"}
-                        </span>
-                        <ChevronRight
-                          size={16}
-                          aria-hidden="true"
-                          className="challenge-chain-arrow"
-                        />
-                        <span className="challenge-chain-target">
-                          <span className="challenge-chain-target-word">
-                            {selectedChallengedAnswer?.answer ?? "-"}
-                          </span>
-                        </span>
-                        <span className="challenge-chain-right">
-                          <span className="challenge-chain-owner">
-                            {selectedChallengedPlayer?.name ?? "-"}
-                          </span>
-                          <span className="challenge-chain-challenger">
-                            <span className="challenge-chain-challenger-label">
-                              ถูกชาเลนจ์โดย
-                            </span>
-                            <span className="challenge-chain-challenger-name">
-                              {selectedChallenger?.name ?? "-"}
-                            </span>
-                          </span>
-                        </span>
-                      </div>
-
-                      <div className="action-row challenge-actions">
-                        <button
-                          ref={challengeDecisionButtonRef}
-                          type="button"
-                          className="primary-button symbol-button"
-                          onClick={() => handleChallengeDecision("connects")}
-                          onKeyDown={(event) =>
-                            handleChallengeDecisionKeyDown("connects", event)
-                          }
-                          aria-label="ตัดสินว่าเชื่อม"
-                          title="ตัดสินว่าเชื่อม"
-                        >
-                          <span className="button-copy">เชื่อม</span>
-                        </button>
-                        <button
-                          type="button"
-                          className="secondary-button symbol-button"
-                          onClick={() =>
-                            handleChallengeDecision("not_connects")
-                          }
-                          onKeyDown={(event) =>
-                            handleChallengeDecisionKeyDown(
-                              "not_connects",
-                              event,
-                            )
-                          }
-                          aria-label="ตัดสินว่าไม่เชื่อม"
-                          title="ตัดสินว่าไม่เชื่อม"
-                        >
-                          <span className="button-copy">ไม่เชื่อม</span>
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
             </section>
 
             {isSyllableDebugVisible && (
