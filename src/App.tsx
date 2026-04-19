@@ -242,7 +242,7 @@ function renderEliminationReasonDetail(
     if (player.challengeTargetAnswer) {
       return (
         <>
-          ชาเลนจ์คำ <span className="elimination-target-word">{player.challengeTargetAnswer}</span> ไม่สำเร็จ
+          ชาเลนจ์ <span className="elimination-target-word">{player.challengeTargetAnswer}</span> ไม่สำเร็จ
         </>
       );
     }
@@ -253,7 +253,7 @@ function renderEliminationReasonDetail(
     if (player.challengeTargetAnswer && player.challengeSourceAnswer) {
       return (
         <>
-          คำ <span className="elimination-target-word">{player.challengeTargetAnswer}</span> ไม่เชื่อมกับคำ <span className="elimination-target-word">{player.challengeSourceAnswer}</span>
+          <span className="elimination-target-word">{player.challengeTargetAnswer}</span> ไม่เชื่อมกับ <span className="elimination-target-word">{player.challengeSourceAnswer}</span>
         </>
       );
     }
@@ -2416,52 +2416,33 @@ function App() {
                         <label id="challenged-answer-label">
                           คำที่ถูกชาเลนจ์
                         </label>
-                        <select
-                          ref={challengeChallengedAnswerSelectRef}
-                          className="text-input challenge-select"
-                          aria-labelledby="challenged-answer-label"
-                          value={challengeState?.challengedAnswerId ?? ""}
-                          disabled={challengeableAnswers.length === 0}
-                          onChange={(event) => {
-                            const nextAnswerId = event.target.value || null;
-
-                            applyEphemeralGameUpdate((current) =>
-                              updateChallengeSelection(current, {
-                                challengedAnswerId: nextAnswerId,
-                              }),
-                            );
-                          }}
-                          onKeyDown={(event) => {
-                            if (event.key !== "Enter") {
-                              return;
-                            }
-
-                            event.preventDefault();
-
-                            if (!preferredChallengeChallengerId) {
-                              challengeChallengerInputRef.current?.focus();
-                              return;
-                            }
-
-                            handleStartChallenge(preferredChallengeChallengerId);
-                          }}
-                        >
-                          <option value="" disabled>
-                            เลือกคำที่ถูกชาเลนจ์
-                          </option>
+                        <div className="challenge-answer-pills">
                           {[...challengeableAnswers]
                             .reverse()
-                            .slice(0, 3)
                             .map((answerRecord: AnswerRecord) => (
-                              <option
+                              <button
                                 key={answerRecord.id}
-                                value={answerRecord.id}
+                                type="button"
+                                className={`answer-pill ${
+                                  challengeState?.challengedAnswerId ===
+                                  answerRecord.id
+                                    ? "is-selected"
+                                    : ""
+                                }`}
+                                onClick={() => {
+                                  applyEphemeralGameUpdate((current) =>
+                                    updateChallengeSelection(current, {
+                                      challengedAnswerId: answerRecord.id,
+                                    }),
+                                  );
+                                }}
                               >
-                                "{answerRecord.answer}" ของ{" "}
-                                {answerRecord.playerName}
-                              </option>
+                                <span className="pill-word">
+                                  {answerRecord.answer}
+                                </span>
+                              </button>
                             ))}
-                        </select>
+                        </div>
                         {challengeableAnswers.length === 0 && (
                           <div className="empty-note">
                             ไม่มีคำที่สามารถชาเลนจ์ได้

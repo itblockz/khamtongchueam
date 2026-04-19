@@ -1423,6 +1423,59 @@ button:disabled {
   background: linear-gradient(180deg, #d68458 0%, #bf5f35 100%);
 }
 
+.challenge-answer-pills {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 10px;
+  width: 100%;
+}
+
+.answer-pill {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 16px;
+  min-height: 56px;
+  min-width: 80px;
+  border-radius: 16px;
+  border: 1.5px solid rgba(0, 0, 0, 0.05);
+  background: rgba(255, 255, 255, 0.6);
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.2, 0, 0, 1);
+  flex: 1;
+}
+
+.answer-pill.is-selected {
+  background: linear-gradient(135deg, var(--accent) 0%, #d26a3a 100%);
+  border-color: transparent;
+  box-shadow: 0 8px 20px rgba(210, 106, 58, 0.25);
+  transform: translateY(-2px);
+}
+
+.answer-pill .pill-word {
+  font-family: 'Mitr', sans-serif;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--ink);
+  line-height: 1.2;
+}
+
+.answer-pill .pill-owner {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--muted);
+  opacity: 0.8;
+  margin-top: 2px;
+}
+
+.answer-pill.is-selected .pill-word,
+.answer-pill.is-selected .pill-owner {
+  color: white;
+  opacity: 1;
+}
+
 .challenge-challenger-empty {
   padding: 12px 14px;
   border-radius: 16px;
