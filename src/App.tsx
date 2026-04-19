@@ -1,6 +1,4 @@
 import {
-  type ClipboardEvent,
-  type DragEvent,
   type Key,
   type ReactNode,
   useCallback,
@@ -12,7 +10,7 @@ import {
   type ChangeEvent,
   type FormEvent,
   type KeyboardEvent,
-} from 'react'
+} from "react";
 import {
   ComboBox,
   ComboBoxStateContext,
@@ -21,14 +19,13 @@ import {
   ListBox,
   ListBoxItem,
   Popover,
-} from 'react-aria-components'
-import {
-  Settings,
-  ChevronRight,
-  X,
-  HelpCircle,
-} from 'lucide-react'
-import './App.css'
+} from "react-aria-components";
+import { Settings, ChevronRight, X, HelpCircle } from "lucide-react";
+import CodeMirror from "@uiw/react-codemirror";
+import { EditorView, keymap } from "@codemirror/view";
+import { indentLess, indentMore } from "@codemirror/commands";
+import type { Extension } from "@codemirror/state";
+import "./App.css";
 import {
   acknowledgeRoundSummary,
   beginChallengeSelection,
@@ -46,7 +43,6 @@ import {
   createSetupState,
   getChallengeableAnswers,
   getScoreAwards,
-  getSetupValidation,
   prepareRoster,
   resolveChallenge,
   resumeChallengeDebate,
@@ -64,45 +60,111 @@ import {
   type LeaderboardAward,
   type PlayerDraft,
   type TurnDirection,
-} from './game'
+} from "./game";
 import {
   DEFAULT_SYLLABLE_ENGINE,
   SyllableSegmentationError,
   type SyllableSegmentationResponse,
   segmentThaiText,
-} from './syllableClient'
-import { useTurnTimer } from './useTurnTimer'
-import { useUndoRedoHistory } from './useUndoRedoHistory'
+} from "./syllableClient";
+import { useTurnTimer } from "./useTurnTimer";
+import { useUndoRedoHistory } from "./useUndoRedoHistory";
 
-const MATCH_ROUNDS_PER_MATCH = 4
-const SYLLABLE_REQUEST_DEBOUNCE_MS = 250
-const SYLLABLE_DEBUG_STORAGE_KEY = 'khamtongchueam:show-syllable-debug'
-const GM_OPENING_WORD_STORAGE_KEY = 'khamtongchueam:gm-opening-word-enabled'
-const SHOW_PREVIOUS_WORD_PROMPT_KEY = 'khamtongchueam:show-previous-word-prompt'
+function moveLineUp(view: EditorView): boolean {
+  const { state } = view;
+  const line = state.doc.lineAt(state.selection.main.head);
+  if (line.number === 1) {
+    return true;
+  }
+  const prevLine = state.doc.line(line.number - 1);
+  const text = line.text;
+  view.dispatch({
+    changes: [
+      { from: line.from, to: line.to, insert: prevLine.text },
+      { from: prevLine.from, to: prevLine.to, insert: text },
+    ],
+    selection: { anchor: prevLine.from, head: prevLine.to },
+  });
+  return true;
+}
+
+function moveLineDown(view: EditorView): boolean {
+  const { state } = view;
+  const line = state.doc.lineAt(state.selection.main.head);
+  const nextLine = state.doc.line(line.number + 1);
+  if (!nextLine) {
+    return true;
+  }
+  const text = line.text;
+  view.dispatch({
+    changes: [
+      { from: line.from, to: line.to, insert: nextLine.text },
+      { from: nextLine.from, to: nextLine.to, insert: text },
+    ],
+    selection: {
+      anchor: nextLine.from,
+      head: nextLine.to,
+    },
+  });
+  return true;
+}
+
+function duplicateLineUp(view: EditorView): boolean {
+  const { state } = view;
+  const line = state.doc.lineAt(state.selection.main.head);
+  view.dispatch({
+    changes: { from: line.from, to: line.from, insert: line.text + "\n" },
+    selection: { anchor: line.from, head: line.from },
+  });
+  return true;
+}
+
+function duplicateLineDown(view: EditorView): boolean {
+  const { state } = view;
+  const line = state.doc.lineAt(state.selection.main.head);
+  const insertPos = line.to;
+  view.dispatch({
+    changes: { from: insertPos, to: insertPos, insert: "\n" + line.text },
+    selection: { anchor: insertPos + 1, head: insertPos + 1 },
+  });
+  return true;
+}
+
+function exitEditor(): boolean {
+  const confirmButton = document.querySelector(
+    ".start-button",
+  ) as HTMLButtonElement | null;
+  confirmButton?.focus();
+  return true;
+}
+
+const MATCH_ROUNDS_PER_MATCH = 4;
+const SYLLABLE_REQUEST_DEBOUNCE_MS = 250;
+const SYLLABLE_DEBUG_STORAGE_KEY = "khamtongchueam:show-syllable-debug";
+const GM_OPENING_WORD_STORAGE_KEY = "khamtongchueam:gm-opening-word-enabled";
+const SHOW_PREVIOUS_WORD_PROMPT_KEY =
+  "khamtongchueam:show-previous-word-prompt";
 
 function getTurnDirectionForMatchRound(matchRound: number): TurnDirection {
-  return matchRound % 2 === 1 ? 1 : -1
+  return matchRound % 2 === 1 ? 1 : -1;
 }
 
 function formatSeconds(timeLeftMs: number) {
-  return (timeLeftMs / 1000).toFixed(1)
+  return (timeLeftMs / 1000).toFixed(1);
 }
 
 function normalizeChallengeTypeaheadText(text: string) {
-  return text.trim().toLocaleLowerCase()
+  return text.trim().toLocaleLowerCase();
 }
 
-function matchesChallengeTypeaheadCandidate(
-  text: string,
-  query: string,
-) {
-  const normalizedQuery = normalizeChallengeTypeaheadText(query)
+function matchesChallengeTypeaheadCandidate(text: string, query: string) {
+  const normalizedQuery = normalizeChallengeTypeaheadText(query);
 
   if (normalizedQuery.length === 0) {
-    return true
+    return true;
   }
 
-  return normalizeChallengeTypeaheadText(text).startsWith(normalizedQuery)
+  return normalizeChallengeTypeaheadText(text).startsWith(normalizedQuery);
 }
 
 function getMatchingChallengeChallengerOptions(
@@ -111,158 +173,144 @@ function getMatchingChallengeChallengerOptions(
 ) {
   return options.filter((player) =>
     matchesChallengeTypeaheadCandidate(player.name, query),
-  )
+  );
 }
 
 function getInitialSyllableDebugVisibility() {
-  if (typeof window === 'undefined') {
-    return false
+  if (typeof window === "undefined") {
+    return false;
   }
 
   try {
-    return window.localStorage.getItem(SYLLABLE_DEBUG_STORAGE_KEY) === 'true'
+    return window.localStorage.getItem(SYLLABLE_DEBUG_STORAGE_KEY) === "true";
   } catch {
-    return false
+    return false;
   }
 }
 
 function getInitialGmOpeningWordEnabled() {
-  if (typeof window === 'undefined') {
-    return true
+  if (typeof window === "undefined") {
+    return true;
   }
 
   try {
-    return window.localStorage.getItem(GM_OPENING_WORD_STORAGE_KEY) !== 'false'
+    return window.localStorage.getItem(GM_OPENING_WORD_STORAGE_KEY) !== "false";
   } catch {
-    return true
+    return true;
   }
 }
 
 function getInitialShowPreviousWordPrompt() {
-  if (typeof window === 'undefined') {
-    return false
+  if (typeof window === "undefined") {
+    return false;
   }
 
   try {
-    return window.localStorage.getItem(SHOW_PREVIOUS_WORD_PROMPT_KEY) === 'true'
+    return (
+      window.localStorage.getItem(SHOW_PREVIOUS_WORD_PROMPT_KEY) === "true"
+    );
   } catch {
-    return false
+    return false;
   }
-}
-
-function getSetupMessage(
-  validation: ReturnType<typeof getSetupValidation>,
-) {
-  if (validation.playerCount < 2) {
-    return 'ต้องมีผู้เล่นอย่างน้อย 2 คน'
-  }
-
-  if (validation.hasDuplicates) {
-    return 'ชื่อผู้เล่นห้ามซ้ำหลังตัดช่องว่างหน้า-ท้าย'
-  }
-
-  return `พร้อมยืนยันผู้เล่น ${validation.playerCount} คน`
 }
 
 function getEliminatedPlayerSummary(
-  player: GameState['players'][number] | null,
+  player: GameState["players"][number] | null,
 ) {
   if (!player) {
-    return 'มีผู้เล่นตกรอบในรอบนี้'
+    return "มีผู้เล่นตกรอบในรอบนี้";
   }
 
-  if (player.eliminationReason === 'duplicate_syllable') {
+  if (player.eliminationReason === "duplicate_syllable") {
     if (player.duplicateSubmittedAnswer && player.duplicateSourceAnswer) {
-      return `${player.name} ตกรอบเพราะคำตอบ "${player.duplicateSubmittedAnswer}" ซ้ำกับคำ "${player.duplicateSourceAnswer}"`
+      return `${player.name} ตกรอบเพราะคำตอบ "${player.duplicateSubmittedAnswer}" ซ้ำกับคำ "${player.duplicateSourceAnswer}"`;
     }
 
     if (player.duplicateSourceAnswer) {
-      return `${player.name} ตกรอบเพราะคำตอบซ้ำกับคำ "${player.duplicateSourceAnswer}"`
+      return `${player.name} ตกรอบเพราะคำตอบซ้ำกับคำ "${player.duplicateSourceAnswer}"`;
     }
 
-    return `${player.name} ตกรอบเพราะใช้พยางค์ซ้ำ`
+    return `${player.name} ตกรอบเพราะใช้พยางค์ซ้ำ`;
   }
 
-  if (player.eliminationReason === 'late_submit') {
-    return `${player.name} ตกรอบเพราะส่งคำช้าเกินเวลา`
+  if (player.eliminationReason === "late_submit") {
+    return `${player.name} ตกรอบเพราะส่งคำช้าเกินเวลา`;
   }
 
-  if (player.eliminationReason === 'timeout') {
-    return `${player.name} ตกรอบเพราะไม่ทันเวลา`
+  if (player.eliminationReason === "timeout") {
+    return `${player.name} ตกรอบเพราะไม่ทันเวลา`;
   }
 
-  if (player.eliminationReason === 'failed_challenge') {
+  if (player.eliminationReason === "failed_challenge") {
     if (player.challengeTargetAnswer) {
-      return `${player.name} ตกรอบเพราะชาเลนจ์คำ "${player.challengeTargetAnswer}" ไม่สำเร็จ`
+      return `${player.name} ตกรอบเพราะชาเลนจ์คำ "${player.challengeTargetAnswer}" ไม่สำเร็จ`;
     }
 
-    return `${player.name} ตกรอบเพราะชาเลนจ์ไม่สำเร็จ`
+    return `${player.name} ตกรอบเพราะชาเลนจ์ไม่สำเร็จ`;
   }
 
-  if (player.eliminationReason === 'invalid_connection') {
+  if (player.eliminationReason === "invalid_connection") {
     if (player.challengeTargetAnswer && player.challengeSourceAnswer) {
-      return `${player.name} ตกรอบเพราะคำ "${player.challengeTargetAnswer}" ไม่เชื่อมกับคำ "${player.challengeSourceAnswer}"`
+      return `${player.name} ตกรอบเพราะคำ "${player.challengeTargetAnswer}" ไม่เชื่อมกับคำ "${player.challengeSourceAnswer}"`;
     }
 
-    return `${player.name} ตกรอบเพราะคำไม่เชื่อมกัน`
+    return `${player.name} ตกรอบเพราะคำไม่เชื่อมกัน`;
   }
 
-  if (player.eliminationReason === 'not_noun') {
+  if (player.eliminationReason === "not_noun") {
     if (player.duplicateSubmittedAnswer) {
-      return `${player.name} ตกรอบเพราะ "${player.duplicateSubmittedAnswer}" ไม่ใช่คำนาม`
+      return `${player.name} ตกรอบเพราะ "${player.duplicateSubmittedAnswer}" ไม่ใช่คำนาม`;
     }
-    return `${player.name} ตกรอบเพราะไม่ใช่คำนาม`
+    return `${player.name} ตกรอบเพราะไม่ใช่คำนาม`;
   }
 
-  return `${player.name} ตกรอบ`
+  return `${player.name} ตกรอบ`;
 }
 
-function getPausedTurnReasonText(
-  player: GameState['players'][number] | null,
-) {
-  return getEliminatedPlayerSummary(player)
+function getPausedTurnReasonText(player: GameState["players"][number] | null) {
+  return getEliminatedPlayerSummary(player);
 }
 
 function getPausedTurnInstructions(
-  player: GameState['players'][number] | null,
+  player: GameState["players"][number] | null,
   activePlayerName: string,
 ) {
   return `ยังไม่เริ่มจับเวลา ${getPausedTurnReasonText(
     player,
-  )} กดเริ่มเพื่อเริ่มจับเวลาของ ${activePlayerName}`
+  )} กดเริ่มเพื่อเริ่มจับเวลาของ ${activePlayerName}`;
 }
 
 function getDuplicateSyllableDetails(
-  player: GameState['players'][number] | null,
+  player: GameState["players"][number] | null,
 ) {
   if (
     !player ||
-    player.eliminationReason !== 'duplicate_syllable' ||
+    player.eliminationReason !== "duplicate_syllable" ||
     !player.duplicateSyllable ||
     !player.duplicateSourceAnswer ||
     !player.duplicateSubmittedAnswer
   ) {
-    return null
+    return null;
   }
 
   return {
     duplicateSyllable: player.duplicateSyllable,
     sourceAnswer: player.duplicateSourceAnswer,
     submittedAnswer: player.duplicateSubmittedAnswer,
-  }
+  };
 }
 
 function renderHighlightedAnswer(answer: string, syllable: string) {
   if (!syllable || !answer.includes(syllable)) {
-    return <span className="duplicate-answer-text">{answer}</span>
+    return <span className="duplicate-answer-text">{answer}</span>;
   }
 
-  const parts: ReactNode[] = []
-  const segments = answer.split(syllable)
+  const parts: ReactNode[] = [];
+  const segments = answer.split(syllable);
 
   segments.forEach((segment, index) => {
     if (segment) {
-      parts.push(<span key={`segment-${index}`}>{segment}</span>)
+      parts.push(<span key={`segment-${index}`}>{segment}</span>);
     }
 
     if (index < segments.length - 1) {
@@ -270,17 +318,17 @@ function renderHighlightedAnswer(answer: string, syllable: string) {
         <mark className="duplicate-syllable-mark" key={`match-${index}`}>
           {syllable}
         </mark>,
-      )
+      );
     }
-  })
+  });
 
-  return <span className="duplicate-answer-text">{parts}</span>
+  return <span className="duplicate-answer-text">{parts}</span>;
 }
 
 function renderEliminatedPlayerSummaryContent(
-  player: GameState['players'][number] | null,
+  player: GameState["players"][number] | null,
 ) {
-  const duplicateDetails = getDuplicateSyllableDetails(player)
+  const duplicateDetails = getDuplicateSyllableDetails(player);
 
   if (player && duplicateDetails) {
     return (
@@ -297,119 +345,52 @@ function renderEliminatedPlayerSummaryContent(
         )}
         <span>"</span>
       </>
-    )
+    );
   }
 
-
-
-  return getEliminatedPlayerSummary(player)
+  return getEliminatedPlayerSummary(player);
 }
 
 function getSegmentationCacheKey(text: string) {
-  return `${DEFAULT_SYLLABLE_ENGINE}::${text.trim()}`
+  return `${DEFAULT_SYLLABLE_ENGINE}::${text.trim()}`;
 }
 
 function getSegmentationErrorMessage(error: unknown) {
   if (error instanceof SyllableSegmentationError) {
-    return error.message
+    return error.message;
   }
 
   if (error instanceof Error && error.message.trim().length > 0) {
-    return error.message
+    return error.message;
   }
 
-  return 'ไม่สามารถเชื่อมต่อระบบแยกพยางค์ได้'
+  return "ไม่สามารถเชื่อมต่อระบบแยกพยางค์ได้";
 }
 
 function isBlankDraft(draft: PlayerDraft) {
-  return draft.name.trim().length === 0
+  return draft.name.trim().length === 0;
 }
 
 function ensureTrailingBlankDraft(playerDrafts: PlayerDraft[]) {
   if (playerDrafts.length === 0) {
-    return [createPlayerDraft()]
+    return [createPlayerDraft()];
   }
 
-  const nextDrafts = [...playerDrafts]
+  const nextDrafts = [...playerDrafts];
 
   while (
     nextDrafts.length > 1 &&
     isBlankDraft(nextDrafts[nextDrafts.length - 1]) &&
     isBlankDraft(nextDrafts[nextDrafts.length - 2])
   ) {
-    nextDrafts.pop()
+    nextDrafts.pop();
   }
 
   if (!isBlankDraft(nextDrafts[nextDrafts.length - 1])) {
-    nextDrafts.push(createPlayerDraft())
+    nextDrafts.push(createPlayerDraft());
   }
 
-  return nextDrafts
-}
-
-function findNextBlankDraftIndex(playerDrafts: PlayerDraft[], startIndex: number) {
-  for (let index = startIndex + 1; index < playerDrafts.length; index += 1) {
-    if (isBlankDraft(playerDrafts[index])) {
-      return index
-    }
-  }
-
-  return -1
-}
-
-const TRANSPARENT_DRAG_IMAGE_SRC =
-  'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=='
-
-function reorderPlayerDrafts(
-  playerDrafts: PlayerDraft[],
-  sourceDraftId: string,
-  targetDraftId: string,
-  insertAfter = false,
-) {
-  const sourceIndex = playerDrafts.findIndex((draft) => draft.id === sourceDraftId)
-  const targetIndex = playerDrafts.findIndex((draft) => draft.id === targetDraftId)
-
-  if (sourceIndex === -1 || targetIndex === -1 || sourceIndex === targetIndex) {
-    return playerDrafts
-  }
-
-  const reorderedDrafts = [...playerDrafts]
-  const [movedDraft] = reorderedDrafts.splice(sourceIndex, 1)
-
-  if (!movedDraft) {
-    return playerDrafts
-  }
-
-  const targetDraft = playerDrafts[targetIndex]
-  const insertionIndex = reorderedDrafts.findIndex(
-    (draft) => draft.id === targetDraftId,
-  )
-
-  if (insertionIndex === -1) {
-    return playerDrafts
-  }
-
-  const shouldInsertAfter =
-    insertAfter &&
-    Boolean(targetDraft) &&
-    !(isBlankDraft(targetDraft) && targetIndex === playerDrafts.length - 1)
-  const nextInsertionIndex = Math.min(
-    insertionIndex + (shouldInsertAfter ? 1 : 0),
-    reorderedDrafts.length,
-  )
-
-  reorderedDrafts.splice(nextInsertionIndex, 0, movedDraft)
-
-  const normalizedDrafts = ensureTrailingBlankDraft(reorderedDrafts)
-
-  if (
-    normalizedDrafts.length === playerDrafts.length &&
-    normalizedDrafts.every((draft, index) => draft.id === playerDrafts[index]?.id)
-  ) {
-    return playerDrafts
-  }
-
-  return normalizedDrafts
+  return nextDrafts;
 }
 
 function getActivePlayerCardClass(
@@ -417,70 +398,68 @@ function getActivePlayerCardClass(
   activePlayerId: string | null,
 ) {
   if (playerId === activePlayerId) {
-    return 'player-chip is-active'
+    return "player-chip is-active";
   }
 
-  return 'player-chip'
+  return "player-chip";
 }
 
 interface SessionState {
-  gameState: GameState
-  leaderboardScores: Record<string, number>
-  roundScoreBreakdownsInMatch: Array<Record<string, RoundScoreBreakdown>>
-  completedRoundsInMatch: number
+  gameState: GameState;
+  leaderboardScores: Record<string, number>;
+  roundScoreBreakdownsInMatch: Array<Record<string, RoundScoreBreakdown>>;
+  completedRoundsInMatch: number;
 }
 
 interface HistoryUiState {
-  gmOpeningWordDraft: string
+  gmOpeningWordDraft: string;
 }
 
 interface HistorySnapshot {
-  sessionState: SessionState
-  uiState: HistoryUiState
+  sessionState: SessionState;
+  uiState: HistoryUiState;
 }
 
 interface RoundScoreBreakdown {
-  totalPoints: number
-  challengeBonus: number
+  totalPoints: number;
+  challengeBonus: number;
 }
 
-type ChallengeChallengerOption = GameState['players'][number]
+type ChallengeChallengerOption = GameState["players"][number];
 
 function createInitialHistoryUiState(): HistoryUiState {
   return {
-    gmOpeningWordDraft: '',
-  }
+    gmOpeningWordDraft: "",
+  };
 }
 
 function createInitialHistorySnapshot(): HistorySnapshot {
   return {
     sessionState: createInitialSessionState(),
     uiState: createInitialHistoryUiState(),
-  }
+  };
 }
 
-
-
 interface ChallengeChallengerListBoxProps {
-  activeSuggestionId: string | null
-  options: ChallengeChallengerOption[]
+  activeSuggestionId: string | null;
+  options: ChallengeChallengerOption[];
 }
 
 function ChallengeChallengerListBox({
   activeSuggestionId,
   options,
 }: ChallengeChallengerListBoxProps) {
-  const comboBoxState = useContext(ComboBoxStateContext)
-  const selectionManager = comboBoxState?.selectionManager ?? null
-  const isOpen = comboBoxState?.isOpen ?? false
+  const comboBoxState = useContext(ComboBoxStateContext);
+  const selectionManager = comboBoxState?.selectionManager ?? null;
+  const isOpen = comboBoxState?.isOpen ?? false;
 
   useLayoutEffect(() => {
     if (!selectionManager || !isOpen) {
-      return
+      return;
     }
 
-    selectionManager.setFocusedKey(activeSuggestionId)
-  }, [activeSuggestionId, isOpen, selectionManager])
+    selectionManager.setFocusedKey(activeSuggestionId);
+  }, [activeSuggestionId, isOpen, selectionManager]);
 
   return (
     <ListBox
@@ -497,12 +476,12 @@ function ChallengeChallengerListBox({
           id={player.id}
           className={({ isFocused, isSelected }) =>
             [
-              'challenge-challenger-option',
-              isFocused ? 'is-focused' : '',
-              isSelected ? 'is-selected' : '',
+              "challenge-challenger-option",
+              isFocused ? "is-focused" : "",
+              isSelected ? "is-selected" : "",
             ]
               .filter(Boolean)
-              .join(' ')
+              .join(" ")
           }
           textValue={player.name}
         >
@@ -510,17 +489,17 @@ function ChallengeChallengerListBox({
         </ListBoxItem>
       )}
     </ListBox>
-  )
+  );
 }
 
 interface SettingsDropdownProps {
-  isGmOpeningEnabled: boolean
-  isSyllableDebugVisible: boolean
-  showPreviousWordPrompt: boolean
-  onToggleGmOpening: () => void
-  onToggleSyllableDebug: () => void
-  onTogglePreviousWordPrompt: () => void
-  isSubmittingTurn: boolean
+  isGmOpeningEnabled: boolean;
+  isSyllableDebugVisible: boolean;
+  showPreviousWordPrompt: boolean;
+  onToggleGmOpening: () => void;
+  onToggleSyllableDebug: () => void;
+  onTogglePreviousWordPrompt: () => void;
+  isSubmittingTurn: boolean;
 }
 
 function SettingsDropdown({
@@ -532,25 +511,25 @@ function SettingsDropdown({
   onTogglePreviousWordPrompt,
   isSubmittingTurn,
 }: SettingsDropdownProps) {
-  const [isOpen, setIsOpen] = useState(false)
-  const menuRef = useRef<HTMLDivElement>(null)
-  const buttonRef = useRef<HTMLButtonElement>(null)
+  const [isOpen, setIsOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
   const closeIfFocusLeftDropdown = useCallback(() => {
-    const activeElement = document.activeElement
+    const activeElement = document.activeElement;
 
     if (
       activeElement instanceof Node &&
       (menuRef.current?.contains(activeElement) ||
         buttonRef.current?.contains(activeElement))
     ) {
-      return
+      return;
     }
 
-    setIsOpen(false)
-  }, [])
+    setIsOpen(false);
+  }, []);
 
   useEffect(() => {
-    if (!isOpen) return
+    if (!isOpen) return;
     const handleClickOutside = (event: MouseEvent) => {
       if (
         menuRef.current &&
@@ -558,19 +537,19 @@ function SettingsDropdown({
         buttonRef.current &&
         !buttonRef.current.contains(event.target as Node)
       ) {
-        setIsOpen(false)
+        setIsOpen(false);
       }
-    }
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [isOpen])
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [isOpen]);
 
   const handleKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
-    if (e.key === 'Escape') {
-      setIsOpen(false)
-      buttonRef.current?.focus()
+    if (e.key === "Escape") {
+      setIsOpen(false);
+      buttonRef.current?.focus();
     }
-  }
+  };
 
   return (
     <div className="settings-dropdown">
@@ -593,31 +572,31 @@ function SettingsDropdown({
           role="menu"
           onKeyDown={handleKeyDown}
           onBlur={(e) => {
-            const nextTarget = e.relatedTarget
+            const nextTarget = e.relatedTarget;
 
             if (
               nextTarget instanceof Node &&
               (menuRef.current?.contains(nextTarget) ||
                 buttonRef.current?.contains(nextTarget))
             ) {
-              return
+              return;
             }
 
-            window.setTimeout(closeIfFocusLeftDropdown, 0)
+            window.setTimeout(closeIfFocusLeftDropdown, 0);
           }}
         >
           <button
             type="button"
             className="settings-dropdown-item"
             onClick={(e) => {
-              e.currentTarget.focus()
-              onToggleGmOpening()
+              e.currentTarget.focus();
+              onToggleGmOpening();
             }}
             disabled={isSubmittingTurn}
             aria-pressed={isGmOpeningEnabled}
           >
             <span className="settings-dropdown-item-check" aria-hidden="true">
-              {isGmOpeningEnabled ? '✓' : ''}
+              {isGmOpeningEnabled ? "✓" : ""}
             </span>
             ผู้คุมเกมเริ่ม
           </button>
@@ -625,36 +604,34 @@ function SettingsDropdown({
             type="button"
             className="settings-dropdown-item"
             onClick={(e) => {
-              e.currentTarget.focus()
-              onToggleSyllableDebug()
+              e.currentTarget.focus();
+              onToggleSyllableDebug();
             }}
             aria-pressed={isSyllableDebugVisible}
           >
             <span className="settings-dropdown-item-check" aria-hidden="true">
-              {isSyllableDebugVisible ? '✓' : ''}
+              {isSyllableDebugVisible ? "✓" : ""}
             </span>
-            {isSyllableDebugVisible
-              ? 'ซ่อนการแยกพยางค์'
-              : 'แสดงการแยกพยางค์'}
+            {isSyllableDebugVisible ? "ซ่อนการแยกพยางค์" : "แสดงการแยกพยางค์"}
           </button>
           <button
             type="button"
             className="settings-dropdown-item"
             onClick={(e) => {
-              e.currentTarget.focus()
-              onTogglePreviousWordPrompt()
+              e.currentTarget.focus();
+              onTogglePreviousWordPrompt();
             }}
             aria-pressed={showPreviousWordPrompt}
           >
             <span className="settings-dropdown-item-check" aria-hidden="true">
-              {showPreviousWordPrompt ? '✓' : ''}
+              {showPreviousWordPrompt ? "✓" : ""}
             </span>
             แสดงคำก่อนหน้า
           </button>
         </div>
       )}
     </div>
-  )
+  );
 }
 
 function createInitialSessionState(): SessionState {
@@ -663,7 +640,7 @@ function createInitialSessionState(): SessionState {
     leaderboardScores: {},
     roundScoreBreakdownsInMatch: [],
     completedRoundsInMatch: 0,
-  }
+  };
 }
 
 function createRoundScoreBreakdownMap(
@@ -678,7 +655,7 @@ function createRoundScoreBreakdownMap(
       },
     }),
     {},
-  )
+  );
 }
 
 function applyFinishedSessionState(
@@ -686,16 +663,16 @@ function applyFinishedSessionState(
   nextGameState: GameState,
 ): SessionState {
   if (
-    currentSession.gameState.phase === 'finished' ||
-    nextGameState.phase !== 'finished'
+    currentSession.gameState.phase === "finished" ||
+    nextGameState.phase !== "finished"
   ) {
     return {
       ...currentSession,
       gameState: nextGameState,
-    }
+    };
   }
 
-  const roundAwards = getScoreAwards(nextGameState)
+  const roundAwards = getScoreAwards(nextGameState);
 
   return {
     gameState: nextGameState,
@@ -711,13 +688,13 @@ function applyFinishedSessionState(
       currentSession.completedRoundsInMatch + 1,
       MATCH_ROUNDS_PER_MATCH,
     ),
-  }
+  };
 }
 
 function App() {
   const [playerDrafts, setPlayerDrafts] = useState<PlayerDraft[]>(() =>
     ensureTrailingBlankDraft(createInitialDrafts()),
-  )
+  );
   const {
     historyState,
     present: historySnapshot,
@@ -728,357 +705,421 @@ function App() {
     commitPresent,
     undoPresent,
     redoPresent,
-  } = useUndoRedoHistory(createInitialHistorySnapshot())
-  const answerInputRef = useRef<HTMLInputElement>(null)
-  const startFirstTurnButtonRef = useRef<HTMLButtonElement>(null)
-  const leaderboardActionButtonRef = useRef<HTMLButtonElement>(null)
-  const challengeChallengerInputRef = useRef<HTMLInputElement>(null)
-  const challengeChallengedAnswerSelectRef = useRef<HTMLSelectElement>(null)
-  const challengeDecisionButtonRef = useRef<HTMLButtonElement>(null)
-  const challengeResumeButtonRef = useRef<HTMLButtonElement>(null)
-  const challengeHistoryRestorePauseRef = useRef(false)
-  const playerInputRefs = useRef<Record<string, HTMLInputElement | null>>({})
-  const draftItemRefs = useRef<Record<string, HTMLLIElement | null>>({})
-  const draftItemPositionSnapshotRef = useRef<Record<string, number>>({})
-  const transparentDragImageRef = useRef<HTMLImageElement | null>(null)
+  } = useUndoRedoHistory(createInitialHistorySnapshot());
+  const answerInputRef = useRef<HTMLInputElement>(null);
+  const startFirstTurnButtonRef = useRef<HTMLButtonElement>(null);
+  const leaderboardActionButtonRef = useRef<HTMLButtonElement>(null);
+  const challengeChallengerInputRef = useRef<HTMLInputElement>(null);
+  const challengeChallengedAnswerSelectRef = useRef<HTMLSelectElement>(null);
+  const challengeDecisionButtonRef = useRef<HTMLButtonElement>(null);
+  const challengeResumeButtonRef = useRef<HTMLButtonElement>(null);
+  const challengeHistoryRestorePauseRef = useRef(false);
   const segmentationCacheRef = useRef<
     Map<string, SyllableSegmentationResponse>
-  >(new Map())
-  const pendingSetupFocusIdRef = useRef<string | null>(null)
-  const [draggedDraftId, setDraggedDraftId] = useState<string | null>(null)
+  >(new Map());
   const [currentInputSegmentation, setCurrentInputSegmentation] =
-    useState<SyllableSegmentationResponse | null>(null)
-  const [segmentationError, setSegmentationError] = useState<string | null>(null)
-  const [isSegmentingCurrentInput, setIsSegmentingCurrentInput] = useState(false)
-  const [isSubmittingTurn, setIsSubmittingTurn] = useState(false)
+    useState<SyllableSegmentationResponse | null>(null);
+  const [segmentationError, setSegmentationError] = useState<string | null>(
+    null,
+  );
+  const [isSegmentingCurrentInput, setIsSegmentingCurrentInput] =
+    useState(false);
+  const [isSubmittingTurn, setIsSubmittingTurn] = useState(false);
   const [challengeChallengerSearchValue, setChallengeChallengerSearchValue] =
-    useState('')
+    useState("");
   const [
     challengeChallengerActiveOptionId,
     setChallengeChallengerActiveOptionId,
-  ] = useState<string | null>(null)
+  ] = useState<string | null>(null);
   const [isGmOpeningWordEnabled, setIsGmOpeningWordEnabled] = useState(() =>
     getInitialGmOpeningWordEnabled(),
-  )
+  );
   const [isSyllableDebugVisible, setIsSyllableDebugVisible] = useState(() =>
     getInitialSyllableDebugVisibility(),
-  )
+  );
   const [showPreviousWordPrompt, setShowPreviousWordPrompt] = useState(() =>
     getInitialShowPreviousWordPrompt(),
-  )
-  const { sessionState, uiState } = historySnapshot
-  const gmOpeningWordDraft = uiState.gmOpeningWordDraft
+  );
+  const [playerNamesTextarea, setPlayerNamesTextarea] = useState(() =>
+    createInitialDrafts()
+      .map((d) => d.name)
+      .filter((n) => n)
+      .join("\n"),
+  );
+  const playerEditorExtensions: Extension[] = [
+    EditorView.lineWrapping,
+    keymap.of([
+      {
+        key: "Alt-ArrowUp",
+        run: (view) => {
+          moveLineUp(view);
+          return true;
+        },
+      },
+      {
+        key: "Alt-ArrowDown",
+        run: (view) => {
+          moveLineDown(view);
+          return true;
+        },
+      },
+      {
+        key: "Shift-Alt-ArrowUp",
+        run: (view) => {
+          duplicateLineUp(view);
+          return true;
+        },
+      },
+      {
+        key: "Shift-Alt-ArrowDown",
+        run: (view) => {
+          duplicateLineDown(view);
+          return true;
+        },
+      },
+      {
+        key: "Tab",
+        run: (view) => {
+          indentMore(view);
+          return true;
+        },
+      },
+      {
+        key: "Shift-Tab",
+        run: (view) => {
+          indentLess(view);
+          return true;
+        },
+      },
+      {
+        key: "Escape",
+        run: () => exitEditor(),
+      },
+    ]),
+  ];
+  const { sessionState, uiState } = historySnapshot;
+  const gmOpeningWordDraft = uiState.gmOpeningWordDraft;
   const { gameState, leaderboardScores, roundScoreBreakdownsInMatch } =
-    sessionState
+    sessionState;
   const currentMatchRound =
-    gameState.phase === 'finished'
+    gameState.phase === "finished"
       ? Math.max(sessionState.completedRoundsInMatch, 1)
       : Math.min(
-        sessionState.completedRoundsInMatch + 1,
-        MATCH_ROUNDS_PER_MATCH,
-      )
+          sessionState.completedRoundsInMatch + 1,
+          MATCH_ROUNDS_PER_MATCH,
+        );
   const isMatchComplete =
-    sessionState.completedRoundsInMatch >= MATCH_ROUNDS_PER_MATCH
+    sessionState.completedRoundsInMatch >= MATCH_ROUNDS_PER_MATCH;
   const replayButtonLabel = isMatchComplete
-    ? 'เริ่มแมตช์ใหม่ด้วยรายชื่อเดิม'
-    : 'เล่นรอบถัดไปด้วยรายชื่อเดิม'
-  const replayButtonCopy = isMatchComplete ? 'แมตช์ใหม่' : 'รอบถัดไป'
+    ? "เริ่มแมตช์ใหม่ด้วยรายชื่อเดิม"
+    : "เล่นรอบถัดไปด้วยรายชื่อเดิม";
+  const replayButtonCopy = isMatchComplete ? "แมตช์ใหม่" : "รอบถัดไป";
 
-  const validation = getSetupValidation(playerDrafts)
+  const playerNamesFromTextarea = playerNamesTextarea
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+
+  const validation = {
+    canStart: playerNamesFromTextarea.length >= 2,
+    playerCount: playerNamesFromTextarea.length,
+    hasDuplicates: false,
+  };
   const playerById = new Map(
     gameState.players.map((player) => [player.id, player]),
-  )
+  );
   const activePlayer =
-    gameState.players.find((player) => player.id === gameState.activePlayerId) ??
-    null
+    gameState.players.find(
+      (player) => player.id === gameState.activePlayerId,
+    ) ?? null;
   const winner =
-    gameState.players.find((player) => player.id === gameState.winnerId) ?? null
+    gameState.players.find((player) => player.id === gameState.winnerId) ??
+    null;
   const isAwaitingRoundSummary =
-    gameState.phase === 'finished' &&
+    gameState.phase === "finished" &&
     gameState.isAwaitingRoundSummary &&
-    winner !== null
+    winner !== null;
   const playScreenPlayer =
-    gameState.phase === 'playing'
+    gameState.phase === "playing"
       ? activePlayer
       : isAwaitingRoundSummary
         ? winner
-        : null
+        : null;
   const activePlayers = gameState.players.filter(
-    (player) => player.status === 'active',
-  )
+    (player) => player.status === "active",
+  );
   const answerRecordById = new Map(
-    gameState.answerHistory.map((answerRecord) => [answerRecord.id, answerRecord]),
-  )
+    gameState.answerHistory.map((answerRecord) => [
+      answerRecord.id,
+      answerRecord,
+    ]),
+  );
   const lastAnswer = (() => {
     for (let i = gameState.answerHistory.length - 1; i >= 0; i--) {
-      const record = gameState.answerHistory[i]
+      const record = gameState.answerHistory[i];
       if (!record.invalidatedByChallenge || record.challengeResolved) {
-        return record.answer
+        return record.answer;
       }
     }
-    return null
-  })()
+    return null;
+  })();
   const challengeableAnswers =
-    gameState.phase === 'playing' ? getChallengeableAnswers(gameState) : []
+    gameState.phase === "playing" ? getChallengeableAnswers(gameState) : [];
   const challengeState =
-    gameState.phase === 'playing' ? gameState.challenge : null
-  const isChallengeSelecting = challengeState?.status === 'selecting'
-  const isChallengeDebating = challengeState?.status === 'debating'
-  const isChallengeJudging = challengeState?.status === 'judging'
+    gameState.phase === "playing" ? gameState.challenge : null;
+  const isChallengeSelecting = challengeState?.status === "selecting";
+  const isChallengeDebating = challengeState?.status === "debating";
+  const isChallengeJudging = challengeState?.status === "judging";
   const isChallengeActive =
-    gameState.phase === 'playing' && challengeState?.status !== 'idle'
-  const selectedChallengedAnswer =
-    challengeState?.challengedAnswerId
-      ? (answerRecordById.get(challengeState.challengedAnswerId) ?? null)
-      : null
-  const selectedChallengePreviousAnswer =
-    challengeState?.previousValidAnswerId
-      ? (answerRecordById.get(challengeState.previousValidAnswerId) ?? null)
-      : null
-  const selectedChallenger =
-    challengeState?.challengerPlayerId
-      ? (playerById.get(challengeState.challengerPlayerId) ?? null)
-      : null
-  const selectedChallengedPlayer =
-    challengeState?.challengedPlayerId
-      ? (playerById.get(challengeState.challengedPlayerId) ?? null)
-      : null
+    gameState.phase === "playing" && challengeState?.status !== "idle";
+  const selectedChallengedAnswer = challengeState?.challengedAnswerId
+    ? (answerRecordById.get(challengeState.challengedAnswerId) ?? null)
+    : null;
+  const selectedChallengePreviousAnswer = challengeState?.previousValidAnswerId
+    ? (answerRecordById.get(challengeState.previousValidAnswerId) ?? null)
+    : null;
+  const selectedChallenger = challengeState?.challengerPlayerId
+    ? (playerById.get(challengeState.challengerPlayerId) ?? null)
+    : null;
+  const selectedChallengedPlayer = challengeState?.challengedPlayerId
+    ? (playerById.get(challengeState.challengedPlayerId) ?? null)
+    : null;
   const challengeChallengerOptions = activePlayers.filter(
     (player) => player.id !== selectedChallengedPlayer?.id,
-  )
+  );
   const normalizedChallengeChallengerSearch = normalizeChallengeTypeaheadText(
     challengeChallengerSearchValue,
-  )
-  const filteredChallengeChallengerOptions = getMatchingChallengeChallengerOptions(
-    challengeChallengerOptions,
-    normalizedChallengeChallengerSearch,
-  )
+  );
+  const filteredChallengeChallengerOptions =
+    getMatchingChallengeChallengerOptions(
+      challengeChallengerOptions,
+      normalizedChallengeChallengerSearch,
+    );
   const preferredChallengeChallengerId =
     challengeChallengerActiveOptionId ??
     selectedChallenger?.id ??
     (normalizedChallengeChallengerSearch.length > 0
       ? (filteredChallengeChallengerOptions[0]?.id ?? null)
-      : null)
+      : null);
   const canOpenChallenge =
-    gameState.phase === 'playing' &&
-    challengeState?.status === 'idle' &&
+    gameState.phase === "playing" &&
+    challengeState?.status === "idle" &&
     activePlayers.length > 1 &&
     challengeableAnswers.length > 0 &&
-    !isSubmittingTurn
+    !isSubmittingTurn;
   const canStartVisibleChallenge =
     isChallengeSelecting &&
     preferredChallengeChallengerId !== null &&
     selectedChallengedAnswer !== null &&
-    selectedChallengePreviousAnswer !== null
+    selectedChallengePreviousAnswer !== null;
   const visiblePlayers =
-    isAwaitingRoundSummary && winner !== null ? [winner] : activePlayers
+    isAwaitingRoundSummary && winner !== null ? [winner] : activePlayers;
   const displayedActivePlayers =
     currentMatchRound % 2 === 0 && !isAwaitingRoundSummary
       ? [...visiblePlayers].reverse()
-      : visiblePlayers
-  const displayedActivePlayerId = isChallengeActive ? null : gameState.activePlayerId
+      : visiblePlayers;
+  const displayedActivePlayerId = isChallengeActive
+    ? null
+    : gameState.activePlayerId;
   const eliminatedPlayers = gameState.players.filter(
-    (player) => player.status === 'eliminated',
-  )
+    (player) => player.status === "eliminated",
+  );
   const latestEliminatedPlayer =
     eliminatedPlayers.length > 0
       ? [...eliminatedPlayers].sort(
-        (left, right) =>
-          (right.eliminatedOrder ?? 0) - (left.eliminatedOrder ?? 0),
-      )[0]
-      : null
+          (left, right) =>
+            (right.eliminatedOrder ?? 0) - (left.eliminatedOrder ?? 0),
+        )[0]
+      : null;
   const eliminatedPlayerSummary = getEliminatedPlayerSummary(
     latestEliminatedPlayer,
-  )
+  );
   const eliminatedPlayerSummaryContent = renderEliminatedPlayerSummaryContent(
     latestEliminatedPlayer,
-  )
+  );
   const roundAwards =
-    gameState.phase === 'finished' ? getScoreAwards(gameState) : []
+    gameState.phase === "finished" ? getScoreAwards(gameState) : [];
   const roundAwardMap = new Map(
     roundAwards.map((award) => [award.playerId, award]),
-  )
+  );
   const leaderboardEntries =
-    gameState.phase === 'finished'
+    gameState.phase === "finished"
       ? gameState.players
-        .map((player, index) => ({
-          player,
-          score: leaderboardScores[player.id] ?? 0,
-          roundScores: Array.from(
-            { length: MATCH_ROUNDS_PER_MATCH },
-            (_, roundIndex) => {
-              if (roundIndex >= sessionState.completedRoundsInMatch) {
-                return null
-              }
-
-              return (
-                roundScoreBreakdownsInMatch[roundIndex]?.[player.id] ?? {
-                  totalPoints: 0,
-                  challengeBonus: 0,
+          .map((player, index) => ({
+            player,
+            score: leaderboardScores[player.id] ?? 0,
+            roundScores: Array.from(
+              { length: MATCH_ROUNDS_PER_MATCH },
+              (_, roundIndex) => {
+                if (roundIndex >= sessionState.completedRoundsInMatch) {
+                  return null;
                 }
-              )
-            },
-          ),
-          roundPoints: roundAwardMap.get(player.id)?.points ?? 0,
-          placement: roundAwardMap.get(player.id)?.placement ?? null,
-          initialIndex: index,
-        }))
-        .sort((left, right) => {
-          if (right.score !== left.score) {
-            return right.score - left.score
-          }
 
-          if (right.roundPoints !== left.roundPoints) {
-            return right.roundPoints - left.roundPoints
-          }
+                return (
+                  roundScoreBreakdownsInMatch[roundIndex]?.[player.id] ?? {
+                    totalPoints: 0,
+                    challengeBonus: 0,
+                  }
+                );
+              },
+            ),
+            roundPoints: roundAwardMap.get(player.id)?.points ?? 0,
+            placement: roundAwardMap.get(player.id)?.placement ?? null,
+            initialIndex: index,
+          }))
+          .sort((left, right) => {
+            if (right.score !== left.score) {
+              return right.score - left.score;
+            }
 
-          const leftPlacement = left.placement ?? Number.MAX_SAFE_INTEGER
-          const rightPlacement = right.placement ?? Number.MAX_SAFE_INTEGER
+            if (right.roundPoints !== left.roundPoints) {
+              return right.roundPoints - left.roundPoints;
+            }
 
-          if (leftPlacement !== rightPlacement) {
-            return leftPlacement - rightPlacement
-          }
+            const leftPlacement = left.placement ?? Number.MAX_SAFE_INTEGER;
+            const rightPlacement = right.placement ?? Number.MAX_SAFE_INTEGER;
 
-          return left.initialIndex - right.initialIndex
-        })
-      : []
+            if (leftPlacement !== rightPlacement) {
+              return leftPlacement - rightPlacement;
+            }
+
+            return left.initialIndex - right.initialIndex;
+          })
+      : [];
   const isAwaitingFirstTurnStart =
-    gameState.phase === 'playing' && gameState.isAwaitingFirstTurnStart
+    gameState.phase === "playing" && gameState.isAwaitingFirstTurnStart;
   const isPausedTurn =
-    gameState.phase === 'playing' &&
+    gameState.phase === "playing" &&
     !isChallengeActive &&
     !gameState.isAwaitingFirstTurnStart &&
     gameState.activePlayerId !== null &&
     gameState.turnStartedAt === null &&
-    !gameState.isSafeToFinish
+    !gameState.isSafeToFinish;
   const requiresManualTurnStart =
-    gameState.phase === 'playing' && (isAwaitingFirstTurnStart || isPausedTurn)
+    gameState.phase === "playing" && (isAwaitingFirstTurnStart || isPausedTurn);
   const requiresPrimaryAction =
-    requiresManualTurnStart || isAwaitingRoundSummary
+    requiresManualTurnStart || isAwaitingRoundSummary;
   const isGmOpeningWordMode =
-    gameState.phase === 'playing' &&
+    gameState.phase === "playing" &&
     isAwaitingFirstTurnStart &&
     isGmOpeningWordEnabled &&
-    !isChallengeActive
+    !isChallengeActive;
   const editableInputValue = isGmOpeningWordMode
     ? gmOpeningWordDraft
-    : gameState.currentInput
+    : gameState.currentInput;
   const answerInputLabel = isGmOpeningWordMode
-    ? 'คำตั้งต้นของผู้คุมเกม'
-    : `คำตอบของ ${playScreenPlayer?.name ?? ''}`
+    ? "คำตั้งต้นของผู้คุมเกม"
+    : `คำตอบของ ${playScreenPlayer?.name ?? ""}`;
   const answerInputPlaceholder = isGmOpeningWordMode
-    ? 'พิมพ์คำตั้งต้นของผู้คุมเกม'
-    : 'พิมพ์คำตอบของผู้เล่น'
+    ? "พิมพ์คำตั้งต้นของผู้คุมเกม"
+    : "พิมพ์คำตอบของผู้เล่น";
   const canSubmitGmOpeningWord =
     isGmOpeningWordMode &&
     !isSubmittingTurn &&
-    gmOpeningWordDraft.trim().length > 0
+    gmOpeningWordDraft.trim().length > 0;
   const canSubmitCurrentTurn =
-    gameState.phase === 'playing' &&
+    gameState.phase === "playing" &&
     !isChallengeActive &&
     !requiresPrimaryAction &&
     !isSubmittingTurn &&
     gameState.currentInput.trim().length > 0 &&
-    (gameState.isSafeToFinish || gameState.timeLeftMs > 0)
+    (gameState.isSafeToFinish || gameState.timeLeftMs > 0);
   const challengeSpeakerName =
-    challengeState?.currentSpeaker === 'challenger'
-      ? selectedChallenger?.name ?? 'ผู้ชาเลนจ์'
-      : challengeState?.currentSpeaker === 'challenged'
-        ? selectedChallengedPlayer?.name ?? 'ผู้ถูกชาเลนจ์'
-        : null
+    challengeState?.currentSpeaker === "challenger"
+      ? (selectedChallenger?.name ?? "ผู้ชาเลนจ์")
+      : challengeState?.currentSpeaker === "challenged"
+        ? (selectedChallengedPlayer?.name ?? "ผู้ถูกชาเลนจ์")
+        : null;
   const challengeTimeLeftMs =
-    challengeState?.timeLeftMs ?? CHALLENGE_DEBATE_SEGMENT_DURATION_MS
-  const challengeSegmentIndex = challengeState?.segmentIndex ?? 0
-  const timerTone =
-    isAwaitingRoundSummary
-      ? 'is-safe'
-      : isChallengeSelecting
-        ? 'is-pending'
-        : isChallengeDebating
-          ? challengeTimeLeftMs <= 3000
-            ? 'is-urgent'
-            : ''
-          : isChallengeJudging
-            ? 'is-safe'
-            : gameState.phase === 'playing' && isAwaitingFirstTurnStart
-              ? 'is-pending'
-              : gameState.phase === 'playing' && isPausedTurn
-                ? 'is-paused'
-                : gameState.phase === 'playing' && gameState.isSafeToFinish
-                  ? 'is-safe'
-                  : gameState.phase === 'playing' && gameState.timeLeftMs <= 1000
-                    ? 'is-urgent'
-                    : ''
+    challengeState?.timeLeftMs ?? CHALLENGE_DEBATE_SEGMENT_DURATION_MS;
+  const challengeSegmentIndex = challengeState?.segmentIndex ?? 0;
+  const timerTone = isAwaitingRoundSummary
+    ? "is-safe"
+    : isChallengeSelecting
+      ? "is-pending"
+      : isChallengeDebating
+        ? challengeTimeLeftMs <= 3000
+          ? "is-urgent"
+          : ""
+        : isChallengeJudging
+          ? "is-safe"
+          : gameState.phase === "playing" && isAwaitingFirstTurnStart
+            ? "is-pending"
+            : gameState.phase === "playing" && isPausedTurn
+              ? "is-paused"
+              : gameState.phase === "playing" && gameState.isSafeToFinish
+                ? "is-safe"
+                : gameState.phase === "playing" && gameState.timeLeftMs <= 1000
+                  ? "is-urgent"
+                  : "";
   const timerValue = isAwaitingRoundSummary
-    ? 'สรุปรอบ'
+    ? "สรุปรอบ"
     : isChallengeSelecting
-      ? 'เลือกท้า'
+      ? "เลือกท้า"
       : isChallengeDebating
-        ? 'ชาเลนจ์'
+        ? "ชาเลนจ์"
         : isChallengeJudging
-          ? 'ชาเลนจ์'
+          ? "ชาเลนจ์"
           : requiresManualTurnStart
-            ? 'รอเริ่ม'
-            : gameState.phase === 'playing' && gameState.isSafeToFinish
-              ? 'ผ่านแล้ว'
-              : gameState.phase === 'playing'
+            ? "รอเริ่ม"
+            : gameState.phase === "playing" && gameState.isSafeToFinish
+              ? "ผ่านแล้ว"
+              : gameState.phase === "playing"
                 ? `${formatSeconds(gameState.timeLeftMs)}s`
-                : ''
+                : "";
   const timerAriaLabel = isAwaitingRoundSummary
-    ? 'เวลา สรุปรอบ'
+    ? "เวลา สรุปรอบ"
     : isChallengeSelecting
-      ? 'เวลา เลือกการชาเลนจ์'
+      ? "เวลา เลือกการชาเลนจ์"
       : isChallengeDebating
-        ? 'กำลังชาเลนจ์'
+        ? "กำลังชาเลนจ์"
         : isChallengeJudging
-          ? 'กำลังตัดสินการชาเลนจ์'
+          ? "กำลังตัดสินการชาเลนจ์"
           : requiresManualTurnStart
-            ? 'เวลา รอเริ่ม'
-            : gameState.phase === 'playing' && gameState.isSafeToFinish
-              ? 'เวลา ผ่านแล้ว'
-              : gameState.phase === 'playing'
+            ? "เวลา รอเริ่ม"
+            : gameState.phase === "playing" && gameState.isSafeToFinish
+              ? "เวลา ผ่านแล้ว"
+              : gameState.phase === "playing"
                 ? `เวลาเหลือ ${formatSeconds(gameState.timeLeftMs)} วินาที`
-                : 'เวลา'
-  const displayedTimerValue = isGmOpeningWordMode ? 'รอคำตั้งต้น' : timerValue
+                : "เวลา";
+  const displayedTimerValue = isGmOpeningWordMode ? "รอคำตั้งต้น" : timerValue;
   const displayedTimerAriaLabel = isGmOpeningWordMode
-    ? 'เวลารอคำตั้งต้นของผู้คุมเกม'
-    : timerAriaLabel
+    ? "เวลารอคำตั้งต้นของผู้คุมเกม"
+    : timerAriaLabel;
   const challengeNote = isChallengeSelecting
-    ? 'เลือกผู้ชาเลนจ์และคำที่ต้องการชาเลนจ์'
+    ? "เลือกผู้ชาเลนจ์และคำที่ต้องการชาเลนจ์"
     : isChallengeDebating && challengeSpeakerName
       ? `${challengeSpeakerName} กำลังพูด`
       : isChallengeJudging
-        ? 'ครบสองรอบโต้วาทีแล้ว เลือกผลตัดสิน'
-        : null
-  const currentInputSyllables = currentInputSegmentation?.syllables ?? []
+        ? "ครบสองรอบโต้วาทีแล้ว เลือกผลตัดสิน"
+        : null;
+  const currentInputSyllables = currentInputSegmentation?.syllables ?? [];
   const currentInputSegmentationMeta = currentInputSegmentation
     ? `${currentInputSegmentation.engine} · ${currentInputSegmentation.modelVersion}`
-    : null
+    : null;
 
   const resetChallengeChallengerTypeahead = useCallback(() => {
-    setChallengeChallengerSearchValue('')
-    setChallengeChallengerActiveOptionId(null)
-  }, [])
+    setChallengeChallengerSearchValue("");
+    setChallengeChallengerActiveOptionId(null);
+  }, []);
 
   const clearTransientUiState = useCallback(() => {
-    challengeHistoryRestorePauseRef.current = false
-    setDraggedDraftId(null)
-    draftItemPositionSnapshotRef.current = {}
-    setCurrentInputSegmentation(null)
-    setSegmentationError(null)
-    setIsSegmentingCurrentInput(false)
-    setIsSubmittingTurn(false)
-    resetChallengeChallengerTypeahead()
-  }, [resetChallengeChallengerTypeahead])
+    challengeHistoryRestorePauseRef.current = false;
+    setCurrentInputSegmentation(null);
+    setSegmentationError(null);
+    setIsSegmentingCurrentInput(false);
+    setIsSubmittingTurn(false);
+    resetChallengeChallengerTypeahead();
+  }, [resetChallengeChallengerTypeahead]);
 
   const restoreHistorySnapshot = useCallback((snapshot: HistorySnapshot) => {
     const restoredGameState = pauseGameStateForHistoryRestore(
       snapshot.sessionState.gameState,
       Date.now(),
-    )
+    );
 
     if (restoredGameState === snapshot.sessionState.gameState) {
-      return snapshot
+      return snapshot;
     }
 
     return {
@@ -1087,47 +1128,44 @@ function App() {
         ...snapshot.sessionState,
         gameState: restoredGameState,
       },
-    }
-  }, [])
+    };
+  }, []);
 
-  async function getSyllableSegmentation(
-    text: string,
-    signal?: AbortSignal,
-  ) {
-    const normalizedText = text.trim()
+  async function getSyllableSegmentation(text: string, signal?: AbortSignal) {
+    const normalizedText = text.trim();
 
     if (!normalizedText) {
       return {
         syllables: [],
         engine: DEFAULT_SYLLABLE_ENGINE,
-        mode: 'written' as const,
-        modelVersion: 'empty-input',
-      }
+        mode: "written" as const,
+        modelVersion: "empty-input",
+      };
     }
 
-    const cacheKey = getSegmentationCacheKey(normalizedText)
-    const cachedResult = segmentationCacheRef.current.get(cacheKey)
+    const cacheKey = getSegmentationCacheKey(normalizedText);
+    const cachedResult = segmentationCacheRef.current.get(cacheKey);
 
     if (cachedResult) {
-      return cachedResult
+      return cachedResult;
     }
 
     const result = await segmentThaiText(normalizedText, {
       engine: DEFAULT_SYLLABLE_ENGINE,
       signal,
-    })
+    });
 
-    segmentationCacheRef.current.set(cacheKey, result)
-    return result
+    segmentationCacheRef.current.set(cacheKey, result);
+    return result;
   }
 
   const applyEphemeralGameUpdate = useCallback(
     (updater: (currentGameState: GameState) => GameState) => {
       updatePresent((current) => {
-        const nextGameState = updater(current.sessionState.gameState)
+        const nextGameState = updater(current.sessionState.gameState);
 
         if (nextGameState === current.sessionState.gameState) {
-          return current
+          return current;
         }
 
         return {
@@ -1136,22 +1174,22 @@ function App() {
             current.sessionState,
             nextGameState,
           ),
-        }
-      })
+        };
+      });
     },
     [updatePresent],
-  )
+  );
 
   const setGmOpeningWordDraft = useCallback(
     (nextValue: string | ((current: string) => string)) => {
       updatePresent((current) => {
         const resolvedValue =
-          typeof nextValue === 'function'
+          typeof nextValue === "function"
             ? nextValue(current.uiState.gmOpeningWordDraft)
-            : nextValue
+            : nextValue;
 
         if (resolvedValue === current.uiState.gmOpeningWordDraft) {
-          return current
+          return current;
         }
 
         return {
@@ -1160,37 +1198,39 @@ function App() {
             ...current.uiState,
             gmOpeningWordDraft: resolvedValue,
           },
-        }
-      })
+        };
+      });
     },
     [updatePresent],
-  )
+  );
 
   const commitGameAction = useCallback(
     (
       updater: (currentGameState: GameState) => GameState,
       options?: {
-        nextGmOpeningWordDraft?: string | ((current: string) => string)
+        nextGmOpeningWordDraft?: string | ((current: string) => string);
       },
     ) => {
       commitPresent((current) => {
-        const nextGameState = updater(current.sessionState.gameState)
+        const nextGameState = updater(current.sessionState.gameState);
         const nextSessionState =
           nextGameState === current.sessionState.gameState
             ? current.sessionState
-            : applyFinishedSessionState(current.sessionState, nextGameState)
+            : applyFinishedSessionState(current.sessionState, nextGameState);
         const nextGmOpeningWordDraft =
           options?.nextGmOpeningWordDraft === undefined
             ? current.uiState.gmOpeningWordDraft
-            : typeof options.nextGmOpeningWordDraft === 'function'
-              ? options.nextGmOpeningWordDraft(current.uiState.gmOpeningWordDraft)
-              : options.nextGmOpeningWordDraft
+            : typeof options.nextGmOpeningWordDraft === "function"
+              ? options.nextGmOpeningWordDraft(
+                  current.uiState.gmOpeningWordDraft,
+                )
+              : options.nextGmOpeningWordDraft;
 
         if (
           nextSessionState === current.sessionState &&
           nextGmOpeningWordDraft === current.uiState.gmOpeningWordDraft
         ) {
-          return current
+          return current;
         }
 
         return {
@@ -1199,43 +1239,44 @@ function App() {
             nextGmOpeningWordDraft === current.uiState.gmOpeningWordDraft
               ? current.uiState
               : {
-                ...current.uiState,
-                gmOpeningWordDraft: nextGmOpeningWordDraft,
-              },
-        }
-      })
-      challengeHistoryRestorePauseRef.current = false
+                  ...current.uiState,
+                  gmOpeningWordDraft: nextGmOpeningWordDraft,
+                },
+        };
+      });
+      challengeHistoryRestorePauseRef.current = false;
     },
     [commitPresent],
-  )
-  const canUndoGameHistory = gameState.phase !== 'setup' && canUndo
-  const canRedoGameHistory = gameState.phase !== 'setup' && canRedo
+  );
+  const canUndoGameHistory = gameState.phase !== "setup" && canUndo;
+  const canRedoGameHistory = gameState.phase !== "setup" && canRedo;
 
   const handleUndo = useCallback(() => {
     if (!canUndoGameHistory) {
-      return
+      return;
     }
 
-    const currentGameState = historySnapshot.sessionState.gameState
+    const currentGameState = historySnapshot.sessionState.gameState;
 
-    const isTimerRunning = currentGameState.phase === 'playing' &&
+    const isTimerRunning =
+      currentGameState.phase === "playing" &&
       currentGameState.turnStartedAt !== null &&
-      !currentGameState.isHistoryRestorePause
+      !currentGameState.isHistoryRestorePause;
 
     if (isTimerRunning || currentGameState.isSafeToFinish) {
       if (currentGameState.isHistoryRestorePause) {
-        return
+        return;
       }
 
-      clearTransientUiState()
+      clearTransientUiState();
 
       const restoredGameState = pauseGameStateForHistoryRestore(
         currentGameState,
         Date.now(),
-      )
+      );
 
       if (restoredGameState === currentGameState) {
-        return
+        return;
       }
 
       updatePresent((current) => ({
@@ -1244,38 +1285,40 @@ function App() {
           ...current.sessionState,
           gameState: restoredGameState,
         },
-      }))
-      return
+      }));
+      return;
     }
 
-    if (currentGameState.phase === 'finished') {
-      const previousSnapshot = historyState.past[historyState.past.length - 1]
+    if (currentGameState.phase === "finished") {
+      const previousSnapshot = historyState.past[historyState.past.length - 1];
       if (!previousSnapshot) {
-        return
+        return;
       }
 
-      clearTransientUiState()
+      clearTransientUiState();
 
-      const restoredSnapshot = previousSnapshot.sessionState.gameState.isHistoryRestorePause
+      const restoredSnapshot = previousSnapshot.sessionState.gameState
+        .isHistoryRestorePause
         ? previousSnapshot
-        : restoreHistorySnapshot(previousSnapshot)
+        : restoreHistorySnapshot(previousSnapshot);
 
-      undoPresent(() => restoredSnapshot)
-      return
+      undoPresent(() => restoredSnapshot);
+      return;
     }
 
-    const previousSnapshot = historyState.past[historyState.past.length - 1]
+    const previousSnapshot = historyState.past[historyState.past.length - 1];
     if (!previousSnapshot) {
-      return
+      return;
     }
 
-    clearTransientUiState()
+    clearTransientUiState();
 
-    const restoredSnapshot = previousSnapshot.sessionState.gameState.isHistoryRestorePause
+    const restoredSnapshot = previousSnapshot.sessionState.gameState
+      .isHistoryRestorePause
       ? previousSnapshot
-      : restoreHistorySnapshot(previousSnapshot)
+      : restoreHistorySnapshot(previousSnapshot);
 
-    undoPresent(() => restoredSnapshot)
+    undoPresent(() => restoredSnapshot);
   }, [
     canUndoGameHistory,
     clearTransientUiState,
@@ -1284,127 +1327,126 @@ function App() {
     restoreHistorySnapshot,
     undoPresent,
     updatePresent,
-  ])
+  ]);
 
   const handleRedo = useCallback(() => {
     if (!canRedoGameHistory) {
-      return
+      return;
     }
 
-    const nextSnapshot = historyState.future[0]
+    const nextSnapshot = historyState.future[0];
     if (!nextSnapshot) {
-      return
+      return;
     }
 
-    clearTransientUiState()
+    clearTransientUiState();
 
-    const restoredSnapshot = nextSnapshot.sessionState.gameState.isHistoryRestorePause
+    const restoredSnapshot = nextSnapshot.sessionState.gameState
+      .isHistoryRestorePause
       ? nextSnapshot
-      : restoreHistorySnapshot(nextSnapshot)
+      : restoreHistorySnapshot(nextSnapshot);
 
-    redoPresent(() => restoredSnapshot)
+    redoPresent(() => restoredSnapshot);
   }, [
     canRedoGameHistory,
     clearTransientUiState,
     historyState.future,
     restoreHistorySnapshot,
     redoPresent,
-  ])
+  ]);
 
   useTurnTimer({
     durationMs: TURN_DURATION_MS,
-    active: gameState.phase === 'playing' && gameState.activePlayerId !== null,
-    safeToFinish: gameState.phase === 'playing' && gameState.isSafeToFinish,
-    startedAt: gameState.phase === 'playing' ? gameState.turnStartedAt : null,
+    active: gameState.phase === "playing" && gameState.activePlayerId !== null,
+    safeToFinish: gameState.phase === "playing" && gameState.isSafeToFinish,
+    startedAt: gameState.phase === "playing" ? gameState.turnStartedAt : null,
     onTick: (timeLeftMs, startedAt) => {
       applyEphemeralGameUpdate((current) => {
         if (
-          current.phase !== 'playing' ||
+          current.phase !== "playing" ||
           current.turnStartedAt !== startedAt
         ) {
-          return current
+          return current;
         }
 
         return {
           ...current,
           timeLeftMs,
-        }
-      })
+        };
+      });
     },
     onExpire: (startedAt) => {
       commitGameAction((current) => {
         if (
-          current.phase !== 'playing' ||
+          current.phase !== "playing" ||
           current.isSafeToFinish ||
           current.turnStartedAt !== startedAt
         ) {
-          return current
+          return current;
         }
 
-        return advanceTurn(current, { type: 'timeout' })
-      })
+        return advanceTurn(current, { type: "timeout" });
+      });
     },
-  })
+  });
 
   useTurnTimer({
     durationMs: CHALLENGE_DEBATE_SEGMENT_DURATION_MS,
     active:
-      gameState.phase === 'playing' &&
+      gameState.phase === "playing" &&
       isChallengeDebating &&
       !challengeState?.segmentAwaitingContinue,
     safeToFinish: false,
     startedAt:
-      gameState.phase === 'playing' && isChallengeDebating
-        ? challengeState?.segmentStartedAt ?? null
+      gameState.phase === "playing" && isChallengeDebating
+        ? (challengeState?.segmentStartedAt ?? null)
         : null,
     onTick: (timeLeftMs, startedAt) => {
       applyEphemeralGameUpdate((current) =>
         tickChallengeDebate(current, timeLeftMs, startedAt),
-      )
+      );
     },
     onExpire: (startedAt) => {
-      commitGameAction((current) =>
-        advanceChallengeDebate(current, startedAt),
-      )
+      commitGameAction((current) => advanceChallengeDebate(current, startedAt));
     },
-  })
+  });
 
   useEffect(() => {
-    if (gameState.phase !== 'playing') {
-      return
+    if (gameState.phase !== "playing") {
+      return;
     }
 
     if (isChallengeSelecting) {
-      challengeChallengerInputRef.current?.focus()
-      return
+      challengeChallengerInputRef.current?.focus();
+      return;
     }
 
     if (isChallengeJudging) {
-      challengeDecisionButtonRef.current?.focus()
-      return
+      challengeDecisionButtonRef.current?.focus();
+      return;
     }
 
     if (isChallengeDebating && challengeState?.segmentAwaitingContinue) {
-      challengeResumeButtonRef.current?.focus()
-      return
+      challengeResumeButtonRef.current?.focus();
+      return;
     }
 
     if (isChallengeDebating) {
-      return
+      return;
     }
 
     if (isGmOpeningWordMode) {
-      answerInputRef.current?.focus()
-      return
+      answerInputRef.current?.focus();
+      return;
     }
 
     if (isAwaitingFirstTurnStart || isPausedTurn) {
-      startFirstTurnButtonRef.current?.focus()
-      return
+      startFirstTurnButtonRef.current?.focus();
+      return;
     }
 
     if (!isAwaitingFirstTurnStart && !isPausedTurn) {
-      answerInputRef.current?.focus()
+      answerInputRef.current?.focus();
     }
   }, [
     gameState.phase,
@@ -1418,610 +1460,316 @@ function App() {
     isChallengeJudging,
     isChallengeDebating,
     challengeState?.segmentAwaitingContinue,
-  ])
+  ]);
 
   useEffect(() => {
-    if (typeof window === 'undefined') {
-      return
+    if (typeof window === "undefined") {
+      return;
     }
 
     function handleWindowKeyDown(event: globalThis.KeyboardEvent) {
       if (event.altKey || event.ctrlKey || event.metaKey) {
-        return
+        return;
       }
 
-      if (event.key === 'F2') {
+      if (event.key === "F2") {
         if (!canOpenChallenge) {
-          return
+          return;
         }
 
-        event.preventDefault()
-        clearTransientUiState()
-        applyEphemeralGameUpdate((current) => beginChallengeSelection(current))
-        return
+        event.preventDefault();
+        clearTransientUiState();
+        applyEphemeralGameUpdate((current) => beginChallengeSelection(current));
+        return;
       }
 
-      if (event.key === 'Escape') {
+      if (event.key === "Escape") {
         if (!isChallengeSelecting) {
-          return
+          return;
         }
 
-        event.preventDefault()
-        applyEphemeralGameUpdate((current) => cancelChallenge(current))
-        return
+        event.preventDefault();
+        applyEphemeralGameUpdate((current) => cancelChallenge(current));
+        return;
       }
 
-      if (event.key !== 'Enter' || !isChallengeDebating) {
-        return
+      if (event.key !== "Enter" || !isChallengeDebating) {
+        return;
       }
 
-      event.preventDefault()
+      event.preventDefault();
       commitGameAction((current) => {
         if (
-          current.phase === 'playing' &&
-          current.challenge.status === 'debating' &&
+          current.phase === "playing" &&
+          current.challenge.status === "debating" &&
           current.challenge.segmentAwaitingContinue
         ) {
           return challengeHistoryRestorePauseRef.current
             ? resumePausedChallengeFromHistory(current)
-            : resumeChallengeDebate(current)
+            : resumeChallengeDebate(current);
         }
 
         if (
-          current.phase !== 'playing' ||
-          current.challenge.status !== 'debating' ||
+          current.phase !== "playing" ||
+          current.challenge.status !== "debating" ||
           current.challenge.segmentStartedAt === null
         ) {
-          return current
+          return current;
         }
 
         return advanceChallengeDebate(
           current,
           current.challenge.segmentStartedAt,
-        )
-      })
+        );
+      });
     }
 
-    window.addEventListener('keydown', handleWindowKeyDown)
+    window.addEventListener("keydown", handleWindowKeyDown);
 
     return () => {
-      window.removeEventListener('keydown', handleWindowKeyDown)
-    }
+      window.removeEventListener("keydown", handleWindowKeyDown);
+    };
   }, [
     canOpenChallenge,
     clearTransientUiState,
     commitGameAction,
     isChallengeSelecting,
     isChallengeDebating,
-  ])
+  ]);
 
   useEffect(() => {
-    if (typeof window === 'undefined') {
-      return
+    if (typeof window === "undefined") {
+      return;
     }
 
     function handleUndoRedoKeyDown(event: globalThis.KeyboardEvent) {
       if (event.defaultPrevented || event.altKey || event.repeat) {
-        return
+        return;
       }
 
       if (!event.ctrlKey && !event.metaKey) {
-        return
+        return;
       }
 
-      const isKeyZ = event.code === 'KeyZ' || event.key.toLocaleLowerCase() === 'z'
-      const isKeyY = event.code === 'KeyY' || event.key.toLocaleLowerCase() === 'y'
+      const isKeyZ =
+        event.code === "KeyZ" || event.key.toLocaleLowerCase() === "z";
+      const isKeyY =
+        event.code === "KeyY" || event.key.toLocaleLowerCase() === "y";
 
       if (!isKeyZ && !isKeyY) {
-        return
+        return;
       }
 
-      const isRedo = isKeyY || (isKeyZ && event.shiftKey)
+      const isRedo = isKeyY || (isKeyZ && event.shiftKey);
 
       if (isRedo) {
         if (!canRedoGameHistory || isSubmittingTurn) {
-          return
+          return;
         }
 
-        event.preventDefault()
-        handleRedo()
-        return
+        event.preventDefault();
+        handleRedo();
+        return;
       }
 
       if (isKeyZ && !event.shiftKey) {
         if (!canUndoGameHistory || isSubmittingTurn) {
-          return
+          return;
         }
 
-        event.preventDefault()
-        handleUndo()
+        event.preventDefault();
+        handleUndo();
       }
     }
 
-    window.addEventListener('keydown', handleUndoRedoKeyDown)
+    window.addEventListener("keydown", handleUndoRedoKeyDown);
 
     return () => {
-      window.removeEventListener('keydown', handleUndoRedoKeyDown)
-    }
+      window.removeEventListener("keydown", handleUndoRedoKeyDown);
+    };
   }, [
     canRedoGameHistory,
     canUndoGameHistory,
     handleRedo,
     handleUndo,
     isSubmittingTurn,
-  ])
+  ]);
 
   useEffect(() => {
     if (!isAwaitingRoundSummary) {
-      return
+      return;
     }
 
-    startFirstTurnButtonRef.current?.focus()
-  }, [isAwaitingRoundSummary])
+    startFirstTurnButtonRef.current?.focus();
+  }, [isAwaitingRoundSummary]);
 
   useEffect(() => {
     if (isChallengeSelecting) {
-      return
+      return;
     }
 
-    resetChallengeChallengerTypeahead()
-  }, [isChallengeSelecting, resetChallengeChallengerTypeahead])
+    resetChallengeChallengerTypeahead();
+  }, [isChallengeSelecting, resetChallengeChallengerTypeahead]);
 
   useEffect(() => {
     if (!isChallengeSelecting) {
-      return
+      return;
     }
 
     const activeOptionIsVisible =
       challengeChallengerActiveOptionId !== null &&
       filteredChallengeChallengerOptions.some(
         (player) => player.id === challengeChallengerActiveOptionId,
-      )
+      );
 
     if (activeOptionIsVisible) {
-      return
+      return;
     }
 
     const nextActiveOptionId =
       normalizedChallengeChallengerSearch.length > 0
         ? (filteredChallengeChallengerOptions[0]?.id ?? null)
-        : (challengeState?.challengerPlayerId ?? null)
+        : (challengeState?.challengerPlayerId ?? null);
 
     if (nextActiveOptionId === challengeChallengerActiveOptionId) {
-      return
+      return;
     }
 
-    setChallengeChallengerActiveOptionId(nextActiveOptionId)
+    setChallengeChallengerActiveOptionId(nextActiveOptionId);
   }, [
     challengeChallengerActiveOptionId,
     challengeState?.challengerPlayerId,
     filteredChallengeChallengerOptions,
     isChallengeSelecting,
     normalizedChallengeChallengerSearch,
-  ])
+  ]);
 
   useEffect(() => {
     try {
       window.localStorage.setItem(
         SYLLABLE_DEBUG_STORAGE_KEY,
         String(isSyllableDebugVisible),
-      )
+      );
     } catch {
-      return
+      return;
     }
-  }, [isSyllableDebugVisible])
+  }, [isSyllableDebugVisible]);
 
   useEffect(() => {
     try {
       window.localStorage.setItem(
         GM_OPENING_WORD_STORAGE_KEY,
         String(isGmOpeningWordEnabled),
-      )
+      );
     } catch {
-      return
+      return;
     }
-  }, [isGmOpeningWordEnabled])
+  }, [isGmOpeningWordEnabled]);
 
   useEffect(() => {
-    if (gameState.phase !== 'finished' || gameState.isAwaitingRoundSummary) {
-      return
+    if (gameState.phase !== "finished" || gameState.isAwaitingRoundSummary) {
+      return;
     }
 
-    leaderboardActionButtonRef.current?.focus()
+    leaderboardActionButtonRef.current?.focus();
   }, [
     gameState.phase,
     gameState.isAwaitingRoundSummary,
     sessionState.completedRoundsInMatch,
-  ])
+  ]);
 
   useEffect(() => {
-    if (gameState.phase !== 'setup') {
-      return
+    if (gameState.phase !== "playing") {
+      setCurrentInputSegmentation(null);
+      setSegmentationError(null);
+      setIsSegmentingCurrentInput(false);
+      return;
     }
 
-    const targetId = pendingSetupFocusIdRef.current
-
-    if (!targetId) {
-      return
+    if (
+      (requiresManualTurnStart && !isGmOpeningWordMode) ||
+      isChallengeActive
+    ) {
+      setCurrentInputSegmentation(null);
+      setIsSegmentingCurrentInput(false);
+      return;
     }
 
-    const targetInput = playerInputRefs.current[targetId]
-
-    if (targetInput) {
-      targetInput.focus()
-      targetInput.select()
-    }
-
-    pendingSetupFocusIdRef.current = null
-  }, [gameState.phase, playerDrafts])
-
-  useEffect(() => {
-    if (gameState.phase !== 'playing') {
-      setCurrentInputSegmentation(null)
-      setSegmentationError(null)
-      setIsSegmentingCurrentInput(false)
-      return
-    }
-
-    if ((requiresManualTurnStart && !isGmOpeningWordMode) || isChallengeActive) {
-      setCurrentInputSegmentation(null)
-      setIsSegmentingCurrentInput(false)
-      return
-    }
-
-    const normalizedInput = editableInputValue.trim()
+    const normalizedInput = editableInputValue.trim();
 
     if (!normalizedInput) {
-      setCurrentInputSegmentation(null)
-      setSegmentationError(null)
-      setIsSegmentingCurrentInput(false)
-      return
+      setCurrentInputSegmentation(null);
+      setSegmentationError(null);
+      setIsSegmentingCurrentInput(false);
+      return;
     }
 
-    const cacheKey = getSegmentationCacheKey(normalizedInput)
-    const cachedResult = segmentationCacheRef.current.get(cacheKey)
+    const cacheKey = getSegmentationCacheKey(normalizedInput);
+    const cachedResult = segmentationCacheRef.current.get(cacheKey);
 
     if (cachedResult) {
-      setCurrentInputSegmentation(cachedResult)
-      setSegmentationError(null)
-      setIsSegmentingCurrentInput(false)
-      return
+      setCurrentInputSegmentation(cachedResult);
+      setSegmentationError(null);
+      setIsSegmentingCurrentInput(false);
+      return;
     }
 
-    const controller = new AbortController()
+    const controller = new AbortController();
     const timeoutId = window.setTimeout(() => {
       void getSyllableSegmentation(normalizedInput, controller.signal)
         .then((result) => {
-          setCurrentInputSegmentation(result)
-          setSegmentationError(null)
+          setCurrentInputSegmentation(result);
+          setSegmentationError(null);
         })
         .catch((error) => {
           if (controller.signal.aborted) {
-            return
+            return;
           }
 
-          setCurrentInputSegmentation(null)
-          setSegmentationError(getSegmentationErrorMessage(error))
+          setCurrentInputSegmentation(null);
+          setSegmentationError(getSegmentationErrorMessage(error));
         })
         .finally(() => {
           if (!controller.signal.aborted) {
-            setIsSegmentingCurrentInput(false)
+            setIsSegmentingCurrentInput(false);
           }
-        })
-    }, SYLLABLE_REQUEST_DEBOUNCE_MS)
+        });
+    }, SYLLABLE_REQUEST_DEBOUNCE_MS);
 
-    setSegmentationError(null)
-    setIsSegmentingCurrentInput(true)
+    setSegmentationError(null);
+    setIsSegmentingCurrentInput(true);
 
     return () => {
-      controller.abort()
-      window.clearTimeout(timeoutId)
-    }
+      controller.abort();
+      window.clearTimeout(timeoutId);
+    };
   }, [
     gameState.phase,
     editableInputValue,
     requiresManualTurnStart,
     isChallengeActive,
     isGmOpeningWordMode,
-  ])
-
-  useLayoutEffect(() => {
-    const previousPositions = draftItemPositionSnapshotRef.current
-
-    if (Object.keys(previousPositions).length === 0) {
-      return
-    }
-
-    playerDrafts.forEach((draft) => {
-      const draftItem = draftItemRefs.current[draft.id]
-      const previousTop = previousPositions[draft.id]
-
-      if (!draftItem || previousTop === undefined) {
-        return
-      }
-
-      const currentTop = draftItem.getBoundingClientRect().top
-      const deltaY = previousTop - currentTop
-
-      if (Math.abs(deltaY) < 1) {
-        return
-      }
-
-      draftItem.animate(
-        [
-          { transform: `translateY(${deltaY}px)` },
-          { transform: 'translateY(0)' },
-        ],
-        {
-          duration: 180,
-          easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
-        },
-      )
-    })
-
-    draftItemPositionSnapshotRef.current = {}
-  }, [playerDrafts])
-
-  function focusPlayerInput(draftId: string | null, shouldSelect = false) {
-    if (!draftId) {
-      return
-    }
-
-    const targetInput = playerInputRefs.current[draftId]
-
-    if (!targetInput) {
-      return
-    }
-
-    targetInput.focus()
-
-    if (shouldSelect) {
-      targetInput.select()
-    }
-  }
-
-  function handlePlayerDraftChange(
-    draftId: string,
-    event: ChangeEvent<HTMLInputElement>,
-  ) {
-    const { value } = event.target
-
-    setPlayerDrafts((current) =>
-      ensureTrailingBlankDraft(
-        current.map((draft) =>
-          draft.id === draftId ? { ...draft, name: value } : draft,
-        ),
-      ),
-    )
-  }
-
-  function handleRemovePlayer(draftId: string) {
-    setPlayerDrafts((current) => {
-      const draftIndex = current.findIndex((draft) => draft.id === draftId)
-
-      if (draftIndex === -1) {
-        return current
-      }
-
-      const nextDrafts = ensureTrailingBlankDraft(
-        current.filter((draft) => draft.id !== draftId),
-      )
-      const focusIndex = Math.min(draftIndex, nextDrafts.length - 1)
-      pendingSetupFocusIdRef.current = nextDrafts[focusIndex]?.id ?? null
-      return nextDrafts
-    })
-  }
-
-  function handlePlayerDraftPaste(
-    draftId: string,
-    event: ClipboardEvent<HTMLInputElement>,
-  ) {
-    const pastedText = event.clipboardData.getData('text')
-    const pastedLines = pastedText
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0)
-    const selectionStart =
-      event.currentTarget.selectionStart ?? event.currentTarget.value.length
-    const selectionEnd = event.currentTarget.selectionEnd ?? selectionStart
-
-    if (pastedLines.length === 0) {
-      return
-    }
-
-    event.preventDefault()
-
-    setPlayerDrafts((current) => {
-      const draftIndex = current.findIndex((draft) => draft.id === draftId)
-
-      if (draftIndex === -1) {
-        return current
-      }
-
-      if (pastedLines.length === 1) {
-        const nextDrafts = ensureTrailingBlankDraft(
-          current.map((draft, index) =>
-            index === draftIndex
-              ? {
-                ...draft,
-                name: `${draft.name.slice(0, selectionStart)}${pastedLines[0]
-                  }${draft.name.slice(selectionEnd)}`,
-              }
-              : draft,
-          ),
-        )
-        const nextBlankIndex = findNextBlankDraftIndex(nextDrafts, draftIndex)
-        const focusIndex =
-          nextBlankIndex === -1
-            ? Math.min(draftIndex + 1, nextDrafts.length - 1)
-            : nextBlankIndex
-
-        pendingSetupFocusIdRef.current = nextDrafts[focusIndex]?.id ?? null
-        return nextDrafts
-      }
-
-      const insertedDrafts = pastedLines.map((name) => createPlayerDraft(name))
-      const nextDrafts = ensureTrailingBlankDraft([
-        ...current.slice(0, draftIndex),
-        ...insertedDrafts,
-        ...current.slice(draftIndex + 1),
-      ])
-      const nextBlankIndex = findNextBlankDraftIndex(
-        nextDrafts,
-        draftIndex + insertedDrafts.length - 1,
-      )
-      const focusIndex =
-        nextBlankIndex === -1 ? nextDrafts.length - 1 : nextBlankIndex
-
-      pendingSetupFocusIdRef.current = nextDrafts[focusIndex]?.id ?? null
-      return nextDrafts
-    })
-  }
-
-  function handlePlayerDraftKeyDown(
-    draftId: string,
-    index: number,
-    event: KeyboardEvent<HTMLInputElement>,
-  ) {
-    const currentDraft = playerDrafts[index]
-
-    if (!currentDraft || currentDraft.id !== draftId) {
-      return
-    }
-
-    const isTrailingRow = index === playerDrafts.length - 1
-    const hasName = currentDraft.name.trim().length > 0
-
-    if (event.key === 'Enter') {
-      event.preventDefault()
-
-      if (!hasName && isTrailingRow) {
-        if (validation.canStart) {
-          handleConfirmPlayers()
-        }
-        return
-      }
-
-      const nextDraft = playerDrafts[Math.min(index + 1, playerDrafts.length - 1)]
-      focusPlayerInput(nextDraft?.id ?? null, true)
-      return
-    }
-
-    if (
-      event.key === 'Backspace' &&
-      currentDraft.name.length === 0 &&
-      playerDrafts.length > 1
-    ) {
-      event.preventDefault()
-
-      setPlayerDrafts((current) => {
-        const draftIndex = current.findIndex((draft) => draft.id === draftId)
-
-        if (draftIndex === -1 || current[draftIndex].name.length > 0) {
-          return current
-        }
-
-        const nextDrafts = ensureTrailingBlankDraft(
-          current.filter((draft) => draft.id !== draftId),
-        )
-        const focusIndex = Math.max(0, draftIndex - 1)
-        pendingSetupFocusIdRef.current = nextDrafts[focusIndex]?.id ?? null
-        return nextDrafts
-      })
-    }
-  }
-
-  function resetDraggedDraftState() {
-    setDraggedDraftId(null)
-    draftItemPositionSnapshotRef.current = {}
-  }
-
-  function handleDraftDragStart(
-    draftId: string,
-    event: DragEvent<HTMLLIElement>,
-  ) {
-    setDraggedDraftId(draftId)
-    event.dataTransfer.effectAllowed = 'move'
-    event.dataTransfer.setData('text/plain', draftId)
-
-    if (!transparentDragImageRef.current) {
-      const image = new Image(1, 1)
-      image.src = TRANSPARENT_DRAG_IMAGE_SRC
-      transparentDragImageRef.current = image
-    }
-
-    if (typeof event.dataTransfer.setDragImage === 'function') {
-      event.dataTransfer.setDragImage(transparentDragImageRef.current, 0, 0)
-    }
-  }
-
-  function handleDraftDragOver(
-    targetDraftId: string,
-    event: DragEvent<HTMLLIElement>,
-  ) {
-    if (!draggedDraftId || draggedDraftId === targetDraftId) {
-      return
-    }
-
-    event.preventDefault()
-    event.dataTransfer.dropEffect = 'move'
-
-    const targetRect = event.currentTarget.getBoundingClientRect()
-    const shouldInsertAfter =
-      event.clientY > targetRect.top + targetRect.height / 2
-
-    setPlayerDrafts((current) => {
-      const nextDrafts = reorderPlayerDrafts(
-        current,
-        draggedDraftId,
-        targetDraftId,
-        shouldInsertAfter,
-      )
-
-      if (nextDrafts === current) {
-        return current
-      }
-
-      draftItemPositionSnapshotRef.current = current.reduce<Record<string, number>>(
-        (positions, draft) => {
-          const draftItem = draftItemRefs.current[draft.id]
-
-          if (draftItem) {
-            positions[draft.id] = draftItem.getBoundingClientRect().top
-          }
-
-          return positions
-        },
-        {},
-      )
-
-      return nextDrafts
-    })
-  }
-
-  function handleDraftDrop(
-    _targetDraftId: string,
-    event: DragEvent<HTMLLIElement>,
-  ) {
-    event.preventDefault()
-    resetDraggedDraftState()
-  }
+  ]);
 
   function handleConfirmPlayers() {
     if (!validation.canStart) {
-      return
+      return;
     }
 
-    setCurrentInputSegmentation(null)
-    setSegmentationError(null)
-    setIsSegmentingCurrentInput(false)
-    resetChallengeChallengerTypeahead()
-    challengeHistoryRestorePauseRef.current = false
+    setCurrentInputSegmentation(null);
+    setSegmentationError(null);
+    setIsSegmentingCurrentInput(false);
+    resetChallengeChallengerTypeahead();
+    challengeHistoryRestorePauseRef.current = false;
+
+    const rosterDrafts = playerNamesFromTextarea.map((name) =>
+      createPlayerDraft(name),
+    );
 
     resetHistory({
       sessionState: {
         gameState: createConfirmedGameState(
-          prepareRoster(playerDrafts),
+          prepareRoster(rosterDrafts),
           TURN_DURATION_MS,
           getTurnDirectionForMatchRound(1),
         ),
@@ -2030,40 +1778,42 @@ function App() {
         completedRoundsInMatch: 0,
       },
       uiState: createInitialHistoryUiState(),
-    })
+    });
   }
 
   function handleStartFirstTurn() {
-    setSegmentationError(null)
+    setSegmentationError(null);
 
     if (gameState.isHistoryRestorePause) {
-      applyEphemeralGameUpdate(resumePausedTurnFromHistory)
+      applyEphemeralGameUpdate(resumePausedTurnFromHistory);
     } else {
-      commitGameAction(startActiveTurn)
+      commitGameAction(startActiveTurn);
     }
   }
 
   function handleToggleGmOpeningWord() {
     if (isSubmittingTurn) {
-      return
+      return;
     }
 
     if (isGmOpeningWordEnabled) {
-      setGmOpeningWordDraft('')
-      setCurrentInputSegmentation(null)
-      setSegmentationError(null)
-      setIsSegmentingCurrentInput(false)
+      setGmOpeningWordDraft("");
+      setCurrentInputSegmentation(null);
+      setSegmentationError(null);
+      setIsSegmentingCurrentInput(false);
     }
 
-    setIsGmOpeningWordEnabled((current) => !current)
+    setIsGmOpeningWordEnabled((current) => !current);
   }
 
   function handleHostEliminateNotNoun() {
-    commitGameAction((current) => hostEliminateCurrentPlayer(current, 'not_noun'))
+    commitGameAction((current) =>
+      hostEliminateCurrentPlayer(current, "not_noun"),
+    );
   }
 
   function handleContinueToRoundSummary() {
-    commitGameAction((current) => acknowledgeRoundSummary(current))
+    commitGameAction((current) => acknowledgeRoundSummary(current));
   }
 
   function handleResumeChallengeDebate() {
@@ -2071,91 +1821,91 @@ function App() {
       challengeHistoryRestorePauseRef.current
         ? resumePausedChallengeFromHistory(current)
         : resumeChallengeDebate(current),
-    )
+    );
   }
 
   function handleAdvanceChallengeDebate() {
     commitGameAction((current) => {
       if (
-        current.phase !== 'playing' ||
-        current.challenge.status !== 'debating' ||
+        current.phase !== "playing" ||
+        current.challenge.status !== "debating" ||
         current.challenge.segmentStartedAt === null
       ) {
-        return current
+        return current;
       }
 
       return advanceChallengeDebate(
         current,
         current.challenge.segmentStartedAt,
-      )
-    })
+      );
+    });
   }
 
   function handleResumeChallengeDebateKeyDown(
     event: KeyboardEvent<HTMLButtonElement>,
   ) {
-    if (event.key !== 'Enter') {
-      return
+    if (event.key !== "Enter") {
+      return;
     }
 
-    event.preventDefault()
-    event.stopPropagation()
-    handleResumeChallengeDebate()
+    event.preventDefault();
+    event.stopPropagation();
+    handleResumeChallengeDebate();
   }
 
   function handleStartFirstTurnKeyDown(
     event: KeyboardEvent<HTMLButtonElement>,
   ) {
-    if (event.key !== 'Enter') {
-      return
+    if (event.key !== "Enter") {
+      return;
     }
 
-    event.preventDefault()
+    event.preventDefault();
     if (isAwaitingRoundSummary) {
-      handleContinueToRoundSummary()
-      return
+      handleContinueToRoundSummary();
+      return;
     }
 
-    handleStartFirstTurn()
+    handleStartFirstTurn();
   }
 
   function handleAnswerChange(event: ChangeEvent<HTMLInputElement>) {
-    const { value } = event.target
+    const { value } = event.target;
 
     applyEphemeralGameUpdate((current) => {
       if (
-        current.phase !== 'playing' ||
+        current.phase !== "playing" ||
         current.isAwaitingFirstTurnStart ||
         current.turnStartedAt === null
       ) {
-        return current
+        return current;
       }
 
-      return applyInputChange(current, value)
-    })
+      return applyInputChange(current, value);
+    });
   }
 
   function handleGmOpeningWordChange(event: ChangeEvent<HTMLInputElement>) {
-    setGmOpeningWordDraft(event.target.value)
+    setGmOpeningWordDraft(event.target.value);
   }
 
   async function handleSubmitTurn(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
+    event.preventDefault();
 
     if (isGmOpeningWordMode) {
-      const openingWord = gmOpeningWordDraft.trim()
+      const openingWord = gmOpeningWordDraft.trim();
 
       if (!openingWord) {
-        return
+        return;
       }
 
-      const submittedAt = Date.now()
+      const submittedAt = Date.now();
 
-      setIsSubmittingTurn(true)
-      setSegmentationError(null)
+      setIsSubmittingTurn(true);
+      setSegmentationError(null);
 
       try {
-        const segmentation = await getSyllableSegmentation(openingWord)
+        const segmentation = await getSyllableSegmentation(openingWord);
 
         commitGameAction(
           (current) =>
@@ -2165,268 +1915,268 @@ function App() {
               segmentation.syllables,
               submittedAt,
             ),
-          { nextGmOpeningWordDraft: '' },
-        )
+          { nextGmOpeningWordDraft: "" },
+        );
       } catch (error) {
-        setSegmentationError(getSegmentationErrorMessage(error))
+        setSegmentationError(getSegmentationErrorMessage(error));
       } finally {
-        setIsSubmittingTurn(false)
+        setIsSubmittingTurn(false);
       }
 
-      return
+      return;
     }
 
-    const submittedAt = Date.now()
-    const currentGameState = sessionState.gameState
+    const submittedAt = Date.now();
+    const currentGameState = sessionState.gameState;
 
     if (
-      currentGameState.phase !== 'playing' ||
+      currentGameState.phase !== "playing" ||
       currentGameState.isAwaitingFirstTurnStart ||
       currentGameState.turnStartedAt === null
     ) {
-      return
+      return;
     }
 
-    const answer = currentGameState.currentInput.trim()
+    const answer = currentGameState.currentInput.trim();
 
     if (!answer) {
-      return
+      return;
     }
 
-    setIsSubmittingTurn(true)
-    setSegmentationError(null)
+    setIsSubmittingTurn(true);
+    setSegmentationError(null);
 
     try {
-      const segmentation = await getSyllableSegmentation(answer)
+      const segmentation = await getSyllableSegmentation(answer);
 
       commitGameAction((current) => {
         if (
-          current.phase !== 'playing' ||
+          current.phase !== "playing" ||
           current.isAwaitingFirstTurnStart ||
           current.turnStartedAt === null
         ) {
-          return current
+          return current;
         }
 
         return advanceTurn(current, {
-          type: 'submit',
+          type: "submit",
           answer: current.currentInput,
           syllables: segmentation.syllables,
           now: submittedAt,
-        })
-      })
+        });
+      });
     } catch (error) {
-      setSegmentationError(getSegmentationErrorMessage(error))
+      setSegmentationError(getSegmentationErrorMessage(error));
     } finally {
-      setIsSubmittingTurn(false)
+      setIsSubmittingTurn(false);
     }
   }
 
   function handleOpenChallenge() {
-    if (gameState.phase !== 'playing') {
-      return
+    if (gameState.phase !== "playing") {
+      return;
     }
 
-    resetChallengeChallengerTypeahead()
-    setCurrentInputSegmentation(null)
-    setSegmentationError(null)
-    setIsSegmentingCurrentInput(false)
-    setIsSubmittingTurn(false)
+    resetChallengeChallengerTypeahead();
+    setCurrentInputSegmentation(null);
+    setSegmentationError(null);
+    setIsSegmentingCurrentInput(false);
+    setIsSubmittingTurn(false);
 
-    applyEphemeralGameUpdate((current) => beginChallengeSelection(current))
+    applyEphemeralGameUpdate((current) => beginChallengeSelection(current));
   }
 
   function handleCancelChallenge() {
-    resetChallengeChallengerTypeahead()
-    applyEphemeralGameUpdate((current) => cancelChallenge(current))
+    resetChallengeChallengerTypeahead();
+    applyEphemeralGameUpdate((current) => cancelChallenge(current));
   }
 
   function handleChallengeChallengerChange(nextKey: Key | null) {
     const nextValue =
-      nextKey === null || nextKey === undefined ? null : `${nextKey}`.trim()
+      nextKey === null || nextKey === undefined ? null : `${nextKey}`.trim();
     const nextChallenger =
       challengeChallengerOptions.find((player) => player.id === nextValue) ??
-      null
+      null;
 
-    setChallengeChallengerSearchValue(nextChallenger?.name ?? '')
-    setChallengeChallengerActiveOptionId(nextValue || null)
+    setChallengeChallengerSearchValue(nextChallenger?.name ?? "");
+    setChallengeChallengerActiveOptionId(nextValue || null);
     applyEphemeralGameUpdate((current) =>
       updateChallengeSelection(current, {
         challengerPlayerId: nextValue || null,
       }),
-    )
+    );
   }
 
   function handleChallengeChallengerSearchChange(nextValue: string) {
-    setChallengeChallengerSearchValue(nextValue)
+    setChallengeChallengerSearchValue(nextValue);
     const nextFilteredOptions = getMatchingChallengeChallengerOptions(
       challengeChallengerOptions,
       nextValue,
-    )
-    const normalizedNextValue = normalizeChallengeTypeaheadText(nextValue)
+    );
+    const normalizedNextValue = normalizeChallengeTypeaheadText(nextValue);
     setChallengeChallengerActiveOptionId(
       normalizedNextValue.length > 0
         ? (nextFilteredOptions[0]?.id ?? null)
         : null,
-    )
+    );
 
     if (!isChallengeSelecting) {
-      return
+      return;
     }
 
     if (challengeState?.challengerPlayerId === null) {
-      return
+      return;
     }
 
     const normalizedSelectedChallengerName = normalizeChallengeTypeaheadText(
-      selectedChallenger?.name ?? '',
-    )
+      selectedChallenger?.name ?? "",
+    );
 
     if (
       normalizedNextValue.length > 0 &&
       normalizedNextValue === normalizedSelectedChallengerName
     ) {
-      return
+      return;
     }
 
     applyEphemeralGameUpdate((current) =>
       updateChallengeSelection(current, {
         challengerPlayerId: null,
       }),
-    )
+    );
   }
 
   function handleChallengeChallengerInputKeyDown(
     event: KeyboardEvent<HTMLInputElement>,
   ) {
     if (
-      (event.key === 'ArrowDown' || event.key === 'ArrowUp') &&
+      (event.key === "ArrowDown" || event.key === "ArrowUp") &&
       filteredChallengeChallengerOptions.length > 0
     ) {
-      event.preventDefault()
+      event.preventDefault();
 
       const currentIndex = filteredChallengeChallengerOptions.findIndex(
         (player) => player.id === preferredChallengeChallengerId,
-      )
-      const offset = event.key === 'ArrowDown' ? 1 : -1
+      );
+      const offset = event.key === "ArrowDown" ? 1 : -1;
       const nextIndex =
         currentIndex === -1
-          ? (event.key === 'ArrowDown'
+          ? event.key === "ArrowDown"
             ? 0
-            : filteredChallengeChallengerOptions.length - 1)
+            : filteredChallengeChallengerOptions.length - 1
           : Math.min(
-            filteredChallengeChallengerOptions.length - 1,
-            Math.max(0, currentIndex + offset),
-          )
+              filteredChallengeChallengerOptions.length - 1,
+              Math.max(0, currentIndex + offset),
+            );
 
       setChallengeChallengerActiveOptionId(
         filteredChallengeChallengerOptions[nextIndex]?.id ?? null,
-      )
-      return
+      );
+      return;
     }
 
-    if (event.key !== 'Enter') {
-      return
+    if (event.key !== "Enter") {
+      return;
     }
 
-    event.preventDefault()
-    const nextChallengerId = preferredChallengeChallengerId
+    event.preventDefault();
+    const nextChallengerId = preferredChallengeChallengerId;
 
     if (!nextChallengerId) {
-      return
+      return;
     }
 
     if (
       selectedChallengedAnswer !== null &&
       selectedChallengePreviousAnswer !== null
     ) {
-      handleStartChallenge(nextChallengerId)
-      return
+      handleStartChallenge(nextChallengerId);
+      return;
     }
 
     if (challengeState?.challengerPlayerId !== nextChallengerId) {
       const nextChallenger =
         challengeChallengerOptions.find(
           (player) => player.id === nextChallengerId,
-        ) ?? null
-      setChallengeChallengerSearchValue(nextChallenger?.name ?? '')
-      setChallengeChallengerActiveOptionId(nextChallengerId)
+        ) ?? null;
+      setChallengeChallengerSearchValue(nextChallenger?.name ?? "");
+      setChallengeChallengerActiveOptionId(nextChallengerId);
       applyEphemeralGameUpdate((current) =>
         updateChallengeSelection(current, {
           challengerPlayerId: nextChallengerId,
         }),
-      )
+      );
     }
 
-    challengeChallengedAnswerSelectRef.current?.focus()
+    challengeChallengedAnswerSelectRef.current?.focus();
   }
 
   function handleStartChallenge(challengerPlayerId?: string) {
     const nextChallengerId =
-      challengerPlayerId ?? challengeState?.challengerPlayerId ?? null
+      challengerPlayerId ?? challengeState?.challengerPlayerId ?? null;
 
     if (!nextChallengerId) {
-      return
+      return;
     }
 
-    resetChallengeChallengerTypeahead()
+    resetChallengeChallengerTypeahead();
     commitGameAction((current) => {
-      if (current.phase !== 'playing') {
-        return current
+      if (current.phase !== "playing") {
+        return current;
       }
 
-      if (current.challenge.status !== 'selecting') {
-        return current
+      if (current.challenge.status !== "selecting") {
+        return current;
       }
 
       const stateWithChallenger =
         current.challenge.challengerPlayerId === nextChallengerId
           ? current
           : updateChallengeSelection(current, {
-            challengerPlayerId: nextChallengerId,
-          })
+              challengerPlayerId: nextChallengerId,
+            });
 
-      return startChallengeDebate(stateWithChallenger)
-    })
+      return startChallengeDebate(stateWithChallenger);
+    });
   }
 
-  function handleChallengeDecision(decision: 'connects' | 'not_connects') {
-    commitGameAction((current) => resolveChallenge(current, decision))
+  function handleChallengeDecision(decision: "connects" | "not_connects") {
+    commitGameAction((current) => resolveChallenge(current, decision));
   }
 
   function handleChallengeDecisionKeyDown(
-    decision: 'connects' | 'not_connects',
+    decision: "connects" | "not_connects",
     event: KeyboardEvent<HTMLButtonElement>,
   ) {
-    if (event.key !== 'Enter') {
-      return
+    if (event.key !== "Enter") {
+      return;
     }
 
-    event.preventDefault()
-    handleChallengeDecision(decision)
+    event.preventDefault();
+    handleChallengeDecision(decision);
   }
 
   function handleReplaySamePlayers() {
     if (!validation.canStart) {
-      return
+      return;
     }
 
-    setCurrentInputSegmentation(null)
-    setSegmentationError(null)
-    setIsSegmentingCurrentInput(false)
-    resetChallengeChallengerTypeahead()
-    challengeHistoryRestorePauseRef.current = false
+    setCurrentInputSegmentation(null);
+    setSegmentationError(null);
+    setIsSegmentingCurrentInput(false);
+    resetChallengeChallengerTypeahead();
+    challengeHistoryRestorePauseRef.current = false;
 
     const shouldStartNewMatch =
-      sessionState.completedRoundsInMatch >= MATCH_ROUNDS_PER_MATCH
+      sessionState.completedRoundsInMatch >= MATCH_ROUNDS_PER_MATCH;
 
     if (shouldStartNewMatch) {
-      segmentationCacheRef.current.clear()
+      segmentationCacheRef.current.clear();
     }
 
     const nextMatchRound = shouldStartNewMatch
       ? 1
-      : sessionState.completedRoundsInMatch + 1
+      : sessionState.completedRoundsInMatch + 1;
 
     resetHistory({
       sessionState: {
@@ -2446,24 +2196,24 @@ function App() {
           : sessionState.completedRoundsInMatch,
       },
       uiState: createInitialHistoryUiState(),
-    })
+    });
   }
 
   function handleResetAll() {
-    segmentationCacheRef.current.clear()
-    setCurrentInputSegmentation(null)
-    setSegmentationError(null)
-    setIsSegmentingCurrentInput(false)
-    setIsSubmittingTurn(false)
-    resetChallengeChallengerTypeahead()
-    challengeHistoryRestorePauseRef.current = false
-    setPlayerDrafts(ensureTrailingBlankDraft(createInitialDrafts()))
-    resetHistory(createInitialHistorySnapshot())
+    segmentationCacheRef.current.clear();
+    setCurrentInputSegmentation(null);
+    setSegmentationError(null);
+    setIsSegmentingCurrentInput(false);
+    setIsSubmittingTurn(false);
+    resetChallengeChallengerTypeahead();
+    challengeHistoryRestorePauseRef.current = false;
+    setPlayerDrafts(ensureTrailingBlankDraft(createInitialDrafts()));
+    resetHistory(createInitialHistorySnapshot());
   }
 
   return (
     <main className="app-shell">
-      {gameState.phase === 'setup' && (
+      {gameState.phase === "setup" && (
         <section className="phase-screen setup-screen">
           <div className="surface-card setup-card">
             <div className="panel-header setup-header">
@@ -2486,97 +2236,55 @@ function App() {
                   role="tooltip"
                 >
                   <ul className="setup-tooltip-list">
-                    <li>พิมพ์ชื่อแล้วกด Enter เพื่อไปแถวถัดไป</li>
-                    <li>กด Enter บนแถวว่างท้ายเพื่อยืนยันรายชื่อ</li>
-                    <li>ลากการ์ดผู้เล่นเพื่อจัดลำดับได้อิสระ</li>
-                    <li>กด Backspace บนช่องว่างเพื่อลบ</li>
-                    <li>วางรายชื่อหลายบรรทัดได้</li>
+                    <li>Alt+ArrowUp/Down: ย้ายบรรทัด</li>
+                    <li>Shift+Alt+ArrowUp/Down: ทำซ้ำบรรทัด</li>
+                    <li>Esc: ไปที่ปุ่มยืนยัน</li>
                   </ul>
                 </div>
               </div>
             </div>
 
             <p className="sr-only">
-              พิมพ์ชื่อแล้วกด Enter เพื่อไปแถวถัดไป กด Enter บนแถวว่างท้ายเพื่อยืนยันรายชื่อ
-              ลากการ์ดผู้เล่นเพื่อจัดลำดับได้อิสระ กด Backspace บนช่องว่างเพื่อลบ และวางรายชื่อหลายบรรทัดได้
+              พิมพ์หรือวางรายชื่อผู้เล่น หนึ่งบรรทัดต่อชื่อ ใช้ Alt+Arrow
+              เพื่อย้ายบรรทัด Shift+Alt+Arrow เพื่อทำซ้ำบรรทัด และ Esc
+              เพื่อออกจากช่องพิมพ์ แล้วกดยืนยันผู้เล่น
             </p>
 
-            {playerDrafts.length > 0 ? (
-              <ol className="draft-list">
-                {playerDrafts.map((draft, index) => (
-                  <li
-                    className={`draft-item ${index < playerDrafts.length - 1 ? 'is-draggable' : ''
-                      } ${draggedDraftId === draft.id ? 'is-dragging' : ''
-                      }`.trim()}
-                    key={draft.id}
-                    ref={(item) => {
-                      draftItemRefs.current[draft.id] = item
-                    }}
-                    draggable={index < playerDrafts.length - 1}
-                    onDragStart={(event) => handleDraftDragStart(draft.id, event)}
-                    onDragEnd={resetDraggedDraftState}
-                    onDragOver={(event) => handleDraftDragOver(draft.id, event)}
-                    onDrop={(event) => handleDraftDrop(draft.id, event)}
-                  >
-                    <div className="draft-order">
-                      <span className="order-chip" aria-hidden="true">
-                        {index + 1}
-                      </span>
-                    </div>
-
-                    <div className="draft-field">
-                      <label htmlFor={`player-${draft.id}`}>
-                        ชื่อผู้เล่น {index + 1}
-                      </label>
-                      <input
-                        id={`player-${draft.id}`}
-                        className="text-input"
-                        type="text"
-                        ref={(input) => {
-                          playerInputRefs.current[draft.id] = input
-                        }}
-                        value={draft.name}
-                        onChange={(event) =>
-                          handlePlayerDraftChange(draft.id, event)
-                        }
-                        onKeyDown={(event) =>
-                          handlePlayerDraftKeyDown(draft.id, index, event)
-                        }
-                        onPaste={(event) => handlePlayerDraftPaste(draft.id, event)}
-                        placeholder="เช่น เมย์"
-                        autoComplete="off"
-                        autoFocus={index === 0}
-                      />
-                    </div>
-
-                    <div className="draft-actions">
-                      <button
-                        type="button"
-                        className="ghost-button danger-button symbol-button compact-symbol-button"
-                        onClick={() => handleRemovePlayer(draft.id)}
-                        aria-label={`ลบผู้เล่น ${index + 1}`}
-                        tabIndex={-1}
-                        title="ลบผู้เล่น"
-                      >
-                        <X size={14} aria-hidden="true" />
-                      </button>
-                    </div>
-                  </li>
-                ))}
-              </ol>
-            ) : (
-              <div className="empty-state">
-                <p>ยังไม่มีผู้เล่นในเกมนี้</p>
-                <p>พิมพ์ชื่อผู้เล่นเพื่อเริ่มจัดลำดับ</p>
-              </div>
-            )}
+            <div className="player-editor-wrapper">
+              <CodeMirror
+                basicSetup={{
+                  lineNumbers: true,
+                  highlightActiveLineGutter: true,
+                  highlightActiveLine: false,
+                  foldGutter: false,
+                  dropCursor: false,
+                  allowMultipleSelections: false,
+                  indentOnInput: false,
+                  bracketMatching: false,
+                  closeBrackets: false,
+                  autocompletion: false,
+                  rectangularSelection: false,
+                  crosshairCursor: false,
+                  highlightSelectionMatches: false,
+                  searchKeymap: false,
+                }}
+                extensions={playerEditorExtensions}
+                value={playerNamesTextarea}
+                onChange={setPlayerNamesTextarea}
+                placeholder="พิมพ์หรือวางรายชื่อผู้เล่น (หนึ่งบรรทัดต่อชื่อ)"
+                autoFocus
+              />
+            </div>
 
             <div className="setup-footer">
               <p
-                className={`validation-note ${validation.canStart ? 'is-ready' : ''
-                  }`}
+                className={`validation-note ${
+                  validation.canStart ? "is-ready" : ""
+                }`}
               >
-                {getSetupMessage(validation)}
+                {validation.playerCount < 2
+                  ? "ต้องมีผู้เล่นอย่างน้อย 2 คน"
+                  : `พร้อมยืนยันผู้เล่น ${validation.playerCount} คน`}
               </p>
 
               <button
@@ -2594,772 +2302,880 @@ function App() {
         </section>
       )}
 
-      {playScreenPlayer && (gameState.phase === 'playing' || isAwaitingRoundSummary) && (
-        <section className={`phase-screen play-screen ${showPreviousWordPrompt && lastAnswer && gameState.phase === 'playing' ? 'is-fullscreen-prompt' : ''}`}>
-          <section className="board-grid">
-            <section className="surface-card board-card active-board-card">
-              <div className="panel-header compact">
-                <div>
-                  <h2>ผู้เล่นในเกม</h2>
+      {playScreenPlayer &&
+        (gameState.phase === "playing" || isAwaitingRoundSummary) && (
+          <section
+            className={`phase-screen play-screen ${showPreviousWordPrompt && lastAnswer && gameState.phase === "playing" ? "is-fullscreen-prompt" : ""}`}
+          >
+            <section className="board-grid">
+              <section className="surface-card board-card active-board-card">
+                <div className="panel-header compact">
+                  <div>
+                    <h2>ผู้เล่นในเกม</h2>
+                  </div>
+                  <span className="count-badge">
+                    {visiblePlayers.length} คน
+                  </span>
                 </div>
-                <span className="count-badge">{visiblePlayers.length} คน</span>
-              </div>
 
-              <ol
-                className="player-board active-player-board"
-                aria-label="ผู้เล่นที่ยังไม่ตกรอบ"
-              >
-                {displayedActivePlayers.map((player) => (
-                  <li
-                    className={getActivePlayerCardClass(
-                      player.id,
-                      displayedActivePlayerId,
-                    )}
-                    key={player.id}
-                  >
-                    <strong>{player.name}</strong>
-                    {player.id === displayedActivePlayerId && (
-                      <span className="player-chip-current">ตอนนี้</span>
-                    )}
-                  </li>
-                ))}
-              </ol>
-            </section>
-
-            <section
-              className={`surface-card board-card eliminated-board-card ${eliminatedPlayers.length === 0 ? 'is-empty-collapsed' : ''
-                }`.trim()}
-            >
-              <div className="panel-header compact">
-                <div>
-                  <h2>ผู้เล่นที่ตกรอบ</h2>
-                </div>
-                <span className="count-badge">{eliminatedPlayers.length} คน</span>
-              </div>
-
-              {eliminatedPlayers.length > 0 ? (
                 <ol
-                  className="player-board eliminated-player-board"
-                  aria-label="ผู้เล่นที่ตกรอบ"
+                  className="player-board active-player-board"
+                  aria-label="ผู้เล่นที่ยังไม่ตกรอบ"
                 >
-                  {eliminatedPlayers.map((player) => (
-                    <li className="player-chip is-out" key={player.id}>
+                  {displayedActivePlayers.map((player) => (
+                    <li
+                      className={getActivePlayerCardClass(
+                        player.id,
+                        displayedActivePlayerId,
+                      )}
+                      key={player.id}
+                    >
                       <strong>{player.name}</strong>
+                      {player.id === displayedActivePlayerId && (
+                        <span className="player-chip-current">ตอนนี้</span>
+                      )}
                     </li>
                   ))}
                 </ol>
-              ) : (
-                <p className="empty-note">ยังไม่มีใครตกรอบในตอนนี้</p>
-              )}
-            </section>
-          </section>
+              </section>
 
-          {showPreviousWordPrompt && lastAnswer && gameState.phase === 'playing' && (
-            <p className="previous-word-prompt">
-              พูดคำนามที่เชื่อมกับ "{lastAnswer}"
-            </p>
-          )}
-          <form className="surface-card answer-panel" onSubmit={handleSubmitTurn}>
-            <div className="form-copy">
-              <h1 className="sr-only">ถึงตา {playScreenPlayer.name}</h1>
-              <div className="answer-meta">
-                <p className="round-indicator">
-                  รอบ {currentMatchRound}/{MATCH_ROUNDS_PER_MATCH}
-                </p>
-                <p className="player-indicator">
-                  {playScreenPlayer.name}
-                </p>
-                {gameState.phase === 'playing' && (
-                  <button
-                    type="button"
-                    className="ghost-button challenge-open-button"
-                    onClick={handleOpenChallenge}
-                    disabled={!canOpenChallenge}
-                    aria-label="ชาเลนจ์"
-                    title="ชาเลนจ์ (F2)"
-                  >
-                    ชาเลนจ์
-                  </button>
-                )}
-                {(gameState.phase === 'playing' || gameState.phase === 'finished') && (
-                  <div className="history-toolbar" role="group" aria-label="ประวัติการเล่น">
-                    <button
-                      type="button"
-                      className="ghost-button history-action-button"
-                      onClick={handleUndo}
-                      disabled={!canUndoGameHistory || isSubmittingTurn}
-                      aria-label="ย้อนกลับ"
-                      title="ย้อนกลับ (Ctrl/Cmd+Z)"
-                    >
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M3 10h10a5 5 0 0 1 5 5v2" />
-                        <polyline points="3 10 7 6" />
-                        <polyline points="3 10 7 14" />
-                      </svg>
-                    </button>
-                    <button
-                      type="button"
-                      className="ghost-button history-action-button"
-                      onClick={handleRedo}
-                      disabled={!canRedoGameHistory || isSubmittingTurn}
-                      aria-label="ทำซ้ำ"
-                      title="ทำซ้ำ (Shift+Ctrl/Cmd+Z)"
-                    >
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M21 10H11a5 5 0 0 0-5 5v2" />
-                        <polyline points="21 10 17 6" />
-                        <polyline points="21 10 17 14" />
-                      </svg>
-                    </button>
-                    <SettingsDropdown
-                      isGmOpeningEnabled={isGmOpeningWordEnabled}
-                      isSyllableDebugVisible={isSyllableDebugVisible}
-                      showPreviousWordPrompt={showPreviousWordPrompt}
-                      onToggleGmOpening={handleToggleGmOpeningWord}
-                      onToggleSyllableDebug={() =>
-                        setIsSyllableDebugVisible((current) => !current)
-                      }
-                      onTogglePreviousWordPrompt={() => {
-                        setShowPreviousWordPrompt((current) => {
-                          window.localStorage.setItem(
-                            SHOW_PREVIOUS_WORD_PROMPT_KEY,
-                            String(!current),
-                          )
-                          return !current
-                        })
-                      }}
-                      isSubmittingTurn={isSubmittingTurn}
-                    />
-                  </div>
-                )}
-              </div>
-              {challengeNote && (
-                <p className="challenge-note" role="status" aria-live="polite">
-                  {challengeNote}
-                </p>
-              )}
-              {gameState.phase === 'playing' && gameState.isHistoryRestorePause && (
-                <p className="pause-note history-restore-note" role="status" aria-live="polite">
-                  ย้อนกลับมาที่จุดก่อนหน้า กดเริ่มเพื่อจับเวลาอีกครั้ง
-                </p>
-              )}
-              {isAwaitingRoundSummary && (
-                <p className="pause-note" role="status" aria-live="polite">
-                  {eliminatedPlayerSummaryContent}
-                </p>
-              )}
-              {isPausedTurn && gameState.isEliminationPause && (
-                <p className="pause-note" role="status" aria-live="polite">
-                  {eliminatedPlayerSummaryContent}
-                </p>
-              )}
-              {segmentationError && (
-                <p className="segmentation-error" role="alert">
-                  {segmentationError}
-                </p>
-              )}
-              <label htmlFor="current-answer" className="sr-only">
-                {answerInputLabel}
-              </label>
-              <p className="sr-only">
-                {isChallengeSelecting
-                  ? 'เลือกผู้ชาเลนจ์และคำที่ต้องการชาเลนจ์'
-                  : isChallengeDebating
-                    ? challengeNote
-                    : isChallengeJudging
-                      ? 'ครบสองรอบโต้วาทีแล้ว เลือกผลตัดสิน'
-                      : isAwaitingRoundSummary
-                        ? `${eliminatedPlayerSummary} กดสรุปรอบเพื่อดูตารางคะแนนของ ${playScreenPlayer.name}`
-                        : isGmOpeningWordMode
-                          ? `ผู้คุมเกมพิมพ์คำตั้งต้นของรอบ แล้วกดเริ่มด้วยคำนี้เพื่อเริ่มจับเวลา ${playScreenPlayer.name}`
-                          : isAwaitingFirstTurnStart
-                            ? `ยืนยันผู้เล่นแล้ว กดเริ่มรอบแรกเพื่อเริ่มจับเวลา ${playScreenPlayer.name}`
-                            : gameState.isHistoryRestorePause
-                              ? 'ย้อนประวัติสำเร็จ รอเริ่มจับเวลาใหม่'
-                              : isPausedTurn
-                                ? getPausedTurnInstructions(
-                                  latestEliminatedPlayer,
-                                  playScreenPlayer.name,
-                                )
-                                : 'เมื่อเริ่มพิมพ์ตัวแรกทันเวลาแล้ว ระบบจะล็อกคิวไว้ให้ผู้เล่นคนนี้จนกว่าจะส่งคำ'}
-              </p>
-              {gameState.phase === 'playing' &&
-                canOpenChallenge &&
-                !isChallengeActive && (
-                  <p className="sr-only">F2 เพื่อเปิดชาเลนจ์</p>
-                )}
-              {isChallengeSelecting && (
-                <p className="sr-only">
-                  พิมพ์ชื่อเพื่อกรองและเลือกผู้ชาเลนจ์ กดลูกศรลงเพื่อไปที่รายการ Enter เพื่อเริ่มทันที Esc เพื่อยกเลิก
-                </p>
-              )}
-              {isChallengeDebating && (
-                <p className="sr-only">Enter เพื่อข้ามช่วงโต้วาที</p>
-              )}
-              {requiresPrimaryAction && !isGmOpeningWordMode && (
-                <span className="sr-only">ยังไม่เริ่มจับเวลา</span>
-              )}
-            </div>
-
-            <div className="answer-controls">
-              <input
-                ref={answerInputRef}
-                id="current-answer"
-                className={`text-input answer-input ${isGmOpeningWordMode ? 'is-gm-opening' : ''
-                  }`}
-                type="text"
-                value={editableInputValue}
-                onChange={
-                  isGmOpeningWordMode
-                    ? handleGmOpeningWordChange
-                    : handleAnswerChange
-                }
-                placeholder={answerInputPlaceholder}
-                autoComplete="off"
-                disabled={
-                  isChallengeActive ||
-                  isSubmittingTurn ||
-                  (!isGmOpeningWordMode && requiresPrimaryAction)
-                }
-              />
-              <div
-                className={`turn-timer-pill ${timerTone} ${isGmOpeningWordMode ? 'is-gm-opening' : ''
-                  }`}
-                aria-live="polite"
-                aria-label={displayedTimerAriaLabel}
+              <section
+                className={`surface-card board-card eliminated-board-card ${
+                  eliminatedPlayers.length === 0 ? "is-empty-collapsed" : ""
+                }`.trim()}
               >
-                <span>เวลา</span>
-                <strong>{displayedTimerValue}</strong>
-              </div>
-              {isChallengeActive ? (
-                <button
-                  type="button"
-                  className="secondary-button symbol-button start-turn-button"
-                  disabled
-                  aria-label="กำลังชาเลนจ์"
-                  title="กำลังชาเลนจ์"
-                >
-                  <span className="button-copy">กำลังชาเลนจ์</span>
-                </button>
-              ) : isAwaitingRoundSummary ? (
-                <button
-                  ref={startFirstTurnButtonRef}
-                  type="button"
-                  className="primary-button start-turn-button"
-                  onClick={handleContinueToRoundSummary}
-                  onKeyDown={handleStartFirstTurnKeyDown}
-                  aria-label="สรุปรอบ"
-                  title="สรุปรอบ"
-                >
-                  <span className="button-copy">สรุปรอบ</span>
-                </button>
-              ) : isGmOpeningWordMode ? (
-                <button
-                  type="submit"
-                  className="primary-button start-turn-button gm-opening-submit-button"
-                  disabled={!canSubmitGmOpeningWord}
-                  aria-label="เริ่มด้วยคำนี้"
-                  title="เริ่มด้วยคำนี้"
-                >
-                  <span className="button-copy">เริ่มด้วยคำนี้</span>
-                </button>
-              ) : requiresManualTurnStart ? (
-                <button
-                  ref={startFirstTurnButtonRef}
-                  type="button"
-                  className="primary-button start-turn-button"
-                  onClick={handleStartFirstTurn}
-                  onKeyDown={handleStartFirstTurnKeyDown}
-                  aria-label={isAwaitingFirstTurnStart ? 'เริ่มรอบแรก' : 'เริ่มตาถัดไป'}
-                  title={isAwaitingFirstTurnStart ? 'เริ่มรอบแรก' : 'เริ่มตาถัดไป'}
-                >
-                  <span className="button-copy">
-                    {isAwaitingFirstTurnStart ? 'เริ่มรอบแรก' : 'เริ่มตาถัดไป'}
+                <div className="panel-header compact">
+                  <div>
+                    <h2>ผู้เล่นที่ตกรอบ</h2>
+                  </div>
+                  <span className="count-badge">
+                    {eliminatedPlayers.length} คน
                   </span>
-                </button>
-              ) : (
-                <>
+                </div>
+
+                {eliminatedPlayers.length > 0 ? (
+                  <ol
+                    className="player-board eliminated-player-board"
+                    aria-label="ผู้เล่นที่ตกรอบ"
+                  >
+                    {eliminatedPlayers.map((player) => (
+                      <li className="player-chip is-out" key={player.id}>
+                        <strong>{player.name}</strong>
+                      </li>
+                    ))}
+                  </ol>
+                ) : (
+                  <p className="empty-note">ยังไม่มีใครตกรอบในตอนนี้</p>
+                )}
+              </section>
+            </section>
+
+            {showPreviousWordPrompt &&
+              lastAnswer &&
+              gameState.phase === "playing" && (
+                <p className="previous-word-prompt">
+                  พูดคำนามที่เชื่อมกับ "{lastAnswer}"
+                </p>
+              )}
+            <form
+              className="surface-card answer-panel"
+              onSubmit={handleSubmitTurn}
+            >
+              <div className="form-copy">
+                <h1 className="sr-only">ถึงตา {playScreenPlayer.name}</h1>
+                <div className="answer-meta">
+                  <p className="round-indicator">
+                    รอบ {currentMatchRound}/{MATCH_ROUNDS_PER_MATCH}
+                  </p>
+                  <p className="player-indicator">{playScreenPlayer.name}</p>
+                  {gameState.phase === "playing" && (
+                    <button
+                      type="button"
+                      className="ghost-button challenge-open-button"
+                      onClick={handleOpenChallenge}
+                      disabled={!canOpenChallenge}
+                      aria-label="ชาเลนจ์"
+                      title="ชาเลนจ์ (F2)"
+                    >
+                      ชาเลนจ์
+                    </button>
+                  )}
+                  {(gameState.phase === "playing" ||
+                    gameState.phase === "finished") && (
+                    <div
+                      className="history-toolbar"
+                      role="group"
+                      aria-label="ประวัติการเล่น"
+                    >
+                      <button
+                        type="button"
+                        className="ghost-button history-action-button"
+                        onClick={handleUndo}
+                        disabled={!canUndoGameHistory || isSubmittingTurn}
+                        aria-label="ย้อนกลับ"
+                        title="ย้อนกลับ (Ctrl/Cmd+Z)"
+                      >
+                        <svg
+                          width="18"
+                          height="18"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <path d="M3 10h10a5 5 0 0 1 5 5v2" />
+                          <polyline points="3 10 7 6" />
+                          <polyline points="3 10 7 14" />
+                        </svg>
+                      </button>
+                      <button
+                        type="button"
+                        className="ghost-button history-action-button"
+                        onClick={handleRedo}
+                        disabled={!canRedoGameHistory || isSubmittingTurn}
+                        aria-label="ทำซ้ำ"
+                        title="ทำซ้ำ (Shift+Ctrl/Cmd+Z)"
+                      >
+                        <svg
+                          width="18"
+                          height="18"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <path d="M21 10H11a5 5 0 0 0-5 5v2" />
+                          <polyline points="21 10 17 6" />
+                          <polyline points="21 10 17 14" />
+                        </svg>
+                      </button>
+                      <SettingsDropdown
+                        isGmOpeningEnabled={isGmOpeningWordEnabled}
+                        isSyllableDebugVisible={isSyllableDebugVisible}
+                        showPreviousWordPrompt={showPreviousWordPrompt}
+                        onToggleGmOpening={handleToggleGmOpeningWord}
+                        onToggleSyllableDebug={() =>
+                          setIsSyllableDebugVisible((current) => !current)
+                        }
+                        onTogglePreviousWordPrompt={() => {
+                          setShowPreviousWordPrompt((current) => {
+                            window.localStorage.setItem(
+                              SHOW_PREVIOUS_WORD_PROMPT_KEY,
+                              String(!current),
+                            );
+                            return !current;
+                          });
+                        }}
+                        isSubmittingTurn={isSubmittingTurn}
+                      />
+                    </div>
+                  )}
+                </div>
+                {challengeNote && (
+                  <p
+                    className="challenge-note"
+                    role="status"
+                    aria-live="polite"
+                  >
+                    {challengeNote}
+                  </p>
+                )}
+                {gameState.phase === "playing" &&
+                  gameState.isHistoryRestorePause && (
+                    <p
+                      className="pause-note history-restore-note"
+                      role="status"
+                      aria-live="polite"
+                    >
+                      ย้อนกลับมาที่จุดก่อนหน้า กดเริ่มเพื่อจับเวลาอีกครั้ง
+                    </p>
+                  )}
+                {isAwaitingRoundSummary && (
+                  <p className="pause-note" role="status" aria-live="polite">
+                    {eliminatedPlayerSummaryContent}
+                  </p>
+                )}
+                {isPausedTurn && gameState.isEliminationPause && (
+                  <p className="pause-note" role="status" aria-live="polite">
+                    {eliminatedPlayerSummaryContent}
+                  </p>
+                )}
+                {segmentationError && (
+                  <p className="segmentation-error" role="alert">
+                    {segmentationError}
+                  </p>
+                )}
+                <label htmlFor="current-answer" className="sr-only">
+                  {answerInputLabel}
+                </label>
+                <p className="sr-only">
+                  {isChallengeSelecting
+                    ? "เลือกผู้ชาเลนจ์และคำที่ต้องการชาเลนจ์"
+                    : isChallengeDebating
+                      ? challengeNote
+                      : isChallengeJudging
+                        ? "ครบสองรอบโต้วาทีแล้ว เลือกผลตัดสิน"
+                        : isAwaitingRoundSummary
+                          ? `${eliminatedPlayerSummary} กดสรุปรอบเพื่อดูตารางคะแนนของ ${playScreenPlayer.name}`
+                          : isGmOpeningWordMode
+                            ? `ผู้คุมเกมพิมพ์คำตั้งต้นของรอบ แล้วกดเริ่มด้วยคำนี้เพื่อเริ่มจับเวลา ${playScreenPlayer.name}`
+                            : isAwaitingFirstTurnStart
+                              ? `ยืนยันผู้เล่นแล้ว กดเริ่มรอบแรกเพื่อเริ่มจับเวลา ${playScreenPlayer.name}`
+                              : gameState.isHistoryRestorePause
+                                ? "ย้อนประวัติสำเร็จ รอเริ่มจับเวลาใหม่"
+                                : isPausedTurn
+                                  ? getPausedTurnInstructions(
+                                      latestEliminatedPlayer,
+                                      playScreenPlayer.name,
+                                    )
+                                  : "เมื่อเริ่มพิมพ์ตัวแรกทันเวลาแล้ว ระบบจะล็อกคิวไว้ให้ผู้เล่นคนนี้จนกว่าจะส่งคำ"}
+                </p>
+                {gameState.phase === "playing" &&
+                  canOpenChallenge &&
+                  !isChallengeActive && (
+                    <p className="sr-only">F2 เพื่อเปิดชาเลนจ์</p>
+                  )}
+                {isChallengeSelecting && (
+                  <p className="sr-only">
+                    พิมพ์ชื่อเพื่อกรองและเลือกผู้ชาเลนจ์
+                    กดลูกศรลงเพื่อไปที่รายการ Enter เพื่อเริ่มทันที Esc
+                    เพื่อยกเลิก
+                  </p>
+                )}
+                {isChallengeDebating && (
+                  <p className="sr-only">Enter เพื่อข้ามช่วงโต้วาที</p>
+                )}
+                {requiresPrimaryAction && !isGmOpeningWordMode && (
+                  <span className="sr-only">ยังไม่เริ่มจับเวลา</span>
+                )}
+              </div>
+
+              <div className="answer-controls">
+                <input
+                  ref={answerInputRef}
+                  id="current-answer"
+                  className={`text-input answer-input ${
+                    isGmOpeningWordMode ? "is-gm-opening" : ""
+                  }`}
+                  type="text"
+                  value={editableInputValue}
+                  onChange={
+                    isGmOpeningWordMode
+                      ? handleGmOpeningWordChange
+                      : handleAnswerChange
+                  }
+                  placeholder={answerInputPlaceholder}
+                  autoComplete="off"
+                  disabled={
+                    isChallengeActive ||
+                    isSubmittingTurn ||
+                    (!isGmOpeningWordMode && requiresPrimaryAction)
+                  }
+                />
+                <div
+                  className={`turn-timer-pill ${timerTone} ${
+                    isGmOpeningWordMode ? "is-gm-opening" : ""
+                  }`}
+                  aria-live="polite"
+                  aria-label={displayedTimerAriaLabel}
+                >
+                  <span>เวลา</span>
+                  <strong>{displayedTimerValue}</strong>
+                </div>
+                {isChallengeActive ? (
                   <button
                     type="button"
-                    className="secondary-button symbol-button compact-symbol-button"
-                    onClick={handleHostEliminateNotNoun}
-                    aria-label="คำไม่ใช่คำนาม"
-                    title="คำไม่ใช่คำนาม"
+                    className="secondary-button symbol-button start-turn-button"
+                    disabled
+                    aria-label="กำลังชาเลนจ์"
+                    title="กำลังชาเลนจ์"
                   >
-                    <X size={16} aria-hidden="true" />
+                    <span className="button-copy">กำลังชาเลนจ์</span>
                   </button>
+                ) : isAwaitingRoundSummary ? (
+                  <button
+                    ref={startFirstTurnButtonRef}
+                    type="button"
+                    className="primary-button start-turn-button"
+                    onClick={handleContinueToRoundSummary}
+                    onKeyDown={handleStartFirstTurnKeyDown}
+                    aria-label="สรุปรอบ"
+                    title="สรุปรอบ"
+                  >
+                    <span className="button-copy">สรุปรอบ</span>
+                  </button>
+                ) : isGmOpeningWordMode ? (
                   <button
                     type="submit"
-                    className="primary-button symbol-button compact-symbol-button"
-                    disabled={!canSubmitCurrentTurn}
-                    aria-label="ถัดไป"
-                    title="ถัดไป"
+                    className="primary-button start-turn-button gm-opening-submit-button"
+                    disabled={!canSubmitGmOpeningWord}
+                    aria-label="เริ่มด้วยคำนี้"
+                    title="เริ่มด้วยคำนี้"
                   >
-                    <ChevronRight size={16} aria-hidden="true" />
+                    <span className="button-copy">เริ่มด้วยคำนี้</span>
                   </button>
-                </>
-              )}
-            </div>
-          </form>
-
-          {isChallengeActive && (
-            <section
-              className="surface-card challenge-card"
-              aria-label="การชาเลนจ์คำไม่เชื่อม"
-            >
-              <div className="panel-header compact challenge-header">
-                <div>
-                  <p className="eyebrow">ชาเลนจ์</p>
-                  <h2>คำไม่เชื่อมกัน</h2>
-                </div>
+                ) : requiresManualTurnStart ? (
+                  <button
+                    ref={startFirstTurnButtonRef}
+                    type="button"
+                    className="primary-button start-turn-button"
+                    onClick={handleStartFirstTurn}
+                    onKeyDown={handleStartFirstTurnKeyDown}
+                    aria-label={
+                      isAwaitingFirstTurnStart ? "เริ่มรอบแรก" : "เริ่มตาถัดไป"
+                    }
+                    title={
+                      isAwaitingFirstTurnStart ? "เริ่มรอบแรก" : "เริ่มตาถัดไป"
+                    }
+                  >
+                    <span className="button-copy">
+                      {isAwaitingFirstTurnStart
+                        ? "เริ่มรอบแรก"
+                        : "เริ่มตาถัดไป"}
+                    </span>
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      className="secondary-button symbol-button compact-symbol-button"
+                      onClick={handleHostEliminateNotNoun}
+                      aria-label="คำไม่ใช่คำนาม"
+                      title="คำไม่ใช่คำนาม"
+                    >
+                      <X size={16} aria-hidden="true" />
+                    </button>
+                    <button
+                      type="submit"
+                      className="primary-button symbol-button compact-symbol-button"
+                      disabled={!canSubmitCurrentTurn}
+                      aria-label="ถัดไป"
+                      title="ถัดไป"
+                    >
+                      <ChevronRight size={16} aria-hidden="true" />
+                    </button>
+                  </>
+                )}
               </div>
+            </form>
 
-              {isChallengeSelecting && (
-                <div className="challenge-content">
-                  <div className="challenge-field-grid">
-                    <div className="challenge-field">
-                      <ComboBox<ChallengeChallengerOption>
-                        id="challenge-challenger-search"
-                        className="challenge-challenger-combobox"
-                        allowsEmptyCollection
-                        defaultFilter={matchesChallengeTypeaheadCandidate}
-                        inputValue={challengeChallengerSearchValue}
-                        menuTrigger="focus"
-                        onInputChange={handleChallengeChallengerSearchChange}
-                        onSelectionChange={handleChallengeChallengerChange}
-                        selectedKey={challengeState?.challengerPlayerId ?? null}
-                      >
-                        <Label>พิมพ์ชื่อผู้ชาเลนจ์</Label>
-                        <Input
-                          ref={challengeChallengerInputRef}
-                          className="text-input challenge-search-input"
-                          onKeyDown={handleChallengeChallengerInputKeyDown}
-                          placeholder="พิมพ์ชื่อผู้ชาเลนจ์"
-                          autoComplete="off"
-                        />
-                        <Popover className="challenge-challenger-popover">
-                          <ChallengeChallengerListBox
-                            activeSuggestionId={preferredChallengeChallengerId}
-                            options={challengeChallengerOptions}
+            {isChallengeActive && (
+              <section
+                className="surface-card challenge-card"
+                aria-label="การชาเลนจ์คำไม่เชื่อม"
+              >
+                <div className="panel-header compact challenge-header">
+                  <div>
+                    <p className="eyebrow">ชาเลนจ์</p>
+                    <h2>คำไม่เชื่อมกัน</h2>
+                  </div>
+                </div>
+
+                {isChallengeSelecting && (
+                  <div className="challenge-content">
+                    <div className="challenge-field-grid">
+                      <div className="challenge-field">
+                        <ComboBox<ChallengeChallengerOption>
+                          id="challenge-challenger-search"
+                          className="challenge-challenger-combobox"
+                          allowsEmptyCollection
+                          defaultFilter={matchesChallengeTypeaheadCandidate}
+                          inputValue={challengeChallengerSearchValue}
+                          menuTrigger="focus"
+                          onInputChange={handleChallengeChallengerSearchChange}
+                          onSelectionChange={handleChallengeChallengerChange}
+                          selectedKey={
+                            challengeState?.challengerPlayerId ?? null
+                          }
+                        >
+                          <Label>พิมพ์ชื่อผู้ชาเลนจ์</Label>
+                          <Input
+                            ref={challengeChallengerInputRef}
+                            className="text-input challenge-search-input"
+                            onKeyDown={handleChallengeChallengerInputKeyDown}
+                            placeholder="พิมพ์ชื่อผู้ชาเลนจ์"
+                            autoComplete="off"
                           />
-                        </Popover>
-                      </ComboBox>
+                          <Popover className="challenge-challenger-popover">
+                            <ChallengeChallengerListBox
+                              activeSuggestionId={
+                                preferredChallengeChallengerId
+                              }
+                              options={challengeChallengerOptions}
+                            />
+                          </Popover>
+                        </ComboBox>
+                      </div>
+
+                      <div className="challenge-field">
+                        <label id="challenged-answer-label">
+                          คำที่ถูกชาเลนจ์
+                        </label>
+                        <select
+                          ref={challengeChallengedAnswerSelectRef}
+                          className="text-input challenge-select"
+                          aria-labelledby="challenged-answer-label"
+                          value={challengeState?.challengedAnswerId ?? ""}
+                          disabled={challengeableAnswers.length === 0}
+                          onChange={(event) => {
+                            const nextAnswerId = event.target.value || null;
+
+                            applyEphemeralGameUpdate((current) =>
+                              updateChallengeSelection(current, {
+                                challengedAnswerId: nextAnswerId,
+                              }),
+                            );
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key !== "Enter") {
+                              return;
+                            }
+
+                            event.preventDefault();
+
+                            if (!preferredChallengeChallengerId) {
+                              challengeChallengerInputRef.current?.focus();
+                              return;
+                            }
+
+                            handleStartChallenge(
+                              preferredChallengeChallengerId,
+                            );
+                          }}
+                        >
+                          <option value="" disabled>
+                            เลือกคำที่ถูกชาเลนจ์
+                          </option>
+                          {[...challengeableAnswers]
+                            .reverse()
+                            .slice(0, 3)
+                            .map((answerRecord: AnswerRecord) => (
+                              <option
+                                key={answerRecord.id}
+                                value={answerRecord.id}
+                              >
+                                "{answerRecord.answer}" ของ{" "}
+                                {answerRecord.playerName}
+                              </option>
+                            ))}
+                        </select>
+                        {challengeableAnswers.length === 0 && (
+                          <div className="empty-note">
+                            ไม่มีคำที่สามารถชาเลนจ์ได้
+                          </div>
+                        )}
+                      </div>
                     </div>
 
-                    <div className="challenge-field">
-                      <label id="challenged-answer-label">คำที่ถูกชาเลนจ์</label>
-                      <select
-                        ref={challengeChallengedAnswerSelectRef}
-                        className="text-input challenge-select"
-                        aria-labelledby="challenged-answer-label"
-                        value={challengeState?.challengedAnswerId ?? ''}
-                        disabled={challengeableAnswers.length === 0}
-                        onChange={(event) => {
-                          const nextAnswerId = event.target.value || null
-
-                          applyEphemeralGameUpdate((current) =>
-                            updateChallengeSelection(current, {
-                              challengedAnswerId: nextAnswerId,
-                            }),
+                    <div className="action-row challenge-actions">
+                      <button
+                        type="button"
+                        className="primary-button symbol-button"
+                        onClick={() =>
+                          handleStartChallenge(
+                            preferredChallengeChallengerId ?? undefined,
                           )
-                        }}
-                        onKeyDown={(event) => {
-                          if (event.key !== 'Enter') {
-                            return
-                          }
-
-                          event.preventDefault()
-
-                          if (!preferredChallengeChallengerId) {
-                            challengeChallengerInputRef.current?.focus()
-                            return
-                          }
-
-                          handleStartChallenge(preferredChallengeChallengerId)
-                        }}
+                        }
+                        disabled={!canStartVisibleChallenge}
+                        aria-label="เริ่มการชาเลนจ์"
+                        title="เริ่มการชาเลนจ์"
                       >
-                        <option value="" disabled>
-                          เลือกคำที่ถูกชาเลนจ์
-                        </option>
-                        {[...challengeableAnswers]
-                          .reverse()
-                          .slice(0, 3)
-                          .map((answerRecord: AnswerRecord) => (
-                            <option key={answerRecord.id} value={answerRecord.id}>
-                              "{answerRecord.answer}" ของ {answerRecord.playerName}
-                            </option>
-                          ))}
-                      </select>
-                      {challengeableAnswers.length === 0 && (
-                        <div className="empty-note">ไม่มีคำที่สามารถชาเลนจ์ได้</div>
+                        <span className="button-copy">เริ่มการชาเลนจ์</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="secondary-button symbol-button"
+                        onClick={handleCancelChallenge}
+                        aria-label="ยกเลิกการชาเลนจ์"
+                        title="ยกเลิกการชาเลนจ์"
+                      >
+                        <span className="button-copy">ยกเลิก</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {isChallengeDebating && (
+                  <div className="challenge-content">
+                    <div className="challenge-chain">
+                      <span className="challenge-chain-prev">
+                        {selectedChallengePreviousAnswer?.answer ?? "-"}
+                      </span>
+                      <ChevronRight
+                        size={16}
+                        aria-hidden="true"
+                        className="challenge-chain-arrow"
+                      />
+                      <span className="challenge-chain-target">
+                        <span className="challenge-chain-target-word">
+                          {selectedChallengedAnswer?.answer ?? "-"}
+                        </span>
+                      </span>
+                      <span className="challenge-chain-right">
+                        <span className="challenge-chain-owner">
+                          {selectedChallengedPlayer?.name ?? "-"}
+                        </span>
+                        <span className="challenge-chain-challenger">
+                          <span className="challenge-chain-challenger-label">
+                            ถูกชาเลนจ์โดย
+                          </span>
+                          <span className="challenge-chain-challenger-name">
+                            {selectedChallenger?.name ?? "-"}
+                          </span>
+                        </span>
+                      </span>
+                    </div>
+                    <div className="challenge-debate-controls">
+                      <div className="challenge-debate-status">
+                        <p className="round-indicator">
+                          ช่วง {challengeSegmentIndex + 1}/
+                          {CHALLENGE_DEBATE_SEGMENT_COUNT}
+                        </p>
+                        <div
+                          className={`turn-timer-pill ${timerTone}`}
+                          aria-live="polite"
+                        >
+                          <span>เวลา</span>
+                          <strong>{formatSeconds(challengeTimeLeftMs)}s</strong>
+                        </div>
+                        <span className="challenge-debate-speaker">
+                          <strong>{challengeSpeakerName}</strong>
+                          <span className="challenge-debate-speaker-role">
+                            {challengeState?.currentSpeaker === "challenger"
+                              ? "(ผู้ชาเลนจ์)"
+                              : "(ผู้ถูกชาเลนจ์)"}
+                          </span>
+                        </span>
+                      </div>
+                      {challengeState?.segmentAwaitingContinue ? (
+                        <div className="action-row challenge-actions">
+                          <button
+                            ref={challengeResumeButtonRef}
+                            type="button"
+                            className="primary-button"
+                            onClick={handleResumeChallengeDebate}
+                            onKeyDown={handleResumeChallengeDebateKeyDown}
+                            aria-label={
+                              challengeSegmentIndex === 0 ? "เริ่ม" : "ต่อ"
+                            }
+                            title={
+                              challengeSegmentIndex === 0 ? "เริ่ม" : "ต่อ"
+                            }
+                          >
+                            <span className="button-copy">
+                              {challengeSegmentIndex === 0 ? "เริ่ม" : "ต่อ"}
+                            </span>
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="action-row challenge-actions">
+                          <button
+                            type="button"
+                            className="secondary-button symbol-button"
+                            onClick={handleAdvanceChallengeDebate}
+                            aria-label="จบช่วง"
+                            title="จบช่วง"
+                          >
+                            <span className="button-copy">จบช่วง</span>
+                          </button>
+                        </div>
                       )}
                     </div>
                   </div>
+                )}
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-                  <div className="action-row challenge-actions">
-                    <button
-                      type="button"
-                      className="primary-button symbol-button"
-                      onClick={() =>
-                        handleStartChallenge(
-                          preferredChallengeChallengerId ?? undefined,
-                        )
-                      }
-                      disabled={!canStartVisibleChallenge}
-                      aria-label="เริ่มการชาเลนจ์"
-                      title="เริ่มการชาเลนจ์"
-                    >
-                      <span className="button-copy">เริ่มการชาเลนจ์</span>
-                    </button>
-                    <button
-                      type="button"
-                      className="secondary-button symbol-button"
-                      onClick={handleCancelChallenge}
-                      aria-label="ยกเลิกการชาเลนจ์"
-                      title="ยกเลิกการชาเลนจ์"
-                    >
-                      <span className="button-copy">ยกเลิก</span>
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {isChallengeDebating && (
-                <div className="challenge-content">
-                  <div className="challenge-chain">
-                    <span className="challenge-chain-prev">
-                      {selectedChallengePreviousAnswer?.answer ?? '-'}
-                    </span>
-                    <ChevronRight size={16} aria-hidden="true" className="challenge-chain-arrow" />
-                    <span className="challenge-chain-target">
-                      <span className="challenge-chain-target-word">
-                        {selectedChallengedAnswer?.answer ?? '-'}
+                {isChallengeJudging && (
+                  <div className="challenge-content">
+                    <div className="challenge-chain">
+                      <span className="challenge-chain-prev">
+                        {selectedChallengePreviousAnswer?.answer ?? "-"}
                       </span>
-                    </span>
-                    <span className="challenge-chain-right">
-                      <span className="challenge-chain-owner">
-                        {selectedChallengedPlayer?.name ?? '-'}
-                      </span>
-                      <span className="challenge-chain-challenger">
-                        <span className="challenge-chain-challenger-label">ถูกชาเลนจ์โดย</span>
-                        <span className="challenge-chain-challenger-name">
-                          {selectedChallenger?.name ?? '-'}
+                      <ChevronRight
+                        size={16}
+                        aria-hidden="true"
+                        className="challenge-chain-arrow"
+                      />
+                      <span className="challenge-chain-target">
+                        <span className="challenge-chain-target-word">
+                          {selectedChallengedAnswer?.answer ?? "-"}
                         </span>
                       </span>
-                    </span>
-                  </div>
-                  <div className="challenge-debate-controls">
-                    <div className="challenge-debate-status">
-                      <p className="round-indicator">
-                        ช่วง {challengeSegmentIndex + 1}/{CHALLENGE_DEBATE_SEGMENT_COUNT}
-                      </p>
-                      <div className={`turn-timer-pill ${timerTone}`} aria-live="polite">
-                        <span>เวลา</span>
-                        <strong>{formatSeconds(challengeTimeLeftMs)}s</strong>
-                      </div>
-                      <span className="challenge-debate-speaker">
-                        <strong>{challengeSpeakerName}</strong>
-                        <span className="challenge-debate-speaker-role">
-                          {challengeState?.currentSpeaker === 'challenger' ? '(ผู้ชาเลนจ์)' : '(ผู้ถูกชาเลนจ์)'}
+                      <span className="challenge-chain-right">
+                        <span className="challenge-chain-owner">
+                          {selectedChallengedPlayer?.name ?? "-"}
+                        </span>
+                        <span className="challenge-chain-challenger">
+                          <span className="challenge-chain-challenger-label">
+                            ถูกชาเลนจ์โดย
+                          </span>
+                          <span className="challenge-chain-challenger-name">
+                            {selectedChallenger?.name ?? "-"}
+                          </span>
                         </span>
                       </span>
                     </div>
-                    {challengeState?.segmentAwaitingContinue ? (
-                      <div className="action-row challenge-actions">
-                        <button
-                          ref={challengeResumeButtonRef}
-                          type="button"
-                          className="primary-button"
-                          onClick={handleResumeChallengeDebate}
-                          onKeyDown={handleResumeChallengeDebateKeyDown}
-                          aria-label={challengeSegmentIndex === 0 ? 'เริ่ม' : 'ต่อ'}
-                          title={challengeSegmentIndex === 0 ? 'เริ่ม' : 'ต่อ'}
-                        >
-                          <span className="button-copy">{challengeSegmentIndex === 0 ? 'เริ่ม' : 'ต่อ'}</span>
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="action-row challenge-actions">
-                        <button
-                          type="button"
-                          className="secondary-button symbol-button"
-                          onClick={handleAdvanceChallengeDebate}
-                          aria-label="จบช่วง"
-                          title="จบช่วง"
-                        >
-                          <span className="button-copy">จบช่วง</span>
-                        </button>
-                      </div>
-                    )}
+
+                    <div className="action-row challenge-actions">
+                      <button
+                        ref={challengeDecisionButtonRef}
+                        type="button"
+                        className="primary-button symbol-button"
+                        onClick={() => handleChallengeDecision("connects")}
+                        onKeyDown={(event) =>
+                          handleChallengeDecisionKeyDown("connects", event)
+                        }
+                        aria-label="ตัดสินว่าเชื่อม"
+                        title="ตัดสินว่าเชื่อม"
+                      >
+                        <span className="button-copy">เชื่อม</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="secondary-button symbol-button"
+                        onClick={() => handleChallengeDecision("not_connects")}
+                        onKeyDown={(event) =>
+                          handleChallengeDecisionKeyDown("not_connects", event)
+                        }
+                        aria-label="ตัดสินว่าไม่เชื่อม"
+                        title="ตัดสินว่าไม่เชื่อม"
+                      >
+                        <span className="button-copy">ไม่เชื่อม</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </section>
+            )}
+
+            {isSyllableDebugVisible && (
+              <section
+                className="surface-card syllable-debug-card"
+                aria-label="การแยกพยางค์"
+              >
+                <div className="panel-header compact debug-header">
+                  <div>
+                    <p className="eyebrow">รายละเอียด</p>
+                    <h2>การแยกพยางค์ของระบบ</h2>
                   </div>
                 </div>
-              )}
 
-              {isChallengeJudging && (
-                <div className="challenge-content">
-                  <div className="challenge-chain">
-                    <span className="challenge-chain-prev">
-                      {selectedChallengePreviousAnswer?.answer ?? '-'}
-                    </span>
-                    <ChevronRight size={16} aria-hidden="true" className="challenge-chain-arrow" />
-                    <span className="challenge-chain-target">
-                      <span className="challenge-chain-target-word">
-                        {selectedChallengedAnswer?.answer ?? '-'}
-                      </span>
-                    </span>
-                    <span className="challenge-chain-right">
-                      <span className="challenge-chain-owner">
-                        {selectedChallengedPlayer?.name ?? '-'}
-                      </span>
-                      <span className="challenge-chain-challenger">
-                        <span className="challenge-chain-challenger-label">ถูกชาเลนจ์โดย</span>
-                        <span className="challenge-chain-challenger-name">
-                          {selectedChallenger?.name ?? '-'}
-                        </span>
-                      </span>
-                    </span>
-                  </div>
-
-                  <div className="action-row challenge-actions">
-                    <button
-                      ref={challengeDecisionButtonRef}
-                      type="button"
-                      className="primary-button symbol-button"
-                      onClick={() => handleChallengeDecision('connects')}
-                      onKeyDown={(event) =>
-                        handleChallengeDecisionKeyDown('connects', event)
-                      }
-                      aria-label="ตัดสินว่าเชื่อม"
-                      title="ตัดสินว่าเชื่อม"
-                    >
-                      <span className="button-copy">เชื่อม</span>
-                    </button>
-                    <button
-                      type="button"
-                      className="secondary-button symbol-button"
-                      onClick={() => handleChallengeDecision('not_connects')}
-                      onKeyDown={(event) =>
-                        handleChallengeDecisionKeyDown('not_connects', event)
-                      }
-                      aria-label="ตัดสินว่าไม่เชื่อม"
-                      title="ตัดสินว่าไม่เชื่อม"
-                    >
-                      <span className="button-copy">ไม่เชื่อม</span>
-                    </button>
-                  </div>
-                </div>
-              )}
-            </section>
-          )}
-
-          {isSyllableDebugVisible && (
-            <section
-              className="surface-card syllable-debug-card"
-              aria-label="การแยกพยางค์"
-            >
-              <div className="panel-header compact debug-header">
-                <div>
-                  <p className="eyebrow">รายละเอียด</p>
-                  <h2>การแยกพยางค์ของระบบ</h2>
-                </div>
-              </div>
-
-              <div className="syllable-debug-grid">
-                <section className="syllable-debug-group" aria-label="พยางค์ของคำปัจจุบัน">
-                  <h3>คำที่กำลังพิมพ์</h3>
-                  {currentInputSegmentationMeta && (
-                    <p className="syllable-meta">{currentInputSegmentationMeta}</p>
-                  )}
-                  <div className="syllable-chip-list">
-                    {isSegmentingCurrentInput ? (
-                      <span className="syllable-empty">กำลังแยกพยางค์...</span>
-                    ) : currentInputSyllables.length > 0 ? (
-                      currentInputSyllables.map((syllable, index) => (
-                        <span
-                          className="syllable-chip is-current"
-                          key={`${syllable}-${index}`}
-                        >
-                          {syllable}
-                        </span>
-                      ))
-                    ) : (
-                      <span className="syllable-empty">ยังไม่มีพยางค์</span>
+                <div className="syllable-debug-grid">
+                  <section
+                    className="syllable-debug-group"
+                    aria-label="พยางค์ของคำปัจจุบัน"
+                  >
+                    <h3>คำที่กำลังพิมพ์</h3>
+                    {currentInputSegmentationMeta && (
+                      <p className="syllable-meta">
+                        {currentInputSegmentationMeta}
+                      </p>
                     )}
-                  </div>
-                </section>
-
-                <section
-                  className="syllable-debug-group"
-                  aria-label="พยางค์ที่บันทึกในรอบนี้"
-                >
-                  <h3>พยางค์ที่บันทึกในรอบนี้</h3>
-                  <div className="syllable-chip-list">
-                    {gameState.usedSyllablesInRound.length > 0 ? (
-                      gameState.usedSyllablesInRound.map((syllable, index) => (
-                        <span
-                          className="syllable-chip"
-                          key={`${syllable}-${index}`}
-                        >
-                          {syllable}
+                    <div className="syllable-chip-list">
+                      {isSegmentingCurrentInput ? (
+                        <span className="syllable-empty">
+                          กำลังแยกพยางค์...
                         </span>
-                      ))
-                    ) : (
-                      <span className="syllable-empty">ยังไม่มีพยางค์</span>
-                    )}
-                  </div>
-                </section>
-              </div>
-            </section>
-          )}
+                      ) : currentInputSyllables.length > 0 ? (
+                        currentInputSyllables.map((syllable, index) => (
+                          <span
+                            className="syllable-chip is-current"
+                            key={`${syllable}-${index}`}
+                          >
+                            {syllable}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="syllable-empty">ยังไม่มีพยางค์</span>
+                      )}
+                    </div>
+                  </section>
 
-
-        </section>
-      )}
-
-      {gameState.phase === 'finished' && winner && !gameState.isAwaitingRoundSummary && (
-        <section className="phase-screen result-screen">
-          <section className="surface-card leaderboard-card result-leaderboard-card">
-            <div className="panel-header compact">
-              <div>
-                <h2>ตารางคะแนน</h2>
-              </div>
-            </div>
-
-            <div className="leaderboard-table-wrap">
-              <table className="leaderboard-table" aria-label="ตารางคะแนนสะสม">
-                <thead>
-                  <tr>
-                    <th scope="col">ผู้เล่น</th>
-                    <th scope="col">รอบที่ 1</th>
-                    <th scope="col">รอบที่ 2</th>
-                    <th scope="col">รอบที่ 3</th>
-                    <th scope="col">รอบที่ 4</th>
-                    <th scope="col">คะแนนรวม</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {leaderboardEntries.map((entry) => (
-                    <tr
-                      key={entry.player.id}
-                      className={`${entry.player.status === 'winner' ? 'is-winner' : ''} ${entry.roundPoints > 0 ? 'is-awarded' : ''
-                        }`.trim()}
-                      aria-label={`คะแนนสะสมของ ${entry.player.name}`}
-                    >
-                      <th scope="row">
-                        <div className="leaderboard-player-cell">
-                          <strong>{entry.player.name}</strong>
-                        </div>
-                      </th>
-                      {entry.roundScores.map((roundScore, roundIndex) => (
-                        <td
-                          key={`${entry.player.id}-round-${roundIndex + 1}`}
-                          className={
-                            roundIndex + 1 === sessionState.completedRoundsInMatch
-                              ? 'is-current-round'
-                              : ''
-                          }
-                        >
-                          {roundScore === null ? (
-                            '-'
-                          ) : roundScore.challengeBonus > 0 ? (
-                            <span className="leaderboard-round-score-value">
-                              {roundScore.totalPoints -
-                                roundScore.challengeBonus >
-                                0 ? (
-                                <>
-                                  <span>
-                                    {roundScore.totalPoints -
-                                      roundScore.challengeBonus}
-                                  </span>{' '}
-                                </>
-                              ) : null}
-                              <span className="leaderboard-round-bonus">
-                                +{roundScore.challengeBonus}
-                              </span>
+                  <section
+                    className="syllable-debug-group"
+                    aria-label="พยางค์ที่บันทึกในรอบนี้"
+                  >
+                    <h3>พยางค์ที่บันทึกในรอบนี้</h3>
+                    <div className="syllable-chip-list">
+                      {gameState.usedSyllablesInRound.length > 0 ? (
+                        gameState.usedSyllablesInRound.map(
+                          (syllable, index) => (
+                            <span
+                              className="syllable-chip"
+                              key={`${syllable}-${index}`}
+                            >
+                              {syllable}
                             </span>
-                          ) : (
-                            roundScore.totalPoints
-                          )}
-                        </td>
-                      ))}
-                      <td className="leaderboard-total-cell">
-                        <strong>{entry.score}</strong>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="action-row">
-<button
-                      type="button"
-                      className="ghost-button history-action-button"
-                      onClick={handleUndo}
-                      disabled={!canUndoGameHistory || isSubmittingTurn}
-                      aria-label="ย้อนกลับ"
-                      title="ย้อนกลับ (Ctrl/Cmd+Z)"
-                    >
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M3 10h10a5 5 0 0 1 5 5v2" />
-                        <polyline points="3 10 7 6" />
-                        <polyline points="3 10 7 14" />
-                      </svg>
-                    </button>
-                    <button
-                      type="button"
-                      className="ghost-button history-action-button"
-                      onClick={handleRedo}
-                      disabled={!canRedoGameHistory || isSubmittingTurn}
-                      aria-label="ทำซ้ำ"
-                      title="ทำซ้ำ (Shift+Ctrl/Cmd+Z)"
-                    >
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M21 10H11a5 5 0 0 0-5 5v2" />
-                        <polyline points="21 10 17 6" />
-                        <polyline points="21 10 17 14" />
-                      </svg>
-                    </button>
-              <button
-                ref={leaderboardActionButtonRef}
-                type="button"
-                className="primary-button symbol-button"
-                onClick={handleReplaySamePlayers}
-                aria-label={replayButtonLabel}
-                title={replayButtonLabel}
-              >
-                <span className="button-copy">{replayButtonCopy}</span>
-              </button>
-              <button
-                type="button"
-                className="secondary-button symbol-button"
-                onClick={handleResetAll}
-                aria-label="เริ่มใหม่"
-                title="เริ่มใหม่"
-              >
-                <span className="button-copy">เริ่มใหม่</span>
-              </button>
-            </div>
+                          ),
+                        )
+                      ) : (
+                        <span className="syllable-empty">ยังไม่มีพยางค์</span>
+                      )}
+                    </div>
+                  </section>
+                </div>
+              </section>
+            )}
           </section>
-        </section>
-      )}
+        )}
+
+      {gameState.phase === "finished" &&
+        winner &&
+        !gameState.isAwaitingRoundSummary && (
+          <section className="phase-screen result-screen">
+            <section className="surface-card leaderboard-card result-leaderboard-card">
+              <div className="panel-header compact">
+                <div>
+                  <h2>ตารางคะแนน</h2>
+                </div>
+              </div>
+
+              <div className="leaderboard-table-wrap">
+                <table
+                  className="leaderboard-table"
+                  aria-label="ตารางคะแนนสะสม"
+                >
+                  <thead>
+                    <tr>
+                      <th scope="col">ผู้เล่น</th>
+                      <th scope="col">รอบที่ 1</th>
+                      <th scope="col">รอบที่ 2</th>
+                      <th scope="col">รอบที่ 3</th>
+                      <th scope="col">รอบที่ 4</th>
+                      <th scope="col">คะแนนรวม</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {leaderboardEntries.map((entry) => (
+                      <tr
+                        key={entry.player.id}
+                        className={`${entry.player.status === "winner" ? "is-winner" : ""} ${
+                          entry.roundPoints > 0 ? "is-awarded" : ""
+                        }`.trim()}
+                        aria-label={`คะแนนสะสมของ ${entry.player.name}`}
+                      >
+                        <th scope="row">
+                          <div className="leaderboard-player-cell">
+                            <strong>{entry.player.name}</strong>
+                          </div>
+                        </th>
+                        {entry.roundScores.map((roundScore, roundIndex) => (
+                          <td
+                            key={`${entry.player.id}-round-${roundIndex + 1}`}
+                            className={
+                              roundIndex + 1 ===
+                              sessionState.completedRoundsInMatch
+                                ? "is-current-round"
+                                : ""
+                            }
+                          >
+                            {roundScore === null ? (
+                              "-"
+                            ) : roundScore.challengeBonus > 0 ? (
+                              <span className="leaderboard-round-score-value">
+                                {roundScore.totalPoints -
+                                  roundScore.challengeBonus >
+                                0 ? (
+                                  <>
+                                    <span>
+                                      {roundScore.totalPoints -
+                                        roundScore.challengeBonus}
+                                    </span>{" "}
+                                  </>
+                                ) : null}
+                                <span className="leaderboard-round-bonus">
+                                  +{roundScore.challengeBonus}
+                                </span>
+                              </span>
+                            ) : (
+                              roundScore.totalPoints
+                            )}
+                          </td>
+                        ))}
+                        <td className="leaderboard-total-cell">
+                          <strong>{entry.score}</strong>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="action-row">
+                <button
+                  type="button"
+                  className="ghost-button history-action-button"
+                  onClick={handleUndo}
+                  disabled={!canUndoGameHistory || isSubmittingTurn}
+                  aria-label="ย้อนกลับ"
+                  title="ย้อนกลับ (Ctrl/Cmd+Z)"
+                >
+                  <svg
+                    width="18"
+                    height="18"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M3 10h10a5 5 0 0 1 5 5v2" />
+                    <polyline points="3 10 7 6" />
+                    <polyline points="3 10 7 14" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  className="ghost-button history-action-button"
+                  onClick={handleRedo}
+                  disabled={!canRedoGameHistory || isSubmittingTurn}
+                  aria-label="ทำซ้ำ"
+                  title="ทำซ้ำ (Shift+Ctrl/Cmd+Z)"
+                >
+                  <svg
+                    width="18"
+                    height="18"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M21 10H11a5 5 0 0 0-5 5v2" />
+                    <polyline points="21 10 17 6" />
+                    <polyline points="21 10 17 14" />
+                  </svg>
+                </button>
+                <button
+                  ref={leaderboardActionButtonRef}
+                  type="button"
+                  className="primary-button symbol-button"
+                  onClick={handleReplaySamePlayers}
+                  aria-label={replayButtonLabel}
+                  title={replayButtonLabel}
+                >
+                  <span className="button-copy">{replayButtonCopy}</span>
+                </button>
+                <button
+                  type="button"
+                  className="secondary-button symbol-button"
+                  onClick={handleResetAll}
+                  aria-label="เริ่มใหม่"
+                  title="เริ่มใหม่"
+                >
+                  <span className="button-copy">เริ่มใหม่</span>
+                </button>
+              </div>
+            </section>
+          </section>
+        )}
     </main>
-  )
+  );
 }
 
-export default App
+export default App;
