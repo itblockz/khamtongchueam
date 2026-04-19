@@ -682,6 +682,7 @@ function App() {
   const challengeDecisionButtonRef = useRef<HTMLButtonElement>(null);
   const challengeResumeButtonRef = useRef<HTMLButtonElement>(null);
   const challengeHistoryRestorePauseRef = useRef(false);
+  const syllableStatusBarHistoryRef = useRef<HTMLDivElement>(null);
   const segmentationCacheRef = useRef<
     Map<string, SyllableSegmentationResponse>
   >(new Map());
@@ -1082,9 +1083,6 @@ function App() {
         ? "ครบสองรอบโต้วาทีแล้ว เลือกผลตัดสิน"
         : null;
   const currentInputSyllables = currentInputSegmentation?.syllables ?? [];
-  const currentInputSegmentationMeta = currentInputSegmentation
-    ? `${currentInputSegmentation.engine} · ${currentInputSegmentation.modelVersion}`
-    : null;
 
   const resetChallengeChallengerTypeahead = useCallback(() => {
     setChallengeChallengerSearchValue("");
@@ -1631,6 +1629,15 @@ function App() {
     isChallengeSelecting,
     normalizedChallengeChallengerSearch,
   ]);
+
+  useEffect(() => {
+    if (isSyllableDebugVisible && syllableStatusBarHistoryRef.current) {
+      syllableStatusBarHistoryRef.current.scrollLeft =
+        syllableStatusBarHistoryRef.current.scrollWidth;
+    }
+  }, [gameState.usedSyllablesInRound, isSyllableDebugVisible]);
+
+
 
   useEffect(() => {
     try {
@@ -2936,72 +2943,41 @@ function App() {
             </section>
 
             {isSyllableDebugVisible && (
-              <section
-                className="surface-card syllable-debug-card"
-                aria-label="การแยกพยางค์"
-              >
-                <div className="panel-header compact debug-header">
-                  <div>
-                    <p className="eyebrow">รายละเอียด</p>
-                    <h2>การแยกพยางค์ของระบบ</h2>
+              <div className="syllable-status-bar" role="status" aria-label="สถานะการแยกพยางค์">
+                <div className="status-section">
+                  <span className="status-label">กำลังพิมพ์</span>
+                  <div className="status-content">
+                    {isSegmentingCurrentInput ? (
+                      <span className="status-placeholder">รอกราดรหัส...</span>
+                    ) : currentInputSyllables.length > 0 ? (
+                      currentInputSyllables.map((s, i) => (
+                        <span key={i} className="status-pill is-current">{s}</span>
+                      ))
+                    ) : (
+                      <span className="status-placeholder">-</span>
+                    )}
                   </div>
                 </div>
 
-                <div className="syllable-debug-grid">
-                  <section
-                    className="syllable-debug-group"
-                    aria-label="พยางค์ของคำปัจจุบัน"
-                  >
-                    <h3>คำที่กำลังพิมพ์</h3>
-                    {currentInputSegmentationMeta && (
-                      <p className="syllable-meta">
-                        {currentInputSegmentationMeta}
-                      </p>
-                    )}
-                    <div className="syllable-chip-list">
-                      {isSegmentingCurrentInput ? (
-                        <span className="syllable-empty">
-                          กำลังแยกพยางค์...
-                        </span>
-                      ) : currentInputSyllables.length > 0 ? (
-                        currentInputSyllables.map((syllable, index) => (
-                          <span
-                            className="syllable-chip is-current"
-                            key={`${syllable}-${index}`}
-                          >
-                            {syllable}
-                          </span>
-                        ))
-                      ) : (
-                        <span className="syllable-empty">ยังไม่มีพยางค์</span>
-                      )}
-                    </div>
-                  </section>
+                <div className="status-divider" />
 
-                  <section
-                    className="syllable-debug-group"
-                    aria-label="พยางค์ที่บันทึกในรอบนี้"
+                <div className="status-section">
+                  <span className="status-label">พยางค์ที่บันทึก</span>
+                  <div 
+                    className="status-content" 
+                    ref={syllableStatusBarHistoryRef}
+                    style={{ scrollBehavior: 'smooth' }}
                   >
-                    <h3>พยางค์ที่บันทึกในรอบนี้</h3>
-                    <div className="syllable-chip-list">
-                      {gameState.usedSyllablesInRound.length > 0 ? (
-                        gameState.usedSyllablesInRound.map(
-                          (syllable, index) => (
-                            <span
-                              className="syllable-chip"
-                              key={`${syllable}-${index}`}
-                            >
-                              {syllable}
-                            </span>
-                          ),
-                        )
-                      ) : (
-                        <span className="syllable-empty">ยังไม่มีพยางค์</span>
-                      )}
-                    </div>
-                  </section>
+                    {gameState.usedSyllablesInRound.length > 0 ? (
+                      gameState.usedSyllablesInRound.map((s, i) => (
+                        <span key={i} className="status-pill">{s}</span>
+                      ))
+                    ) : (
+                      <span className="status-placeholder">-</span>
+                    )}
+                  </div>
                 </div>
-              </section>
+              </div>
             )}
           </section>
         )}
