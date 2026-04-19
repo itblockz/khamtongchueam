@@ -142,8 +142,7 @@ const MATCH_ROUNDS_PER_MATCH = 4;
 const SYLLABLE_REQUEST_DEBOUNCE_MS = 250;
 const SYLLABLE_DEBUG_STORAGE_KEY = "khamtongchueam:show-syllable-debug";
 const GM_OPENING_WORD_STORAGE_KEY = "khamtongchueam:gm-opening-word-enabled";
-const SHOW_PREVIOUS_WORD_PROMPT_KEY =
-  "khamtongchueam:show-previous-word-prompt";
+const FOCUS_SIDEBAR_OPEN_KEY = "khamtongchueam:focus-sidebar-open";
 
 function getTurnDirectionForMatchRound(matchRound: number): TurnDirection {
   return matchRound % 2 === 1 ? 1 : -1;
@@ -200,17 +199,15 @@ function getInitialGmOpeningWordEnabled() {
   }
 }
 
-function getInitialShowPreviousWordPrompt() {
+function getInitialFocusSidebarOpen() {
   if (typeof window === "undefined") {
-    return false;
+    return true;
   }
 
   try {
-    return (
-      window.localStorage.getItem(SHOW_PREVIOUS_WORD_PROMPT_KEY) === "true"
-    );
+    return window.localStorage.getItem(FOCUS_SIDEBAR_OPEN_KEY) !== "false";
   } catch {
-    return false;
+    return true;
   }
 }
 
@@ -495,20 +492,16 @@ function ChallengeChallengerListBox({
 interface SettingsDropdownProps {
   isGmOpeningEnabled: boolean;
   isSyllableDebugVisible: boolean;
-  showPreviousWordPrompt: boolean;
   onToggleGmOpening: () => void;
   onToggleSyllableDebug: () => void;
-  onTogglePreviousWordPrompt: () => void;
   isSubmittingTurn: boolean;
 }
 
 function SettingsDropdown({
   isGmOpeningEnabled,
   isSyllableDebugVisible,
-  showPreviousWordPrompt,
   onToggleGmOpening,
   onToggleSyllableDebug,
-  onTogglePreviousWordPrompt,
   isSubmittingTurn,
 }: SettingsDropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
@@ -612,21 +605,7 @@ function SettingsDropdown({
             <span className="settings-dropdown-item-check" aria-hidden="true">
               {isSyllableDebugVisible ? "✓" : ""}
             </span>
-            {isSyllableDebugVisible ? "ซ่อนการแยกพยางค์" : "แสดงการแยกพยางค์"}
-          </button>
-          <button
-            type="button"
-            className="settings-dropdown-item"
-            onClick={(e) => {
-              e.currentTarget.focus();
-              onTogglePreviousWordPrompt();
-            }}
-            aria-pressed={showPreviousWordPrompt}
-          >
-            <span className="settings-dropdown-item-check" aria-hidden="true">
-              {showPreviousWordPrompt ? "✓" : ""}
-            </span>
-            แสดงคำก่อนหน้า
+            <span>ดีบักพยางค์</span>
           </button>
         </div>
       )}
@@ -737,8 +716,8 @@ function App() {
   const [isSyllableDebugVisible, setIsSyllableDebugVisible] = useState(() =>
     getInitialSyllableDebugVisibility(),
   );
-  const [showPreviousWordPrompt, setShowPreviousWordPrompt] = useState(() =>
-    getInitialShowPreviousWordPrompt(),
+  const [isFocusSidebarOpen, setIsFocusSidebarOpen] = useState(() =>
+    getInitialFocusSidebarOpen(),
   );
   const [playerNamesTextarea, setPlayerNamesTextarea] = useState(() =>
     createInitialDrafts()
@@ -2303,9 +2282,7 @@ function App() {
 
       {playScreenPlayer &&
         (gameState.phase === "playing" || isAwaitingRoundSummary) && (
-          <section
-            className={`phase-screen play-screen ${showPreviousWordPrompt && lastAnswer && gameState.phase === "playing" ? "is-fullscreen-prompt" : ""}`}
-          >
+          <section className={`phase-screen play-screen ${!isFocusSidebarOpen ? "sidebar-collapsed" : ""}`}>
             {isChallengeActive ? (
               <section
                 className="surface-card board-card challenge-standalone-card"
@@ -2584,76 +2561,101 @@ function App() {
                 )}
               </section>
             ) : (
-              <section className="board-grid">
-                <section className="surface-card board-card active-board-card">
-                  <div className="panel-header compact">
-                    <div>
-                      <h2>ผู้เล่นในเกม</h2>
-                    </div>
-                    <span className="count-badge">
-                      {visiblePlayers.length} คน
-                    </span>
-                  </div>
-
-                  <ol
-                    className="player-board active-player-board"
-                    aria-label="ผู้เล่นที่ยังไม่ตกรอบ"
-                  >
-                    {displayedActivePlayers.map((player) => (
-                      <li
-                        className={getActivePlayerCardClass(
-                          player.id,
-                          displayedActivePlayerId,
-                        )}
-                        key={player.id}
-                      >
-                        <strong>{player.name}</strong>
-                        {player.id === displayedActivePlayerId && (
-                          <span className="player-chip-current">ตอนนี้</span>
-                        )}
-                      </li>
-                    ))}
-                  </ol>
-                </section>
-
-                <section
-                  className={`surface-card board-card eliminated-board-card ${eliminatedPlayers.length === 0 ? "is-empty-collapsed" : ""
-                    }`.trim()}
+              <div
+                className="focus-main-grid"
+              >
+                <button
+                  type="button"
+                  className={`sidebar-toggle-floating ${isFocusSidebarOpen ? "is-open" : ""}`}
+                  onClick={() => setIsFocusSidebarOpen((v) => !v)}
+                  aria-label={isFocusSidebarOpen ? "ปิดแถบด้านข้าง" : "เปิดแถบด้านข้าง"}
+                  title={isFocusSidebarOpen ? "ปิดแถบด้านข้าง" : "เปิดแถบด้านข้าง"}
                 >
-                  <div className="panel-header compact">
-                    <div>
-                      <h2>ผู้เล่นที่ตกรอบ</h2>
-                    </div>
+                  {isFocusSidebarOpen ? (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6" /></svg>
+                  ) : (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="18" x2="21" y2="18" /></svg>
+                  )}
+                </button>
+                <aside className="focus-sidebar surface-card">
+                  <div className="sidebar-header">
+                    <h2 className="sidebar-title">คิวผู้เล่น</h2>
                     <span className="count-badge">
-                      {eliminatedPlayers.length} คน
+                      {visiblePlayers.length}
                     </span>
                   </div>
 
-                  {eliminatedPlayers.length > 0 ? (
-                    <ol
-                      className="player-board eliminated-player-board"
-                      aria-label="ผู้เล่นที่ตกรอบ"
-                    >
-                      {eliminatedPlayers.map((player) => (
-                        <li className="player-chip is-out" key={player.id}>
-                          <strong>{player.name}</strong>
-                        </li>
-                      ))}
-                    </ol>
-                  ) : (
-                    <p className="empty-note">ยังไม่มีใครตกรอบในตอนนี้</p>
-                  )}
-                </section>
-              </section>
-            )}
+                  <div className="sidebar-scroll-area">
+                    <section className="sidebar-group">
+                      <ol
+                        className="player-board active-player-board"
+                        aria-label="ผู้เล่นที่ยังไม่ตกรอบ"
+                      >
+                        {displayedActivePlayers.map((player) => (
+                          <li
+                            className={getActivePlayerCardClass(
+                              player.id,
+                              displayedActivePlayerId,
+                            )}
+                            key={player.id}
+                          >
+                            <strong className="sidebar-player-name">
+                              {player.name}
+                            </strong>
+                            {player.id === displayedActivePlayerId && (
+                              <span className="player-chip-current">
+                                ตอนนี้
+                              </span>
+                            )}
+                          </li>
+                        ))}
+                      </ol>
+                    </section>
 
-            {showPreviousWordPrompt &&
-              lastAnswer &&
-              gameState.phase === "playing" && (
-                <p className="previous-word-prompt">
-                  พูดคำนามที่เชื่อมกับ "{lastAnswer}"
-                </p>
-              )}
+                    {eliminatedPlayers.length > 0 && (
+                      <section className="sidebar-group">
+                        <ol
+                          className="player-board eliminated-player-board"
+                          aria-label="ผู้เล่นที่ตกรอบ"
+                        >
+                          {eliminatedPlayers.map((player) => (
+                            <li className="player-chip is-out" key={player.id}>
+                              <strong className="sidebar-player-name">
+                                {player.name}
+                              </strong>
+                            </li>
+                          ))}
+                        </ol>
+                      </section>
+                    )}
+                  </div>
+                </aside>
+
+                <main className="focus-stage">
+                  {lastAnswer && gameState.phase === "playing" ? (
+                    <div className="stage-content">
+                      <span className="stage-eyebrow">พยางค์ล่าสุดที่ใช้ต่อ</span>
+                      <div className="stage-word-wrapper">
+                        <h1 className="stage-word">{lastAnswer}</h1>
+                      </div>
+                      <p className="stage-instruction">
+                        พูดคำนามที่เชื่อมกับคำด้านบน
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="stage-placeholder">
+                      {isGmOpeningWordMode ? (
+                        <p>รอผู้คุมเกมตั้งคำตั้งต้น</p>
+                      ) : isAwaitingFirstTurnStart ? (
+                        <p>เตรียมพร้อมเริ่มรอบแรก</p>
+                      ) : (
+                        <p>ต้อนรับสู่เกมคำต่อคำ</p>
+                      )}
+                    </div>
+                  )}
+                </main>
+              </div>
+            )}
             <section className="surface-card play-main-card">
               <form className="answer-panel" onSubmit={handleSubmitTurn}>
                 <div className="form-copy">
@@ -2664,16 +2666,18 @@ function App() {
                     </p>
                     <p className="player-indicator">{playScreenPlayer.name}</p>
                     {gameState.phase === "playing" && (
-                      <button
-                        type="button"
-                        className="ghost-button challenge-open-button"
-                        onClick={handleOpenChallenge}
-                        disabled={!canOpenChallenge}
-                        aria-label="ชาเลนจ์"
-                        title="ชาเลนจ์ (F2)"
-                      >
-                        ชาเลนจ์
-                      </button>
+                      <div className="action-row-toolbar">
+                        <button
+                          type="button"
+                          className="ghost-button challenge-open-button"
+                          onClick={handleOpenChallenge}
+                          disabled={!canOpenChallenge}
+                          aria-label="ชาเลนจ์"
+                          title="ชาเลนจ์ (F2)"
+                        >
+                          ชาเลนจ์
+                        </button>
+                      </div>
                     )}
                     {(gameState.phase === "playing" ||
                       gameState.phase === "finished") && (
@@ -2731,20 +2735,10 @@ function App() {
                           <SettingsDropdown
                             isGmOpeningEnabled={isGmOpeningWordEnabled}
                             isSyllableDebugVisible={isSyllableDebugVisible}
-                            showPreviousWordPrompt={showPreviousWordPrompt}
                             onToggleGmOpening={handleToggleGmOpeningWord}
                             onToggleSyllableDebug={() =>
                               setIsSyllableDebugVisible((current) => !current)
                             }
-                            onTogglePreviousWordPrompt={() => {
-                              setShowPreviousWordPrompt((current) => {
-                                window.localStorage.setItem(
-                                  SHOW_PREVIOUS_WORD_PROMPT_KEY,
-                                  String(!current),
-                                );
-                                return !current;
-                              });
-                            }}
                             isSubmittingTurn={isSubmittingTurn}
                           />
                         </div>
