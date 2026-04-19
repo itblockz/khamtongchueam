@@ -1162,7 +1162,7 @@ button:disabled {
 
 .stage-word {
   font-family: var(--display);
-  font-size: clamp(2.8rem, 8vw, 4.8rem);
+  font-size: clamp(2.4rem, 7vw, 4.2rem);
   font-weight: 900;
   color: var(--ink);
   line-height: 1.3;
@@ -1222,7 +1222,7 @@ button:disabled {
 
 .stage-placeholder p {
   font-family: var(--display);
-  font-size: clamp(2.8rem, 8vw, 4.8rem);
+  font-size: clamp(2.4rem, 7vw, 4.2rem);
   font-weight: 900;
   line-height: 1.3;
   margin: 0;
