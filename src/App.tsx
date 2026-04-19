@@ -907,6 +907,29 @@ function App() {
   const roundAwardMap = new Map(
     roundAwards.map((award) => [award.playerId, award]),
   );
+  const nextPlayer = (() => {
+    if (gameState.players.length === 0 || !gameState.activePlayerId)
+      return null;
+    const currentIndex = gameState.players.findIndex(
+      (p) => p.id === gameState.activePlayerId,
+    );
+    if (currentIndex === -1) return null;
+
+    let nextIndex =
+      (currentIndex + gameState.turnDirection + gameState.players.length) %
+      gameState.players.length;
+    // Skip eliminated players
+    while (
+      gameState.players[nextIndex].status === "eliminated" &&
+      nextIndex !== currentIndex
+    ) {
+      nextIndex =
+        (nextIndex + gameState.turnDirection + gameState.players.length) %
+        gameState.players.length;
+    }
+    return gameState.players[nextIndex];
+  })();
+
   const leaderboardEntries =
     gameState.phase === "finished"
       ? gameState.players
@@ -973,10 +996,10 @@ function App() {
     ? gmOpeningWordDraft
     : gameState.currentInput;
   const answerInputLabel = isGmOpeningWordMode
-    ? "คำตั้งต้นของผู้คุมเกม"
+    ? "คำแรกจากผู้คุมเกม"
     : `คำตอบของ ${playScreenPlayer?.name ?? ""}`;
   const answerInputPlaceholder = isGmOpeningWordMode
-    ? "พิมพ์คำตั้งต้นของผู้คุมเกม"
+    ? "พิมพ์คำแรกเพื่อเริ่มเกม"
     : "พิมพ์คำตอบของผู้เล่น";
   const canSubmitGmOpeningWord =
     isGmOpeningWordMode &&
@@ -1047,9 +1070,9 @@ function App() {
               : gameState.phase === "playing"
                 ? `เวลาเหลือ ${formatSeconds(gameState.timeLeftMs)} วินาที`
                 : "เวลา";
-  const displayedTimerValue = isGmOpeningWordMode ? "รอคำตั้งต้น" : timerValue;
+  const displayedTimerValue = isGmOpeningWordMode ? "รอคำแรก" : timerValue;
   const displayedTimerAriaLabel = isGmOpeningWordMode
-    ? "เวลารอคำตั้งต้นของผู้คุมเกม"
+    ? "เวลารอคำแรกของผู้คุมเกม"
     : timerAriaLabel;
   const challengeNote = isChallengeSelecting
     ? null
@@ -2609,9 +2632,18 @@ function App() {
                 </aside>
 
                 <main className="focus-stage">
+                  <div className="stage-player-sequence">
+                    <span className="player-name current">
+                      {isGmOpeningWordMode ? "ผู้คุมเกม" : playScreenPlayer?.name}
+                    </span>
+                    <ChevronRight className="sequence-arrow" size={24} />
+                    <span className="player-name next">
+                      {isGmOpeningWordMode ? playScreenPlayer?.name : nextPlayer?.name}
+                    </span>
+                  </div>
+
                   {lastAnswer && gameState.phase === "playing" ? (
                     <div className="stage-content">
-                      <span className="stage-eyebrow">พยางค์ล่าสุดที่ใช้ต่อ</span>
                       <div className="stage-word-wrapper">
                         <h1 className="stage-word">{lastAnswer}</h1>
                       </div>
@@ -2622,11 +2654,11 @@ function App() {
                   ) : (
                     <div className="stage-placeholder">
                       {isGmOpeningWordMode ? (
-                        <p>รอผู้คุมเกมตั้งคำตั้งต้น</p>
+                        <p className="stage-instruction">รอผู้คุมเกมกำหนดคำแรก</p>
                       ) : isAwaitingFirstTurnStart ? (
-                        <p>เตรียมพร้อมเริ่มรอบแรก</p>
+                        <p className="stage-instruction">เตรียมพร้อมเริ่มรอบแรก</p>
                       ) : (
-                        <p>ต้อนรับสู่เกมคำต่อคำ</p>
+                        <p className="stage-instruction">ต้อนรับสู่เกมคำต่อคำ</p>
                       )}
                     </div>
                   )}
@@ -2759,7 +2791,7 @@ function App() {
                           : isAwaitingRoundSummary
                             ? `${eliminatedPlayerSummary} กดสรุปรอบเพื่อดูตารางคะแนนของ ${playScreenPlayer.name}`
                             : isGmOpeningWordMode
-                              ? `ผู้คุมเกมพิมพ์คำตั้งต้นของรอบ แล้วกดเริ่มด้วยคำนี้เพื่อเริ่มจับเวลา ${playScreenPlayer.name}`
+                              ? `ผู้คุมเกมพิมพ์คำแรกของรอบ แล้วกดเริ่มด้วยคำนี้เพื่อเริ่มจับเวลา ${playScreenPlayer.name}`
                               : isAwaitingFirstTurnStart
                                 ? `ยืนยันผู้เล่นแล้ว กดเริ่มรอบแรกเพื่อเริ่มจับเวลา ${playScreenPlayer.name}`
                                 : gameState.isHistoryRestorePause
