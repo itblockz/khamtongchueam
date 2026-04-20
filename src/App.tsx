@@ -3008,7 +3008,7 @@ function App() {
                               onClick={handleRedo}
                               disabled={!canRedoGameHistory || isSubmittingTurn}
                               aria-label="ทำซ้ำ"
-                              title="ทำซ้ำ (Shift+Ctrl/Cmd+Z)"
+                              title="ทำซ้ำ (Ctrl/Cmd+Y)"
                             >
                               <svg
                                 width="18"
@@ -3368,7 +3368,7 @@ function App() {
                     onClick={handleRedo}
                     disabled={!canRedoGameHistory || isSubmittingTurn}
                     aria-label="ทำซ้ำ"
-                    title="ทำซ้ำ (Shift+Ctrl/Cmd+Z)"
+                    title="ทำซ้ำ (Ctrl/Cmd+Y)"
                   >
                     <svg
                       width="18"
