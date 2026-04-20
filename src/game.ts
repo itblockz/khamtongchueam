@@ -1154,6 +1154,7 @@ export function startChallengeDebate(
         now,
         durationMs,
         0,
+        true,
       ),
       isHistoryRestorePause: false,
     }
@@ -1234,6 +1235,7 @@ export function advanceChallengeDebate(
       now,
       durationMs,
       nextSegmentIndex,
+      true,
     ),
     isHistoryRestorePause: false,
   }

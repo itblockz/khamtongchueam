@@ -2461,10 +2461,10 @@ function App() {
                           )
                         }
                         disabled={!canStartVisibleChallenge}
-                        aria-label="เริ่มการชาเลนจ์"
-                        title="เริ่มการชาเลนจ์"
+                        aria-label="ยืนยันการชาเลนจ์"
+                        title="ยืนยันการชาเลนจ์"
                       >
-                        <span className="button-copy">เริ่มการชาเลนจ์</span>
+                        <span className="button-copy">ยืนยันการชาเลนจ์</span>
                       </button>
                       <button
                         type="button"
