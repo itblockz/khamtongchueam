@@ -70,6 +70,71 @@ import {
 import { useTurnTimer } from "./useTurnTimer";
 import { useUndoRedoHistory } from "./useUndoRedoHistory";
 
+// procedural sound generator to avoid external asset dependencies
+const SoundSynth = {
+  ctx: null as AudioContext | null,
+
+  init() {
+    if (!this.ctx) {
+      try {
+        this.ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      } catch (e) {
+        console.warn("AudioContext not supported");
+      }
+    }
+    if (this.ctx?.state === 'suspended') {
+      this.ctx.resume();
+    }
+  },
+
+  playElimination() {
+    this.init();
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+
+    [0, 5].forEach((detune) => {
+      const osc = this.ctx!.createOscillator();
+      const gain = this.ctx!.createGain();
+
+      osc.type = "sawtooth";
+      osc.frequency.setValueAtTime(160 + detune, now);
+      osc.frequency.exponentialRampToValueAtTime(40, now + 0.8);
+
+      gain.gain.setValueAtTime(0.2, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.8);
+
+      osc.connect(gain);
+      gain.connect(this.ctx!.destination);
+
+      osc.start(now);
+      osc.stop(now + 0.8);
+    });
+  },
+
+  playWinner() {
+    this.init();
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+
+    const playNote = (freq: number, start: number) => {
+      const osc = this.ctx!.createOscillator();
+      const gain = this.ctx!.createGain();
+      osc.type = "triangle";
+      osc.frequency.setValueAtTime(freq, start);
+      gain.gain.setValueAtTime(0.25, start);
+      gain.gain.exponentialRampToValueAtTime(0.01, start + 0.5);
+      osc.connect(gain);
+      gain.connect(this.ctx!.destination);
+      osc.start(start);
+      osc.stop(start + 0.5);
+    };
+
+    [523.25, 659.25, 783.99, 1046.5].forEach((freq, i) => {
+      playNote(freq, now + i * 0.08);
+    });
+  }
+};
+
 function moveLineUp(view: EditorView): boolean {
   const { state } = view;
   const line = state.doc.lineAt(state.selection.main.head);
@@ -1823,6 +1888,7 @@ function App() {
   }
 
   function handleStartFirstTurn() {
+    SoundSynth.init();
     setSegmentationError(null);
 
     if (gameState.isHistoryRestorePause) {
@@ -1848,16 +1914,32 @@ function App() {
   }
 
   function handleHostEliminateNotNoun() {
+    SoundSynth.init();
     commitGameAction((current) =>
       hostEliminateCurrentPlayer(current, "not_noun"),
     );
   }
 
+  // Handle Game Sounds
+  useEffect(() => {
+    if (gameState.isEliminationPause && latestEliminatedPlayer) {
+      SoundSynth.playElimination();
+    }
+  }, [gameState.isEliminationPause, latestEliminatedPlayer?.id]);
+
+  useEffect(() => {
+    if (isAwaitingRoundSummary && winner && !gameState.isEliminationPause) {
+      SoundSynth.playWinner();
+    }
+  }, [isAwaitingRoundSummary, winner?.id, gameState.isEliminationPause]);
+
   function handleContinueToRoundSummary() {
+    SoundSynth.init();
     commitGameAction((current) => acknowledgeRoundSummary(current));
   }
 
   function handleResumeChallengeDebate() {
+    SoundSynth.init();
     updatePresent((current) => {
       const nextGameState = challengeHistoryRestorePauseRef.current
         ? resumePausedChallengeFromHistory(current.sessionState.gameState)
