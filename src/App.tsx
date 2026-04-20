@@ -1549,7 +1549,12 @@ function App() {
     },
   });
 
-  useEffect(() => {
+  const refocusActiveElement = useCallback(() => {
+    if (gameState.phase === "finished" && !gameState.isAwaitingRoundSummary) {
+      leaderboardActionButtonRef.current?.focus();
+      return;
+    }
+
     if (gameState.phase !== "playing") {
       return;
     }
@@ -1598,7 +1603,12 @@ function App() {
     isChallengeJudging,
     isChallengeDebating,
     challengeState?.segmentAwaitingContinue,
+    gameState.isAwaitingRoundSummary,
   ]);
+
+  useEffect(() => {
+    refocusActiveElement();
+  }, [refocusActiveElement]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -1816,17 +1826,7 @@ function App() {
     }
   }, [isGmOpeningWordEnabled]);
 
-  useEffect(() => {
-    if (gameState.phase !== "finished" || gameState.isAwaitingRoundSummary) {
-      return;
-    }
 
-    leaderboardActionButtonRef.current?.focus();
-  }, [
-    gameState.phase,
-    gameState.isAwaitingRoundSummary,
-    sessionState.completedRoundsInMatch,
-  ]);
 
   useEffect(() => {
     if (gameState.phase !== "playing") {
@@ -2438,6 +2438,15 @@ function App() {
       className={`fx-root ${gameState.isEliminationPause ? "elimination-active" : ""
         } ${isWinnerActive ? "winner-active" : ""} ${!isFocusSidebarOpen ? "sidebar-collapsed" : ""
         }`}
+      onMouseDown={(e) => {
+        const target = e.target as HTMLElement;
+        const isInteractive = !!target.closest('button, input, select, textarea, a, [role="button"], label');
+
+        if (!isInteractive) {
+          e.preventDefault();
+          refocusActiveElement();
+        }
+      }}
     >
       <div className="fx-overlay" aria-hidden="true">
         <div className="fx-elimination-vignette" />
