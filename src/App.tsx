@@ -135,6 +135,31 @@ const SoundSynth = {
   }
 };
 
+const ConfettiRain = () => {
+  const pieces = Array.from({ length: 48 });
+  const colors = ["#f4a261", "#e76f51", "#2a9d8f", "#264653", "#e9c46a", "#ffffff"];
+
+  return (
+    <div className="fx-confetti-container">
+      {pieces.map((_, i) => (
+        <div
+          key={i}
+          className="fx-confetti-piece"
+          style={{
+            left: `${Math.random() * 100}%`,
+            backgroundColor: colors[Math.floor(Math.random() * colors.length)],
+            animationDelay: `${Math.random() * 3}s`,
+            animationDuration: `${2 + Math.random() * 2}s`,
+            borderRadius: Math.random() > 0.5 ? "50%" : "2px",
+            width: `${6 + Math.random() * 8}px`,
+            height: `${6 + Math.random() * 8}px`,
+          }}
+        />
+      ))}
+    </div>
+  );
+};
+
 function moveLineUp(view: EditorView): boolean {
   const { state } = view;
   const line = state.doc.lineAt(state.selection.main.head);
@@ -2346,118 +2371,68 @@ function App() {
     resetHistory(createInitialHistorySnapshot());
   }
 
+  const isWinnerActive =
+    isAwaitingRoundSummary && winner && !gameState.isEliminationPause;
+
   return (
-    <main className="app-shell">
-      {gameState.phase === "setup" && (
-        <section className="phase-screen setup-screen">
-          <div className="surface-card setup-card">
-            <div className="panel-header setup-header">
-              <div className="setup-copy">
-                <h1>จัดรายชื่อผู้เล่น</h1>
-              </div>
-              <div className="setup-tooltip">
-                <button
-                  type="button"
-                  className="ghost-button symbol-button setup-help-button"
-                  aria-label="วิธีจัดรายชื่อผู้เล่น"
-                  aria-describedby="setup-help-tooltip"
-                  title="วิธีจัดรายชื่อผู้เล่น"
-                >
-                  <HelpCircle size={18} aria-hidden="true" />
-                </button>
-                <div
-                  className="setup-tooltip-panel"
-                  id="setup-help-tooltip"
-                  role="tooltip"
-                >
-                  <ul className="setup-tooltip-list">
-                    <li>Alt+ArrowUp/Down: ย้ายบรรทัด</li>
-                    <li>Shift+Alt+ArrowUp/Down: ทำซ้ำบรรทัด</li>
-                    <li>Esc: ไปที่ปุ่มยืนยัน</li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-
-            <p className="sr-only">
-              พิมพ์หรือวางรายชื่อผู้เล่น หนึ่งบรรทัดต่อชื่อ ใช้ Alt+Arrow
-              เพื่อย้ายบรรทัด Shift+Alt+Arrow เพื่อทำซ้ำบรรทัด และ Esc
-              เพื่อออกจากช่องพิมพ์ แล้วกดยืนยันผู้เล่น
-            </p>
-
-            <div className="player-editor-wrapper">
-              <CodeMirror
-                basicSetup={{
-                  lineNumbers: true,
-                  highlightActiveLineGutter: true,
-                  highlightActiveLine: false,
-                  foldGutter: false,
-                  dropCursor: false,
-                  allowMultipleSelections: false,
-                  indentOnInput: false,
-                  bracketMatching: false,
-                  closeBrackets: false,
-                  autocompletion: false,
-                  rectangularSelection: false,
-                  crosshairCursor: false,
-                  highlightSelectionMatches: false,
-                  searchKeymap: false,
-                }}
-                extensions={playerEditorExtensions}
-                value={playerNamesTextarea}
-                onChange={setPlayerNamesTextarea}
-                placeholder="พิมพ์หรือวางรายชื่อผู้เล่น (หนึ่งบรรทัดต่อชื่อ)"
-                autoFocus
-              />
-            </div>
-
-            <div className="setup-footer">
-              <p
-                className={`validation-note ${validation.canStart ? "is-ready" : ""
-                  }`}
-              >
-                {validation.playerCount < 2
-                  ? "ต้องมีผู้เล่นอย่างน้อย 2 คน"
-                  : `พร้อมยืนยันผู้เล่น ${validation.playerCount} คน`}
-              </p>
-
-              <button
-                type="button"
-                className="primary-button start-button"
-                disabled={!validation.canStart}
-                onClick={handleConfirmPlayers}
-                aria-label="ยืนยันผู้เล่น"
-                title="ยืนยันผู้เล่น"
-              >
-                <span className="button-copy">ยืนยันผู้เล่น</span>
-              </button>
-            </div>
-          </div>
-        </section>
-      )}
-
+    <div
+      className={`fx-root ${gameState.isEliminationPause ? "elimination-active" : ""
+        } ${isWinnerActive ? "winner-active" : ""} ${!isFocusSidebarOpen ? "sidebar-collapsed" : ""
+        }`}
+    >
+      <div className="fx-overlay" aria-hidden="true">
+        <div className="fx-elimination-vignette" />
+        <div className="fx-elimination-flash" />
+        <div className="fx-gold-pulse" />
+        {isWinnerActive && <ConfettiRain />}
+      </div>
       {playScreenPlayer &&
         (gameState.phase === "playing" || isAwaitingRoundSummary) && (
-          <section className={`phase-screen play-screen ${!isFocusSidebarOpen ? "sidebar-collapsed" : ""}`}>
+          <>
             <button
               type="button"
-              className={`sidebar-toggle-floating ${isFocusSidebarOpen ? "is-open" : ""}`}
+              className={`sidebar-toggle-floating ${isFocusSidebarOpen ? "is-open" : ""
+                }`}
               onClick={() => setIsFocusSidebarOpen((v) => !v)}
-              aria-label={isFocusSidebarOpen ? "ปิดแถบด้านข้าง" : "เปิดแถบด้านข้าง"}
+              aria-label={
+                isFocusSidebarOpen ? "ปิดแถบด้านข้าง" : "เปิดแถบด้านข้าง"
+              }
               title={isFocusSidebarOpen ? "ปิดแถบด้านข้าง" : "เปิดแถบด้านข้าง"}
             >
               {isFocusSidebarOpen ? (
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6" /></svg>
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="m15 18-6-6 6-6" />
+                </svg>
               ) : (
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="18" x2="21" y2="18" /></svg>
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <line x1="3" y1="12" x2="21" y2="12" />
+                  <line x1="3" y1="6" x2="21" y2="6" />
+                  <line x1="3" y1="18" x2="21" y2="18" />
+                </svg>
               )}
             </button>
             <aside className="focus-sidebar surface-card">
               <div className="sidebar-header">
                 <h2 className="sidebar-title">คิวผู้เล่น</h2>
-                <span className="count-badge">
-                  {visiblePlayers.length}
-                </span>
+                <span className="count-badge">{visiblePlayers.length}</span>
               </div>
 
               <div className="sidebar-scroll-area">
@@ -2472,17 +2447,15 @@ function App() {
 
                       return (
                         <li
-                          className={`player-chip ${isCurrent ? "is-current" : ""} ${isEliminated ? "is-out" : ""
-                            }`}
+                          className={`player-chip ${isCurrent ? "is-current" : ""
+                            } ${isEliminated ? "is-out" : ""}`}
                           key={player.id}
                         >
                           <strong className="sidebar-player-name">
                             {player.name}
                           </strong>
                           {isCurrent && (
-                            <span className="player-chip-current">
-                              ตอนนี้
-                            </span>
+                            <span className="player-chip-current">ตอนนี้</span>
                           )}
                           {isEliminated && (
                             <span className="player-chip-out-label">
@@ -2496,781 +2469,877 @@ function App() {
                 </section>
               </div>
             </aside>
-            <div className="focus-main-grid">
-              {isChallengeActive ? (
-                <section
-                  className="surface-card board-card challenge-standalone-card"
-                  aria-label="ชาเลนจ์"
-                >
-                  <div className="panel-header compact challenge-header-unified">
-                    <h2 className="challenge-title">ชาเลนจ์คำไม่เชื่อม</h2>
-                  </div>
+          </>
+        )}
+      <main className="app-shell">
 
-                  {isChallengeSelecting && (
-                    <div className="challenge-content">
-                      <div className="challenge-field-grid">
-                        <div className="challenge-field">
-                          <ComboBox<ChallengeChallengerOption>
-                            id="challenge-challenger-search"
-                            className="challenge-challenger-combobox"
-                            allowsEmptyCollection
-                            defaultFilter={matchesChallengeTypeaheadCandidate}
-                            inputValue={challengeChallengerSearchValue}
-                            menuTrigger="focus"
-                            onInputChange={handleChallengeChallengerSearchChange}
-                            onSelectionChange={handleChallengeChallengerChange}
-                            selectedKey={challengeState?.challengerPlayerId ?? null}
-                          >
-                            <Label>พิมพ์ชื่อผู้ชาเลนจ์</Label>
-                            <Input
-                              ref={challengeChallengerInputRef}
-                              className="text-input challenge-search-input"
-                              onKeyDown={handleChallengeChallengerInputKeyDown}
-                              placeholder="พิมพ์ชื่อผู้ชาเลนจ์"
-                              autoComplete="off"
-                            />
-                            <Popover className="challenge-challenger-popover">
-                              <ChallengeChallengerListBox
-                                activeSuggestionId={preferredChallengeChallengerId}
-                                options={challengeChallengerOptions}
+        {gameState.phase === "setup" && (
+          <section className="phase-screen setup-screen">
+            <div className="surface-card setup-card">
+              <div className="panel-header setup-header">
+                <div className="setup-copy">
+                  <h1>จัดรายชื่อผู้เล่น</h1>
+                </div>
+                <div className="setup-tooltip">
+                  <button
+                    type="button"
+                    className="ghost-button symbol-button setup-help-button"
+                    aria-label="วิธีจัดรายชื่อผู้เล่น"
+                    aria-describedby="setup-help-tooltip"
+                    title="วิธีจัดรายชื่อผู้เล่น"
+                  >
+                    <HelpCircle size={18} aria-hidden="true" />
+                  </button>
+                  <div
+                    className="setup-tooltip-panel"
+                    id="setup-help-tooltip"
+                    role="tooltip"
+                  >
+                    <ul className="setup-tooltip-list">
+                      <li>Alt+ArrowUp/Down: ย้ายบรรทัด</li>
+                      <li>Shift+Alt+ArrowUp/Down: ทำซ้ำบรรทัด</li>
+                      <li>Esc: ไปที่ปุ่มยืนยัน</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+
+              <p className="sr-only">
+                พิมพ์หรือวางรายชื่อผู้เล่น หนึ่งบรรทัดต่อชื่อ ใช้ Alt+Arrow
+                เพื่อย้ายบรรทัด Shift+Alt+Arrow เพื่อทำซ้ำบรรทัด และ Esc
+                เพื่อออกจากช่องพิมพ์ แล้วกดยืนยันผู้เล่น
+              </p>
+
+              <div className="player-editor-wrapper">
+                <CodeMirror
+                  basicSetup={{
+                    lineNumbers: true,
+                    highlightActiveLineGutter: true,
+                    highlightActiveLine: false,
+                    foldGutter: false,
+                    dropCursor: false,
+                    allowMultipleSelections: false,
+                    indentOnInput: false,
+                    bracketMatching: false,
+                    closeBrackets: false,
+                    autocompletion: false,
+                    rectangularSelection: false,
+                    crosshairCursor: false,
+                    highlightSelectionMatches: false,
+                    searchKeymap: false,
+                  }}
+                  extensions={playerEditorExtensions}
+                  value={playerNamesTextarea}
+                  onChange={setPlayerNamesTextarea}
+                  placeholder="พิมพ์หรือวางรายชื่อผู้เล่น (หนึ่งบรรทัดต่อชื่อ)"
+                  autoFocus
+                />
+              </div>
+
+              <div className="setup-footer">
+                <p
+                  className={`validation-note ${validation.canStart ? "is-ready" : ""
+                    }`}
+                >
+                  {validation.playerCount < 2
+                    ? "ต้องมีผู้เล่นอย่างน้อย 2 คน"
+                    : `พร้อมยืนยันผู้เล่น ${validation.playerCount} คน`}
+                </p>
+
+                <button
+                  type="button"
+                  className="primary-button start-button"
+                  disabled={!validation.canStart}
+                  onClick={handleConfirmPlayers}
+                  aria-label="ยืนยันผู้เล่น"
+                  title="ยืนยันผู้เล่น"
+                >
+                  <span className="button-copy">ยืนยันผู้เล่น</span>
+                </button>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {playScreenPlayer &&
+          (gameState.phase === "playing" || isAwaitingRoundSummary) && (
+            <section className="phase-screen play-screen">
+              <div className="focus-main-grid">
+                {isChallengeActive ? (
+                  <section
+                    className="surface-card board-card challenge-standalone-card"
+                    aria-label="ชาเลนจ์"
+                  >
+                    <div className="panel-header compact challenge-header-unified">
+                      <h2 className="challenge-title">ชาเลนจ์คำไม่เชื่อม</h2>
+                    </div>
+
+                    {isChallengeSelecting && (
+                      <div className="challenge-content">
+                        <div className="challenge-field-grid">
+                          <div className="challenge-field">
+                            <ComboBox<ChallengeChallengerOption>
+                              id="challenge-challenger-search"
+                              className="challenge-challenger-combobox"
+                              allowsEmptyCollection
+                              defaultFilter={matchesChallengeTypeaheadCandidate}
+                              inputValue={challengeChallengerSearchValue}
+                              menuTrigger="focus"
+                              onInputChange={handleChallengeChallengerSearchChange}
+                              onSelectionChange={handleChallengeChallengerChange}
+                              selectedKey={challengeState?.challengerPlayerId ?? null}
+                            >
+                              <Label>พิมพ์ชื่อผู้ชาเลนจ์</Label>
+                              <Input
+                                ref={challengeChallengerInputRef}
+                                className="text-input challenge-search-input"
+                                onKeyDown={handleChallengeChallengerInputKeyDown}
+                                placeholder="พิมพ์ชื่อผู้ชาเลนจ์"
+                                autoComplete="off"
                               />
-                            </Popover>
-                          </ComboBox>
+                              <Popover className="challenge-challenger-popover">
+                                <ChallengeChallengerListBox
+                                  activeSuggestionId={preferredChallengeChallengerId}
+                                  options={challengeChallengerOptions}
+                                />
+                              </Popover>
+                            </ComboBox>
+                          </div>
+
+                          <div className="challenge-field">
+                            <label id="challenged-answer-label">
+                              คำที่ถูกชาเลนจ์
+                            </label>
+                            <div className="challenge-answer-pills">
+                              {[...challengeableAnswers]
+                                .reverse()
+                                .map((answerRecord: AnswerRecord) => (
+                                  <button
+                                    key={answerRecord.id}
+                                    type="button"
+                                    className={`answer-pill ${challengeState?.challengedAnswerId ===
+                                      answerRecord.id
+                                      ? "is-selected"
+                                      : ""
+                                      }`}
+                                    onClick={() => {
+                                      applyEphemeralGameUpdate((current) =>
+                                        updateChallengeSelection(current, {
+                                          challengedAnswerId: answerRecord.id,
+                                        }),
+                                      );
+                                    }}
+                                  >
+                                    <span className="pill-word">
+                                      {answerRecord.answer}
+                                    </span>
+                                  </button>
+                                ))}
+                            </div>
+                            {challengeableAnswers.length === 0 && (
+                              <div className="empty-note">
+                                ไม่มีคำที่สามารถชาเลนจ์ได้
+                              </div>
+                            )}
+                          </div>
                         </div>
 
-                        <div className="challenge-field">
-                          <label id="challenged-answer-label">
-                            คำที่ถูกชาเลนจ์
-                          </label>
-                          <div className="challenge-answer-pills">
-                            {[...challengeableAnswers]
-                              .reverse()
-                              .map((answerRecord: AnswerRecord) => (
-                                <button
-                                  key={answerRecord.id}
-                                  type="button"
-                                  className={`answer-pill ${challengeState?.challengedAnswerId ===
-                                    answerRecord.id
-                                    ? "is-selected"
-                                    : ""
-                                    }`}
-                                  onClick={() => {
-                                    applyEphemeralGameUpdate((current) =>
-                                      updateChallengeSelection(current, {
-                                        challengedAnswerId: answerRecord.id,
-                                      }),
-                                    );
-                                  }}
-                                >
-                                  <span className="pill-word">
-                                    {answerRecord.answer}
-                                  </span>
-                                </button>
-                              ))}
+                        <div className="action-row challenge-actions">
+                          <button
+                            type="button"
+                            className="primary-button symbol-button"
+                            onClick={() =>
+                              handleStartChallenge(
+                                preferredChallengeChallengerId ?? undefined,
+                              )
+                            }
+                            disabled={!canStartVisibleChallenge}
+                            aria-label="ยืนยันการชาเลนจ์"
+                            title="ยืนยันการชาเลนจ์"
+                          >
+                            <span className="button-copy">ยืนยันการชาเลนจ์</span>
+                          </button>
+                          <button
+                            type="button"
+                            className="secondary-button symbol-button"
+                            onClick={handleCancelChallenge}
+                            aria-label="ยกเลิกการชาเลนจ์"
+                            title="ยกเลิกการชาเลนจ์"
+                          >
+                            <span className="button-copy">ยกเลิก</span>
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {isChallengeDebating && (
+                      <div className="challenge-content">
+                        <div className="challenge-chain">
+                          <span className="challenge-chain-prev">
+                            {selectedChallengePreviousAnswer?.answer ?? "-"}
+                          </span>
+                          <ChevronRight
+                            size={16}
+                            aria-hidden="true"
+                            className="challenge-chain-arrow"
+                          />
+                          <span className="challenge-chain-target">
+                            <span className="challenge-chain-target-word">
+                              {selectedChallengedAnswer?.answer ?? "-"}
+                            </span>
+                          </span>
+                          <span className="challenge-chain-right">
+                            <span className="challenge-chain-owner">
+                              {selectedChallengedPlayer?.name ?? "-"}
+                            </span>
+                            <span className="challenge-chain-challenger">
+                              <span className="challenge-chain-challenger-label">
+                                ถูกชาเลนจ์โดย
+                              </span>
+                              <span className="challenge-chain-challenger-name">
+                                {selectedChallenger?.name ?? "-"}
+                              </span>
+                            </span>
+                          </span>
+                        </div>
+                        <div className="challenge-debate-controls">
+                          <div className="challenge-debate-status">
+                            <p className="round-indicator">
+                              ช่วง {challengeSegmentIndex + 1}/
+                              {CHALLENGE_DEBATE_SEGMENT_COUNT}
+                            </p>
+                            <div
+                              className={`turn-timer-pill ${timerTone}`}
+                              aria-live="polite"
+                            >
+                              <span>เวลา</span>
+                              <strong>{formatSeconds(challengeTimeLeftMs)}s</strong>
+                            </div>
+                            <span className="challenge-debate-speaker">
+                              <strong>{challengeSpeakerName}</strong>
+                              <span className="challenge-debate-speaker-role">
+                                {challengeState?.currentSpeaker === "challenger"
+                                  ? "(ผู้ชาเลนจ์)"
+                                  : "(ผู้ถูกชาเลนจ์)"}
+                              </span>
+                            </span>
                           </div>
-                          {challengeableAnswers.length === 0 && (
-                            <div className="empty-note">
-                              ไม่มีคำที่สามารถชาเลนจ์ได้
+                          {challengeState?.segmentAwaitingContinue ? (
+                            <div className="action-row challenge-actions">
+                              <button
+                                ref={challengeResumeButtonRef}
+                                type="button"
+                                className="primary-button"
+                                onClick={handleResumeChallengeDebate}
+                                onKeyDown={handleResumeChallengeDebateKeyDown}
+                                aria-label={
+                                  challengeSegmentIndex === 0 ? "เริ่ม" : "ต่อ"
+                                }
+                                title={
+                                  challengeSegmentIndex === 0 ? "เริ่ม" : "ต่อ"
+                                }
+                              >
+                                <span className="button-copy">
+                                  {challengeSegmentIndex === 0 ? "เริ่ม" : "ต่อ"}
+                                </span>
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="action-row challenge-actions">
+                              <button
+                                type="button"
+                                className="secondary-button symbol-button"
+                                onClick={handleAdvanceChallengeDebate}
+                                aria-label="จบช่วง"
+                                title="จบช่วง"
+                              >
+                                <span className="button-copy">จบช่วง</span>
+                              </button>
                             </div>
                           )}
                         </div>
                       </div>
+                    )}
 
-                      <div className="action-row challenge-actions">
-                        <button
-                          type="button"
-                          className="primary-button symbol-button"
-                          onClick={() =>
-                            handleStartChallenge(
-                              preferredChallengeChallengerId ?? undefined,
-                            )
-                          }
-                          disabled={!canStartVisibleChallenge}
-                          aria-label="ยืนยันการชาเลนจ์"
-                          title="ยืนยันการชาเลนจ์"
-                        >
-                          <span className="button-copy">ยืนยันการชาเลนจ์</span>
-                        </button>
-                        <button
-                          type="button"
-                          className="secondary-button symbol-button"
-                          onClick={handleCancelChallenge}
-                          aria-label="ยกเลิกการชาเลนจ์"
-                          title="ยกเลิกการชาเลนจ์"
-                        >
-                          <span className="button-copy">ยกเลิก</span>
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {isChallengeDebating && (
-                    <div className="challenge-content">
-                      <div className="challenge-chain">
-                        <span className="challenge-chain-prev">
-                          {selectedChallengePreviousAnswer?.answer ?? "-"}
-                        </span>
-                        <ChevronRight
-                          size={16}
-                          aria-hidden="true"
-                          className="challenge-chain-arrow"
-                        />
-                        <span className="challenge-chain-target">
-                          <span className="challenge-chain-target-word">
-                            {selectedChallengedAnswer?.answer ?? "-"}
+                    {isChallengeJudging && (
+                      <div className="challenge-content">
+                        <div className="challenge-chain">
+                          <span className="challenge-chain-prev">
+                            {selectedChallengePreviousAnswer?.answer ?? "-"}
                           </span>
-                        </span>
-                        <span className="challenge-chain-right">
-                          <span className="challenge-chain-owner">
-                            {selectedChallengedPlayer?.name ?? "-"}
-                          </span>
-                          <span className="challenge-chain-challenger">
-                            <span className="challenge-chain-challenger-label">
-                              ถูกชาเลนจ์โดย
-                            </span>
-                            <span className="challenge-chain-challenger-name">
-                              {selectedChallenger?.name ?? "-"}
+                          <ChevronRight
+                            size={16}
+                            aria-hidden="true"
+                            className="challenge-chain-arrow"
+                          />
+                          <span className="challenge-chain-target">
+                            <span className="challenge-chain-target-word">
+                              {selectedChallengedAnswer?.answer ?? "-"}
                             </span>
                           </span>
-                        </span>
-                      </div>
-                      <div className="challenge-debate-controls">
-                        <div className="challenge-debate-status">
-                          <p className="round-indicator">
-                            ช่วง {challengeSegmentIndex + 1}/
-                            {CHALLENGE_DEBATE_SEGMENT_COUNT}
-                          </p>
-                          <div
-                            className={`turn-timer-pill ${timerTone}`}
-                            aria-live="polite"
-                          >
-                            <span>เวลา</span>
-                            <strong>{formatSeconds(challengeTimeLeftMs)}s</strong>
-                          </div>
-                          <span className="challenge-debate-speaker">
-                            <strong>{challengeSpeakerName}</strong>
-                            <span className="challenge-debate-speaker-role">
-                              {challengeState?.currentSpeaker === "challenger"
-                                ? "(ผู้ชาเลนจ์)"
-                                : "(ผู้ถูกชาเลนจ์)"}
+                          <span className="challenge-chain-right">
+                            <span className="challenge-chain-owner">
+                              {selectedChallengedPlayer?.name ?? "-"}
+                            </span>
+                            <span className="challenge-chain-challenger">
+                              <span className="challenge-chain-challenger-label">
+                                ถูกชาเลนจ์โดย
+                              </span>
+                              <span className="challenge-chain-challenger-name">
+                                {selectedChallenger?.name ?? "-"}
+                              </span>
                             </span>
                           </span>
                         </div>
-                        {challengeState?.segmentAwaitingContinue ? (
-                          <div className="action-row challenge-actions">
-                            <button
-                              ref={challengeResumeButtonRef}
-                              type="button"
-                              className="primary-button"
-                              onClick={handleResumeChallengeDebate}
-                              onKeyDown={handleResumeChallengeDebateKeyDown}
-                              aria-label={
-                                challengeSegmentIndex === 0 ? "เริ่ม" : "ต่อ"
-                              }
-                              title={
-                                challengeSegmentIndex === 0 ? "เริ่ม" : "ต่อ"
-                              }
-                            >
-                              <span className="button-copy">
-                                {challengeSegmentIndex === 0 ? "เริ่ม" : "ต่อ"}
-                              </span>
-                            </button>
-                          </div>
+
+                        <div className="action-row challenge-actions">
+                          <button
+                            ref={challengeDecisionButtonRef}
+                            type="button"
+                            className="primary-button symbol-button"
+                            onClick={() => handleChallengeDecision("connects")}
+                            onKeyDown={(event) =>
+                              handleChallengeDecisionKeyDown("connects", event)
+                            }
+                            aria-label="ตัดสินว่าเชื่อม"
+                            title="ตัดสินว่าเชื่อม"
+                          >
+                            <span className="button-copy">เชื่อม</span>
+                          </button>
+                          <button
+                            type="button"
+                            className="secondary-button symbol-button"
+                            onClick={() => handleChallengeDecision("not_connects")}
+                            onKeyDown={(event) =>
+                              handleChallengeDecisionKeyDown("not_connects", event)
+                            }
+                            aria-label="ตัดสินว่าไม่เชื่อม"
+                            title="ตัดสินว่าไม่เชื่อม"
+                          >
+                            <span className="button-copy">ไม่เชื่อม</span>
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </section>
+                ) : (
+                  <main className="focus-stage">
+                    {!isAwaitingRoundSummary && (
+                      <div className="stage-player-sequence">
+                        <span className="player-name current">
+                          {isGmOpeningWordMode
+                            ? "ผู้คุมเกม"
+                            : playScreenPlayer?.name}
+                        </span>
+                        <ChevronRight className="sequence-arrow" size={24} />
+                        <span className="player-name next">
+                          {isGmOpeningWordMode
+                            ? playScreenPlayer?.name
+                            : nextPlayer?.name}
+                        </span>
+                      </div>
+                    )}
+
+                    {isPausedTurn && gameState.isEliminationPause && latestEliminatedPlayer ? (
+                      <div className="stage-content is-elimination">
+                        <div className="stage-word-wrapper">
+                          <h1 className="stage-word">{latestEliminatedPlayer.name} ตกรอบ</h1>
+                        </div>
+                        <div className="stage-instruction">
+                          {renderEliminationReasonDetail(latestEliminatedPlayer)}
+                        </div>
+                      </div>
+                    ) : isAwaitingRoundSummary && winner ? (
+                      <div className="stage-content is-winner">
+                        <div className="stage-word-wrapper">
+                          <h1 className="stage-word">{winner.name} ชนะรอบนี้!</h1>
+                        </div>
+                        <p className="stage-instruction">
+                          ยอดเยี่ยมมาก! เตรียมตัวดูคะแนนสรุปรอบ
+                        </p>
+                      </div>
+                    ) : lastAnswer && gameState.phase === "playing" ? (
+                      <div className="stage-content">
+                        <div className="stage-word-wrapper">
+                          <h1 className="stage-word">{lastAnswer}</h1>
+                        </div>
+                        <p className="stage-instruction">
+                          พูดคำนามที่เชื่อมกับคำด้านบน
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="stage-placeholder">
+                        {isGmOpeningWordMode ? (
+                          <p className="stage-instruction">รอผู้คุมเกมกำหนดคำแรก</p>
+                        ) : isAwaitingFirstTurnStart ? (
+                          <p className="stage-instruction">เตรียมพร้อมเริ่มรอบแรก</p>
                         ) : (
-                          <div className="action-row challenge-actions">
-                            <button
-                              type="button"
-                              className="secondary-button symbol-button"
-                              onClick={handleAdvanceChallengeDebate}
-                              aria-label="จบช่วง"
-                              title="จบช่วง"
-                            >
-                              <span className="button-copy">จบช่วง</span>
-                            </button>
-                          </div>
+                          <p className="stage-instruction">ต้อนรับสู่เกมคำต่อคำ</p>
                         )}
                       </div>
-                    </div>
-                  )}
-
-                  {isChallengeJudging && (
-                    <div className="challenge-content">
-                      <div className="challenge-chain">
-                        <span className="challenge-chain-prev">
-                          {selectedChallengePreviousAnswer?.answer ?? "-"}
-                        </span>
-                        <ChevronRight
-                          size={16}
-                          aria-hidden="true"
-                          className="challenge-chain-arrow"
-                        />
-                        <span className="challenge-chain-target">
-                          <span className="challenge-chain-target-word">
-                            {selectedChallengedAnswer?.answer ?? "-"}
-                          </span>
-                        </span>
-                        <span className="challenge-chain-right">
-                          <span className="challenge-chain-owner">
-                            {selectedChallengedPlayer?.name ?? "-"}
-                          </span>
-                          <span className="challenge-chain-challenger">
-                            <span className="challenge-chain-challenger-label">
-                              ถูกชาเลนจ์โดย
-                            </span>
-                            <span className="challenge-chain-challenger-name">
-                              {selectedChallenger?.name ?? "-"}
-                            </span>
-                          </span>
-                        </span>
-                      </div>
-
-                      <div className="action-row challenge-actions">
-                        <button
-                          ref={challengeDecisionButtonRef}
-                          type="button"
-                          className="primary-button symbol-button"
-                          onClick={() => handleChallengeDecision("connects")}
-                          onKeyDown={(event) =>
-                            handleChallengeDecisionKeyDown("connects", event)
-                          }
-                          aria-label="ตัดสินว่าเชื่อม"
-                          title="ตัดสินว่าเชื่อม"
-                        >
-                          <span className="button-copy">เชื่อม</span>
-                        </button>
-                        <button
-                          type="button"
-                          className="secondary-button symbol-button"
-                          onClick={() => handleChallengeDecision("not_connects")}
-                          onKeyDown={(event) =>
-                            handleChallengeDecisionKeyDown("not_connects", event)
-                          }
-                          aria-label="ตัดสินว่าไม่เชื่อม"
-                          title="ตัดสินว่าไม่เชื่อม"
-                        >
-                          <span className="button-copy">ไม่เชื่อม</span>
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </section>
-              ) : (
-                <main className="focus-stage">
-                  {!isAwaitingRoundSummary && (
-                    <div className="stage-player-sequence">
-                      <span className="player-name current">
-                        {isGmOpeningWordMode
-                          ? "ผู้คุมเกม"
-                          : playScreenPlayer?.name}
-                      </span>
-                      <ChevronRight className="sequence-arrow" size={24} />
-                      <span className="player-name next">
-                        {isGmOpeningWordMode
-                          ? playScreenPlayer?.name
-                          : nextPlayer?.name}
-                      </span>
-                    </div>
-                  )}
-
-                  {isPausedTurn && gameState.isEliminationPause && latestEliminatedPlayer ? (
-                    <div className="stage-content is-elimination">
-                      <div className="stage-word-wrapper">
-                        <h1 className="stage-word">{latestEliminatedPlayer.name} ตกรอบ</h1>
-                      </div>
-                      <div className="stage-instruction">
-                        {renderEliminationReasonDetail(latestEliminatedPlayer)}
-                      </div>
-                    </div>
-                  ) : isAwaitingRoundSummary && winner ? (
-                    <div className="stage-content is-winner">
-                      <div className="stage-word-wrapper">
-                        <h1 className="stage-word">{winner.name} ชนะรอบนี้!</h1>
-                      </div>
-                      <p className="stage-instruction">
-                        ยอดเยี่ยมมาก! เตรียมตัวดูคะแนนสรุปรอบ
-                      </p>
-                    </div>
-                  ) : lastAnswer && gameState.phase === "playing" ? (
-                    <div className="stage-content">
-                      <div className="stage-word-wrapper">
-                        <h1 className="stage-word">{lastAnswer}</h1>
-                      </div>
-                      <p className="stage-instruction">
-                        พูดคำนามที่เชื่อมกับคำด้านบน
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="stage-placeholder">
-                      {isGmOpeningWordMode ? (
-                        <p className="stage-instruction">รอผู้คุมเกมกำหนดคำแรก</p>
-                      ) : isAwaitingFirstTurnStart ? (
-                        <p className="stage-instruction">เตรียมพร้อมเริ่มรอบแรก</p>
-                      ) : (
-                        <p className="stage-instruction">ต้อนรับสู่เกมคำต่อคำ</p>
-                      )}
-                    </div>
-                  )}
-                </main>
-              )}
-            </div>
-            <section className="surface-card play-main-card">
-              <form className="answer-panel" onSubmit={handleSubmitTurn}>
-                <div className="form-copy">
-                  <h1 className="sr-only">ถึงตา {playScreenPlayer.name}</h1>
-                  <div className="answer-meta">
-                    <p className="round-indicator">
-                      รอบ {currentMatchRound}/{MATCH_ROUNDS_PER_MATCH}
-                    </p>
-                    {gameState.phase === "playing" && (
-                      <div className="action-row-toolbar">
-                        <button
-                          type="button"
-                          className="ghost-button challenge-open-button"
-                          onClick={handleOpenChallenge}
-                          disabled={!canOpenChallenge}
-                          aria-label="ชาเลนจ์"
-                          title="ชาเลนจ์ (F2)"
-                        >
-                          ชาเลนจ์
-                        </button>
-                      </div>
                     )}
-                    {(gameState.phase === "playing" ||
-                      gameState.phase === "finished") && (
-                        <div
-                          className="history-toolbar"
-                          role="group"
-                          aria-label="ประวัติการเล่น"
-                        >
+                  </main>
+                )}
+              </div>
+              <section className="surface-card play-main-card">
+                <form className="answer-panel" onSubmit={handleSubmitTurn}>
+                  <div className="form-copy">
+                    <h1 className="sr-only">ถึงตา {playScreenPlayer.name}</h1>
+                    <div className="answer-meta">
+                      <p className="round-indicator">
+                        รอบ {currentMatchRound}/{MATCH_ROUNDS_PER_MATCH}
+                      </p>
+                      {gameState.phase === "playing" && (
+                        <div className="action-row-toolbar">
                           <button
                             type="button"
-                            className="ghost-button history-action-button"
-                            onClick={handleUndo}
-                            disabled={!canUndoGameHistory || isSubmittingTurn}
-                            aria-label="ย้อนกลับ"
-                            title="ย้อนกลับ (Ctrl/Cmd+Z)"
+                            className="ghost-button challenge-open-button"
+                            onClick={handleOpenChallenge}
+                            disabled={!canOpenChallenge}
+                            aria-label="ชาเลนจ์"
+                            title="ชาเลนจ์ (F2)"
                           >
-                            <svg
-                              width="18"
-                              height="18"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            >
-                              <path d="M3 10h10a5 5 0 0 1 5 5v2" />
-                              <polyline points="3 10 7 6" />
-                              <polyline points="3 10 7 14" />
-                            </svg>
+                            ชาเลนจ์
                           </button>
-                          <button
-                            type="button"
-                            className="ghost-button history-action-button"
-                            onClick={handleRedo}
-                            disabled={!canRedoGameHistory || isSubmittingTurn}
-                            aria-label="ทำซ้ำ"
-                            title="ทำซ้ำ (Shift+Ctrl/Cmd+Z)"
-                          >
-                            <svg
-                              width="18"
-                              height="18"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            >
-                              <path d="M21 10H11a5 5 0 0 0-5 5v2" />
-                              <polyline points="21 10 17 6" />
-                              <polyline points="21 10 17 14" />
-                            </svg>
-                          </button>
-                          <SettingsDropdown
-                            isGmOpeningEnabled={isGmOpeningWordEnabled}
-                            isSyllableDebugVisible={isSyllableDebugVisible}
-                            onToggleGmOpening={handleToggleGmOpeningWord}
-                            onToggleSyllableDebug={() =>
-                              setIsSyllableDebugVisible((current) => !current)
-                            }
-                            isSubmittingTurn={isSubmittingTurn}
-                          />
                         </div>
                       )}
-                  </div>
+                      {(gameState.phase === "playing" ||
+                        gameState.phase === "finished") && (
+                          <div
+                            className="history-toolbar"
+                            role="group"
+                            aria-label="ประวัติการเล่น"
+                          >
+                            <button
+                              type="button"
+                              className="ghost-button history-action-button"
+                              onClick={handleUndo}
+                              disabled={!canUndoGameHistory || isSubmittingTurn}
+                              aria-label="ย้อนกลับ"
+                              title="ย้อนกลับ (Ctrl/Cmd+Z)"
+                            >
+                              <svg
+                                width="18"
+                                height="18"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              >
+                                <path d="M3 10h10a5 5 0 0 1 5 5v2" />
+                                <polyline points="3 10 7 6" />
+                                <polyline points="3 10 7 14" />
+                              </svg>
+                            </button>
+                            <button
+                              type="button"
+                              className="ghost-button history-action-button"
+                              onClick={handleRedo}
+                              disabled={!canRedoGameHistory || isSubmittingTurn}
+                              aria-label="ทำซ้ำ"
+                              title="ทำซ้ำ (Shift+Ctrl/Cmd+Z)"
+                            >
+                              <svg
+                                width="18"
+                                height="18"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              >
+                                <path d="M21 10H11a5 5 0 0 0-5 5v2" />
+                                <polyline points="21 10 17 6" />
+                                <polyline points="21 10 17 14" />
+                              </svg>
+                            </button>
+                            <SettingsDropdown
+                              isGmOpeningEnabled={isGmOpeningWordEnabled}
+                              isSyllableDebugVisible={isSyllableDebugVisible}
+                              onToggleGmOpening={handleToggleGmOpeningWord}
+                              onToggleSyllableDebug={() =>
+                                setIsSyllableDebugVisible((current) => !current)
+                              }
+                              isSubmittingTurn={isSubmittingTurn}
+                            />
+                          </div>
+                        )}
+                    </div>
 
 
-                  {segmentationError && (
-                    <p className="segmentation-error" role="alert">
-                      {segmentationError}
-                    </p>
-                  )}
-                  <label htmlFor="current-answer" className="sr-only">
-                    {answerInputLabel}
-                  </label>
-                  <p className="sr-only">
-                    {isChallengeSelecting
-                      ? ""
-                      : isChallengeDebating
-                        ? challengeNote
-                        : isChallengeJudging
-                          ? "ครบสองรอบโต้วาทีแล้ว เลือกผลตัดสิน"
-                          : isAwaitingRoundSummary
-                            ? `${eliminatedPlayerSummary} กดสรุปรอบเพื่อดูตารางคะแนนของ ${playScreenPlayer.name}`
-                            : isGmOpeningWordMode
-                              ? `ผู้คุมเกมพิมพ์คำแรกของรอบ แล้วกดเริ่มด้วยคำนี้เพื่อเริ่มจับเวลา ${playScreenPlayer.name}`
-                              : isAwaitingFirstTurnStart
-                                ? `ยืนยันผู้เล่นแล้ว กดเริ่มรอบแรกเพื่อเริ่มจับเวลา ${playScreenPlayer.name}`
-                                : gameState.isHistoryRestorePause
-                                  ? "ย้อนประวัติสำเร็จ รอเริ่มจับเวลาใหม่"
-                                  : isPausedTurn
-                                    ? getPausedTurnInstructions(
-                                      latestEliminatedPlayer,
-                                      playScreenPlayer.name,
-                                    )
-                                    : "เมื่อเริ่มพิมพ์ตัวแรกทันเวลาแล้ว ระบบจะล็อกคิวไว้ให้ผู้เล่นคนนี้จนกว่าจะส่งคำ"}
-                  </p>
-                  {gameState.phase === "playing" &&
-                    canOpenChallenge &&
-                    !isChallengeActive && (
-                      <p className="sr-only">F2 เพื่อเปิดชาเลนจ์</p>
+                    {segmentationError && (
+                      <p className="segmentation-error" role="alert">
+                        {segmentationError}
+                      </p>
                     )}
-                  {isChallengeSelecting && (
+                    <label htmlFor="current-answer" className="sr-only">
+                      {answerInputLabel}
+                    </label>
                     <p className="sr-only">
-                      พิมพ์ชื่อเพื่อกรองและเลือกผู้ชาเลนจ์
-                      กดลูกศรลงเพื่อไปที่รายการ Enter เพื่อเริ่มทันที Esc
-                      เพื่อยกเลิก
+                      {isChallengeSelecting
+                        ? ""
+                        : isChallengeDebating
+                          ? challengeNote
+                          : isChallengeJudging
+                            ? "ครบสองรอบโต้วาทีแล้ว เลือกผลตัดสิน"
+                            : isAwaitingRoundSummary
+                              ? `${eliminatedPlayerSummary} กดสรุปรอบเพื่อดูตารางคะแนนของ ${playScreenPlayer.name}`
+                              : isGmOpeningWordMode
+                                ? `ผู้คุมเกมพิมพ์คำแรกของรอบ แล้วกดเริ่มด้วยคำนี้เพื่อเริ่มจับเวลา ${playScreenPlayer.name}`
+                                : isAwaitingFirstTurnStart
+                                  ? `ยืนยันผู้เล่นแล้ว กดเริ่มรอบแรกเพื่อเริ่มจับเวลา ${playScreenPlayer.name}`
+                                  : gameState.isHistoryRestorePause
+                                    ? "ย้อนประวัติสำเร็จ รอเริ่มจับเวลาใหม่"
+                                    : isPausedTurn
+                                      ? getPausedTurnInstructions(
+                                        latestEliminatedPlayer,
+                                        playScreenPlayer.name,
+                                      )
+                                      : "เมื่อเริ่มพิมพ์ตัวแรกทันเวลาแล้ว ระบบจะล็อกคิวไว้ให้ผู้เล่นคนนี้จนกว่าจะส่งคำ"}
                     </p>
-                  )}
-                  {isChallengeDebating && (
-                    <p className="sr-only">Enter เพื่อข้ามช่วงโต้วาที</p>
-                  )}
-                  {requiresPrimaryAction && !isGmOpeningWordMode && (
-                    <span className="sr-only">ยังไม่เริ่มจับเวลา</span>
-                  )}
-                </div>
-
-                <div className="answer-controls">
-                  <input
-                    ref={answerInputRef}
-                    id="current-answer"
-                    className={`text-input answer-input ${isGmOpeningWordMode ? "is-gm-opening" : ""
-                      }`}
-                    type="text"
-                    value={editableInputValue}
-                    onChange={
-                      isGmOpeningWordMode
-                        ? handleGmOpeningWordChange
-                        : handleAnswerChange
-                    }
-                    placeholder={answerInputPlaceholder}
-                    autoComplete="off"
-                    disabled={
-                      isChallengeActive ||
-                      isSubmittingTurn ||
-                      (!isGmOpeningWordMode && requiresPrimaryAction)
-                    }
-                  />
-                  <div
-                    className={`turn-timer-pill ${timerTone} ${isGmOpeningWordMode ? "is-gm-opening" : ""
-                      }`}
-                    aria-live="polite"
-                    aria-label={displayedTimerAriaLabel}
-                  >
-                    <span>เวลา</span>
-                    <strong>{displayedTimerValue}</strong>
-                  </div>
-                  {isChallengeActive ? (
-                    <button
-                      type="button"
-                      className="secondary-button symbol-button start-turn-button"
-                      disabled
-                      aria-label="กำลังชาเลนจ์"
-                      title="กำลังชาเลนจ์"
-                    >
-                      <span className="button-copy">กำลังชาเลนจ์</span>
-                    </button>
-                  ) : isAwaitingRoundSummary ? (
-                    <>
-                      {gameState.isEliminationPause ? (
-                        <button
-                          type="button"
-                          className="primary-button start-turn-button"
-                          onClick={handleStartFirstTurn}
-                          aria-label="ประกาศผู้ชนะ"
-                          title="ประกาศผู้ชนะ"
-                        >
-                          <span className="button-copy">ประกาศผู้ชนะ</span>
-                        </button>
-                      ) : (
-                        <button
-                          ref={startFirstTurnButtonRef}
-                          type="button"
-                          className="primary-button start-turn-button"
-                          onClick={handleContinueToRoundSummary}
-                          onKeyDown={handleStartFirstTurnKeyDown}
-                          aria-label="สรุปรอบ"
-                          title="สรุปรอบ"
-                        >
-                          <span className="button-copy">สรุปรอบ</span>
-                        </button>
+                    {gameState.phase === "playing" &&
+                      canOpenChallenge &&
+                      !isChallengeActive && (
+                        <p className="sr-only">F2 เพื่อเปิดชาเลนจ์</p>
                       )}
-                    </>
-                  ) : isGmOpeningWordMode ? (
-                    <button
-                      type="submit"
-                      className="primary-button start-turn-button gm-opening-submit-button"
-                      disabled={!canSubmitGmOpeningWord}
-                      aria-label="เริ่มด้วยคำนี้"
-                      title="เริ่มด้วยคำนี้"
-                    >
-                      <span className="button-copy">เริ่มด้วยคำนี้</span>
-                    </button>
-                  ) : requiresManualTurnStart ? (
-                    <button
-                      ref={startFirstTurnButtonRef}
-                      type="button"
-                      className="primary-button start-turn-button"
-                      onClick={handleStartFirstTurn}
-                      onKeyDown={handleStartFirstTurnKeyDown}
-                      aria-label={
-                        isAwaitingFirstTurnStart
-                          ? "เริ่มรอบแรก"
-                          : "เริ่มตาถัดไป"
+                    {isChallengeSelecting && (
+                      <p className="sr-only">
+                        พิมพ์ชื่อเพื่อกรองและเลือกผู้ชาเลนจ์
+                        กดลูกศรลงเพื่อไปที่รายการ Enter เพื่อเริ่มทันที Esc
+                        เพื่อยกเลิก
+                      </p>
+                    )}
+                    {isChallengeDebating && (
+                      <p className="sr-only">Enter เพื่อข้ามช่วงโต้วาที</p>
+                    )}
+                    {requiresPrimaryAction && !isGmOpeningWordMode && (
+                      <span className="sr-only">ยังไม่เริ่มจับเวลา</span>
+                    )}
+                  </div>
+
+                  <div className="answer-controls">
+                    <input
+                      ref={answerInputRef}
+                      id="current-answer"
+                      className={`text-input answer-input ${isGmOpeningWordMode ? "is-gm-opening" : ""
+                        }`}
+                      type="text"
+                      value={editableInputValue}
+                      onChange={
+                        isGmOpeningWordMode
+                          ? handleGmOpeningWordChange
+                          : handleAnswerChange
                       }
-                      title={
-                        isAwaitingFirstTurnStart
-                          ? "เริ่มรอบแรก"
-                          : "เริ่มตาถัดไป"
+                      placeholder={answerInputPlaceholder}
+                      autoComplete="off"
+                      disabled={
+                        isChallengeActive ||
+                        isSubmittingTurn ||
+                        (!isGmOpeningWordMode && requiresPrimaryAction)
                       }
+                    />
+                    <div
+                      className={`turn-timer-pill ${timerTone} ${isGmOpeningWordMode ? "is-gm-opening" : ""
+                        }`}
+                      aria-live="polite"
+                      aria-label={displayedTimerAriaLabel}
                     >
-                      <span className="button-copy">
-                        {isAwaitingFirstTurnStart
-                          ? "เริ่มรอบแรก"
-                          : "เริ่มตาถัดไป"}
-                      </span>
-                    </button>
-                  ) : (
-                    <>
+                      <span>เวลา</span>
+                      <strong>{displayedTimerValue}</strong>
+                    </div>
+                    {isChallengeActive ? (
                       <button
                         type="button"
-                        className="secondary-button symbol-button compact-symbol-button"
-                        onClick={handleHostEliminateNotNoun}
-                        aria-label="คำไม่ใช่คำนาม"
-                        title="คำไม่ใช่คำนาม"
+                        className="secondary-button symbol-button start-turn-button"
+                        disabled
+                        aria-label="กำลังชาเลนจ์"
+                        title="กำลังชาเลนจ์"
                       >
-                        <X size={16} aria-hidden="true" />
+                        <span className="button-copy">กำลังชาเลนจ์</span>
                       </button>
+                    ) : isAwaitingRoundSummary ? (
+                      <>
+                        {gameState.isEliminationPause ? (
+                          <button
+                            type="button"
+                            className="primary-button start-turn-button"
+                            onClick={handleStartFirstTurn}
+                            aria-label="ประกาศผู้ชนะ"
+                            title="ประกาศผู้ชนะ"
+                          >
+                            <span className="button-copy">ประกาศผู้ชนะ</span>
+                          </button>
+                        ) : (
+                          <button
+                            ref={startFirstTurnButtonRef}
+                            type="button"
+                            className="primary-button start-turn-button"
+                            onClick={handleContinueToRoundSummary}
+                            onKeyDown={handleStartFirstTurnKeyDown}
+                            aria-label="สรุปรอบ"
+                            title="สรุปรอบ"
+                          >
+                            <span className="button-copy">สรุปรอบ</span>
+                          </button>
+                        )}
+                      </>
+                    ) : isGmOpeningWordMode ? (
                       <button
                         type="submit"
-                        className="primary-button symbol-button compact-symbol-button"
-                        disabled={!canSubmitCurrentTurn}
-                        aria-label="ถัดไป"
-                        title="ถัดไป"
+                        className="primary-button start-turn-button gm-opening-submit-button"
+                        disabled={!canSubmitGmOpeningWord}
+                        aria-label="เริ่มด้วยคำนี้"
+                        title="เริ่มด้วยคำนี้"
                       >
-                        <ChevronRight size={16} aria-hidden="true" />
+                        <span className="button-copy">เริ่มด้วยคำนี้</span>
                       </button>
-                    </>
-                  )}
-                </div>
-              </form>
-
-            </section>
-
-            {isSyllableDebugVisible && (
-              <div className="syllable-status-bar" role="status" aria-label="สถานะการแยกพยางค์">
-                <div className="status-section">
-                  <span className="status-label">กำลังพิมพ์</span>
-                  <div className="status-content">
-                    {isSegmentingCurrentInput ? (
-                      <span className="status-placeholder">รอกราดรหัส...</span>
-                    ) : currentInputSyllables.length > 0 ? (
-                      currentInputSyllables.map((s, i) => (
-                        <span key={i} className="status-pill is-current">{s}</span>
-                      ))
-                    ) : (
-                      <span className="status-placeholder">-</span>
-                    )}
-                  </div>
-                </div>
-
-                <div className="status-divider" />
-
-                <div className="status-section">
-                  <span className="status-label">พยางค์ที่บันทึก</span>
-                  <div
-                    className="status-content"
-                    ref={syllableStatusBarHistoryRef}
-                    style={{ scrollBehavior: 'smooth' }}
-                  >
-                    {gameState.usedSyllablesInRound.length > 0 ? (
-                      gameState.usedSyllablesInRound.map((s, i) => (
-                        <span key={i} className="status-pill">{s}</span>
-                      ))
-                    ) : (
-                      <span className="status-placeholder">-</span>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-          </section>
-        )}
-
-      {gameState.phase === "finished" &&
-        winner &&
-        !gameState.isAwaitingRoundSummary && (
-          <section className="phase-screen result-screen">
-            <section className="surface-card leaderboard-card result-leaderboard-card">
-              <div className="panel-header compact">
-                <div>
-                  <h2>ตารางคะแนน</h2>
-                </div>
-              </div>
-
-              <div className="leaderboard-table-wrap">
-                <table
-                  className="leaderboard-table"
-                  aria-label="ตารางคะแนนสะสม"
-                >
-                  <thead>
-                    <tr>
-                      <th scope="col">ผู้เล่น</th>
-                      <th scope="col">รอบที่ 1</th>
-                      <th scope="col">รอบที่ 2</th>
-                      <th scope="col">รอบที่ 3</th>
-                      <th scope="col">รอบที่ 4</th>
-                      <th scope="col">คะแนนรวม</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {leaderboardEntries.map((entry) => (
-                      <tr
-                        key={entry.player.id}
-                        className={`${entry.player.status === "winner" ? "is-winner" : ""} ${entry.roundPoints > 0 ? "is-awarded" : ""
-                          }`.trim()}
-                        aria-label={`คะแนนสะสมของ ${entry.player.name}`}
+                    ) : requiresManualTurnStart ? (
+                      <button
+                        ref={startFirstTurnButtonRef}
+                        type="button"
+                        className="primary-button start-turn-button"
+                        onClick={handleStartFirstTurn}
+                        onKeyDown={handleStartFirstTurnKeyDown}
+                        aria-label={
+                          isAwaitingFirstTurnStart
+                            ? "เริ่มรอบแรก"
+                            : "เริ่มตาถัดไป"
+                        }
+                        title={
+                          isAwaitingFirstTurnStart
+                            ? "เริ่มรอบแรก"
+                            : "เริ่มตาถัดไป"
+                        }
                       >
-                        <th scope="row">
-                          <div className="leaderboard-player-cell">
-                            <strong>{entry.player.name}</strong>
-                          </div>
-                        </th>
-                        {entry.roundScores.map((roundScore, roundIndex) => (
-                          <td
-                            key={`${entry.player.id}-round-${roundIndex + 1}`}
-                            className={
-                              roundIndex + 1 ===
-                                sessionState.completedRoundsInMatch
-                                ? "is-current-round"
-                                : ""
-                            }
-                          >
-                            {roundScore === null ? (
-                              "-"
-                            ) : roundScore.challengeBonus > 0 ? (
-                              <span className="leaderboard-round-score-value">
-                                {roundScore.totalPoints -
-                                  roundScore.challengeBonus >
-                                  0 ? (
-                                  <>
-                                    <span>
-                                      {roundScore.totalPoints -
-                                        roundScore.challengeBonus}
-                                    </span>{" "}
-                                  </>
-                                ) : null}
-                                <span className="leaderboard-round-bonus">
-                                  +{roundScore.challengeBonus}
-                                </span>
-                              </span>
-                            ) : (
-                              roundScore.totalPoints
-                            )}
-                          </td>
-                        ))}
-                        <td className="leaderboard-total-cell">
-                          <strong>{entry.score}</strong>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                        <span className="button-copy">
+                          {isAwaitingFirstTurnStart
+                            ? "เริ่มรอบแรก"
+                            : "เริ่มตาถัดไป"}
+                        </span>
+                      </button>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          className="secondary-button symbol-button compact-symbol-button"
+                          onClick={handleHostEliminateNotNoun}
+                          aria-label="คำไม่ใช่คำนาม"
+                          title="คำไม่ใช่คำนาม"
+                        >
+                          <X size={16} aria-hidden="true" />
+                        </button>
+                        <button
+                          type="submit"
+                          className="primary-button symbol-button compact-symbol-button"
+                          disabled={!canSubmitCurrentTurn}
+                          aria-label="ถัดไป"
+                          title="ถัดไป"
+                        >
+                          <ChevronRight size={16} aria-hidden="true" />
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </form>
 
-              <div className="action-row">
-                <button
-                  type="button"
-                  className="ghost-button history-action-button"
-                  onClick={handleUndo}
-                  disabled={!canUndoGameHistory || isSubmittingTurn}
-                  aria-label="ย้อนกลับ"
-                  title="ย้อนกลับ (Ctrl/Cmd+Z)"
-                >
-                  <svg
-                    width="18"
-                    height="18"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <path d="M3 10h10a5 5 0 0 1 5 5v2" />
-                    <polyline points="3 10 7 6" />
-                    <polyline points="3 10 7 14" />
-                  </svg>
-                </button>
-                <button
-                  type="button"
-                  className="ghost-button history-action-button"
-                  onClick={handleRedo}
-                  disabled={!canRedoGameHistory || isSubmittingTurn}
-                  aria-label="ทำซ้ำ"
-                  title="ทำซ้ำ (Shift+Ctrl/Cmd+Z)"
-                >
-                  <svg
-                    width="18"
-                    height="18"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <path d="M21 10H11a5 5 0 0 0-5 5v2" />
-                    <polyline points="21 10 17 6" />
-                    <polyline points="21 10 17 14" />
-                  </svg>
-                </button>
-                <button
-                  ref={leaderboardActionButtonRef}
-                  type="button"
-                  className="primary-button symbol-button"
-                  onClick={handleReplaySamePlayers}
-                  aria-label={replayButtonLabel}
-                  title={replayButtonLabel}
-                >
-                  <span className="button-copy">{replayButtonCopy}</span>
-                </button>
-                <button
-                  type="button"
-                  className="secondary-button symbol-button"
-                  onClick={handleResetAll}
-                  aria-label="เริ่มใหม่"
-                  title="เริ่มใหม่"
-                >
-                  <span className="button-copy">เริ่มใหม่</span>
-                </button>
-              </div>
+              </section>
+
+              {isSyllableDebugVisible && (
+                <div className="syllable-status-bar" role="status" aria-label="สถานะการแยกพยางค์">
+                  <div className="status-section">
+                    <span className="status-label">กำลังพิมพ์</span>
+                    <div className="status-content">
+                      {isSegmentingCurrentInput ? (
+                        <span className="status-placeholder">รอกราดรหัส...</span>
+                      ) : currentInputSyllables.length > 0 ? (
+                        currentInputSyllables.map((s, i) => (
+                          <span key={i} className="status-pill is-current">{s}</span>
+                        ))
+                      ) : (
+                        <span className="status-placeholder">-</span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="status-divider" />
+
+                  <div className="status-section">
+                    <span className="status-label">พยางค์ที่บันทึก</span>
+                    <div
+                      className="status-content"
+                      ref={syllableStatusBarHistoryRef}
+                      style={{ scrollBehavior: 'smooth' }}
+                    >
+                      {gameState.usedSyllablesInRound.length > 0 ? (
+                        gameState.usedSyllablesInRound.map((s, i) => (
+                          <span key={i} className="status-pill">{s}</span>
+                        ))
+                      ) : (
+                        <span className="status-placeholder">-</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
             </section>
-          </section>
-        )}
-    </main>
+          )}
+
+        {gameState.phase === "finished" &&
+          winner &&
+          !gameState.isAwaitingRoundSummary && (
+            <section className="phase-screen result-screen">
+              <section className="surface-card leaderboard-card result-leaderboard-card">
+                <div className="panel-header compact">
+                  <div>
+                    <h2>ตารางคะแนน</h2>
+                  </div>
+                </div>
+
+                <div className="leaderboard-table-wrap">
+                  <table
+                    className="leaderboard-table"
+                    aria-label="ตารางคะแนนสะสม"
+                  >
+                    <thead>
+                      <tr>
+                        <th scope="col">ผู้เล่น</th>
+                        <th scope="col">รอบที่ 1</th>
+                        <th scope="col">รอบที่ 2</th>
+                        <th scope="col">รอบที่ 3</th>
+                        <th scope="col">รอบที่ 4</th>
+                        <th scope="col">คะแนนรวม</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {leaderboardEntries.map((entry) => (
+                        <tr
+                          key={entry.player.id}
+                          className={`${entry.player.status === "winner" ? "is-winner" : ""} ${entry.roundPoints > 0 ? "is-awarded" : ""
+                            }`.trim()}
+                          aria-label={`คะแนนสะสมของ ${entry.player.name}`}
+                        >
+                          <th scope="row">
+                            <div className="leaderboard-player-cell">
+                              <strong>{entry.player.name}</strong>
+                            </div>
+                          </th>
+                          {entry.roundScores.map((roundScore, roundIndex) => (
+                            <td
+                              key={`${entry.player.id}-round-${roundIndex + 1}`}
+                              className={
+                                roundIndex + 1 ===
+                                  sessionState.completedRoundsInMatch
+                                  ? "is-current-round"
+                                  : ""
+                              }
+                            >
+                              {roundScore === null ? (
+                                "-"
+                              ) : roundScore.challengeBonus > 0 ? (
+                                <span className="leaderboard-round-score-value">
+                                  {roundScore.totalPoints -
+                                    roundScore.challengeBonus >
+                                    0 ? (
+                                    <>
+                                      <span>
+                                        {roundScore.totalPoints -
+                                          roundScore.challengeBonus}
+                                      </span>{" "}
+                                    </>
+                                  ) : null}
+                                  <span className="leaderboard-round-bonus">
+                                    +{roundScore.challengeBonus}
+                                  </span>
+                                </span>
+                              ) : (
+                                roundScore.totalPoints
+                              )}
+                            </td>
+                          ))}
+                          <td className="leaderboard-total-cell">
+                            <strong>{entry.score}</strong>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="action-row">
+                  <button
+                    type="button"
+                    className="ghost-button history-action-button"
+                    onClick={handleUndo}
+                    disabled={!canUndoGameHistory || isSubmittingTurn}
+                    aria-label="ย้อนกลับ"
+                    title="ย้อนกลับ (Ctrl/Cmd+Z)"
+                  >
+                    <svg
+                      width="18"
+                      height="18"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M3 10h10a5 5 0 0 1 5 5v2" />
+                      <polyline points="3 10 7 6" />
+                      <polyline points="3 10 7 14" />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    className="ghost-button history-action-button"
+                    onClick={handleRedo}
+                    disabled={!canRedoGameHistory || isSubmittingTurn}
+                    aria-label="ทำซ้ำ"
+                    title="ทำซ้ำ (Shift+Ctrl/Cmd+Z)"
+                  >
+                    <svg
+                      width="18"
+                      height="18"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M21 10H11a5 5 0 0 0-5 5v2" />
+                      <polyline points="21 10 17 6" />
+                      <polyline points="21 10 17 14" />
+                    </svg>
+                  </button>
+                  <button
+                    ref={leaderboardActionButtonRef}
+                    type="button"
+                    className="primary-button symbol-button"
+                    onClick={handleReplaySamePlayers}
+                    aria-label={replayButtonLabel}
+                    title={replayButtonLabel}
+                  >
+                    <span className="button-copy">{replayButtonCopy}</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary-button symbol-button"
+                    onClick={handleResetAll}
+                    aria-label="เริ่มใหม่"
+                    title="เริ่มใหม่"
+                  >
+                    <span className="button-copy">เริ่มใหม่</span>
+                  </button>
+                </div>
+              </section>
+            </section>
+          )}
+      </main>
+    </div>
   );
 }
 

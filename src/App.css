@@ -1056,7 +1056,7 @@ button:disabled {
   padding-left: 280px;
 }
 
-.play-screen.sidebar-collapsed {
+.sidebar-collapsed .play-screen {
   padding-left: 0;
 }
 
@@ -1696,8 +1696,13 @@ button:disabled {
 }
 
 @keyframes status-bar-slide {
-  from { transform: translateY(100%); }
-  to { transform: translateY(0); }
+  from {
+    transform: translateY(100%);
+  }
+
+  to {
+    transform: translateY(0);
+  }
 }
 
 .status-section {
@@ -2343,5 +2348,168 @@ button:disabled {
 
   .sidebar-collapsed .focus-sidebar {
     transform: translateX(-100%);
+  }
+}
+
+/* --- Global Visual Effects --- */
+.fx-overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9999;
+  overflow: hidden;
+}
+
+/* 1. Elimination Effect */
+.fx-elimination-vignette {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle, transparent 40%, rgba(139, 45, 29, 0.3) 100%);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.elimination-active .fx-elimination-vignette {
+  opacity: 1;
+  animation: fx-vignette-pulse 1.5s infinite ease-in-out;
+}
+
+.fx-elimination-flash {
+  position: absolute;
+  inset: 0;
+  background: white;
+  opacity: 0;
+}
+
+.elimination-active .fx-elimination-flash {
+  animation: fx-flash-red 0.5s cubic-bezier(0.19, 1, 0.22, 1) forwards;
+}
+
+.elimination-active .app-shell {
+  animation: fx-shake 0.4s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+}
+
+@keyframes fx-shake {
+
+  10%,
+  90% {
+    transform: translate3d(-1px, 0, 0);
+  }
+
+  20%,
+  80% {
+    transform: translate3d(2px, 0, 0);
+  }
+
+  30%,
+  50%,
+  70% {
+    transform: translate3d(-4px, 0, 0);
+  }
+
+  40%,
+  60% {
+    transform: translate3d(4px, 0, 0);
+  }
+}
+
+@keyframes fx-flash-red {
+  0% {
+    opacity: 0.8;
+    background: #8b2d1d;
+  }
+
+  100% {
+    opacity: 0;
+    background: transparent;
+  }
+}
+
+@keyframes fx-vignette-pulse {
+
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.7;
+  }
+
+  50% {
+    transform: scale(1.1);
+    opacity: 1;
+  }
+}
+
+/* 2. Winner Effect */
+.fx-winner-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle, rgba(176, 126, 82, 0.1) 0%, transparent 70%);
+  opacity: 0;
+  transition: opacity 0.5s ease;
+}
+
+.winner-active .fx-winner-overlay {
+  opacity: 1;
+}
+
+.fx-gold-pulse {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 100vmax;
+  height: 100vmax;
+  margin-left: -50vmax;
+  margin-top: -50vmax;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--accent) 0%, transparent 50%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.winner-active .fx-gold-pulse {
+  animation: fx-gold-burst 1.2s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes fx-gold-burst {
+  0% {
+    transform: scale(0);
+    opacity: 0.8;
+  }
+
+  100% {
+    transform: scale(1.5);
+    opacity: 0;
+  }
+}
+
+.fx-confetti-container {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.fx-confetti-piece {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  top: -10px;
+  opacity: 0;
+}
+
+.winner-active .fx-confetti-piece {
+  animation: fx-confetti-fall 3s linear infinite;
+  opacity: 1;
+}
+
+@keyframes fx-confetti-fall {
+  0% {
+    transform: translateY(0) rotate(0deg);
+  }
+
+  100% {
+    transform: translateY(110vh) rotate(720deg);
   }
 }
