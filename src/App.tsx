@@ -1884,11 +1884,23 @@ function App() {
   }
 
   function handleResumeChallengeDebate() {
-    commitGameAction((current) =>
-      challengeHistoryRestorePauseRef.current
-        ? resumePausedChallengeFromHistory(current)
-        : resumeChallengeDebate(current),
-    );
+    updatePresent((current) => {
+      const nextGameState = challengeHistoryRestorePauseRef.current
+        ? resumePausedChallengeFromHistory(current.sessionState.gameState)
+        : resumeChallengeDebate(current.sessionState.gameState);
+
+      if (nextGameState === current.sessionState.gameState) {
+        return current;
+      }
+
+      return {
+        ...current,
+        sessionState: {
+          ...current.sessionState,
+          gameState: nextGameState,
+        },
+      };
+    });
   }
 
   function handleAdvanceChallengeDebate() {
@@ -2423,12 +2435,11 @@ function App() {
                               <button
                                 key={answerRecord.id}
                                 type="button"
-                                className={`answer-pill ${
-                                  challengeState?.challengedAnswerId ===
-                                  answerRecord.id
+                                className={`answer-pill ${challengeState?.challengedAnswerId ===
+                                    answerRecord.id
                                     ? "is-selected"
                                     : ""
-                                }`}
+                                  }`}
                                 onClick={() => {
                                   applyEphemeralGameUpdate((current) =>
                                     updateChallengeSelection(current, {
@@ -3015,8 +3026,8 @@ function App() {
 
                 <div className="status-section">
                   <span className="status-label">พยางค์ที่บันทึก</span>
-                  <div 
-                    className="status-content" 
+                  <div
+                    className="status-content"
                     ref={syllableStatusBarHistoryRef}
                     style={{ scrollBehavior: 'smooth' }}
                   >

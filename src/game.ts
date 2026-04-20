@@ -379,13 +379,7 @@ function getRemainingTurnTime(state: GameState, now: number) {
   return Math.max(0, state.turnDeadlineAt - now)
 }
 
-function getRemainingChallengeTime(state: GameState, now: number) {
-  if (state.challenge.segmentDeadlineAt === null) {
-    return state.challenge.timeLeftMs
-  }
 
-  return Math.max(0, state.challenge.segmentDeadlineAt - now)
-}
 
 function getNextEliminatedOrder(players: Player[]) {
   return players.filter((player) => player.status === 'eliminated').length + 1
@@ -834,15 +828,13 @@ export function pauseGameStateForHistoryRestore(
     state.challenge.segmentStartedAt !== null &&
     !state.challenge.segmentAwaitingContinue
   ) {
-    const remainingMs = getRemainingChallengeTime(state, now)
-
     return {
       ...state,
       challenge: {
         ...state.challenge,
         segmentStartedAt: null,
         segmentDeadlineAt: null,
-        timeLeftMs: remainingMs,
+        timeLeftMs: CHALLENGE_DEBATE_SEGMENT_DURATION_MS,
         segmentAwaitingContinue: true,
       },
       isHistoryRestorePause: false,
