@@ -394,32 +394,6 @@ function renderHighlightedAnswer(answer: string, syllable: string) {
   return <span className="duplicate-answer-text">{parts}</span>;
 }
 
-function renderEliminatedPlayerSummaryContent(
-  player: GameState["players"][number] | null,
-) {
-  const duplicateDetails = getDuplicateSyllableDetails(player);
-
-  if (player && duplicateDetails) {
-    return (
-      <>
-        <span>{player.name} ตกรอบเพราะคำตอบ "</span>
-        {renderHighlightedAnswer(
-          duplicateDetails.submittedAnswer,
-          duplicateDetails.duplicateSyllable,
-        )}
-        <span>" ซ้ำกับคำ "</span>
-        {renderHighlightedAnswer(
-          duplicateDetails.sourceAnswer,
-          duplicateDetails.duplicateSyllable,
-        )}
-        <span>"</span>
-      </>
-    );
-  }
-
-  return getEliminatedPlayerSummary(player);
-}
-
 function getSegmentationCacheKey(text: string) {
   return `${DEFAULT_SYLLABLE_ENGINE}::${text.trim()}`;
 }
@@ -970,9 +944,6 @@ function App() {
       )[0]
       : null;
   const eliminatedPlayerSummary = getEliminatedPlayerSummary(
-    latestEliminatedPlayer,
-  );
-  const eliminatedPlayerSummaryContent = renderEliminatedPlayerSummaryContent(
     latestEliminatedPlayer,
   );
   const roundAwards =
@@ -1601,7 +1572,7 @@ function App() {
     }
 
     function handleUndoRedoKeyDown(event: globalThis.KeyboardEvent) {
-      if (event.defaultPrevented || event.altKey || event.repeat) {
+      if (event.altKey || event.repeat) {
         return;
       }
 
@@ -1617,6 +1588,9 @@ function App() {
       if (!isKeyZ && !isKeyY) {
         return;
       }
+
+      // Bypass defaultPrevented check for Undo/Redo combos to ensure they work even
+      // when targeting inputs that might have their own internal undo/redo logic.
 
       const isRedo = isKeyY || (isKeyZ && event.shiftKey);
 
@@ -1640,10 +1614,10 @@ function App() {
       }
     }
 
-    window.addEventListener("keydown", handleUndoRedoKeyDown);
+    window.addEventListener("keydown", handleUndoRedoKeyDown, true);
 
     return () => {
-      window.removeEventListener("keydown", handleUndoRedoKeyDown);
+      window.removeEventListener("keydown", handleUndoRedoKeyDown, true);
     };
   }, [
     canRedoGameHistory,
@@ -2436,9 +2410,9 @@ function App() {
                                 key={answerRecord.id}
                                 type="button"
                                 className={`answer-pill ${challengeState?.challengedAnswerId ===
-                                    answerRecord.id
-                                    ? "is-selected"
-                                    : ""
+                                  answerRecord.id
+                                  ? "is-selected"
+                                  : ""
                                   }`}
                                 onClick={() => {
                                   applyEphemeralGameUpdate((current) =>
