@@ -58,7 +58,6 @@ import {
   type AnswerRecord,
   type GameState,
   type LeaderboardAward,
-  type PlayerDraft,
   type TurnDirection,
 } from "./game";
 import {
@@ -100,7 +99,7 @@ const SoundSynth = {
       osc.frequency.setValueAtTime(160 + detune, now);
       osc.frequency.exponentialRampToValueAtTime(40, now + 0.8);
 
-      gain.gain.setValueAtTime(0.2, now);
+      gain.gain.setValueAtTime(0.6, now);
       gain.gain.exponentialRampToValueAtTime(0.01, now + 0.8);
 
       osc.connect(gain);
@@ -121,7 +120,7 @@ const SoundSynth = {
       const gain = this.ctx!.createGain();
       osc.type = "triangle";
       osc.frequency.setValueAtTime(freq, start);
-      gain.gain.setValueAtTime(0.25, start);
+      gain.gain.setValueAtTime(0.7, start);
       gain.gain.exponentialRampToValueAtTime(0.01, start + 0.5);
       osc.connect(gain);
       gain.connect(this.ctx!.destination);
@@ -132,7 +131,26 @@ const SoundSynth = {
     [523.25, 659.25, 783.99, 1046.5].forEach((freq, i) => {
       playNote(freq, now + i * 0.08);
     });
-  }
+  },
+
+  playTick(isCritical: boolean) {
+    this.init();
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(isCritical ? 1200 : 800, now);
+
+    gain.gain.setValueAtTime(0.4, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.1);
+  },
 };
 
 const ConfettiRain = () => {
@@ -500,31 +518,9 @@ function getSegmentationErrorMessage(error: unknown) {
   return "ไม่สามารถเชื่อมต่อระบบแยกพยางค์ได้";
 }
 
-function isBlankDraft(draft: PlayerDraft) {
-  return draft.name.trim().length === 0;
-}
 
-function ensureTrailingBlankDraft(playerDrafts: PlayerDraft[]) {
-  if (playerDrafts.length === 0) {
-    return [createPlayerDraft()];
-  }
 
-  const nextDrafts = [...playerDrafts];
 
-  while (
-    nextDrafts.length > 1 &&
-    isBlankDraft(nextDrafts[nextDrafts.length - 1]) &&
-    isBlankDraft(nextDrafts[nextDrafts.length - 2])
-  ) {
-    nextDrafts.pop();
-  }
-
-  if (!isBlankDraft(nextDrafts[nextDrafts.length - 1])) {
-    nextDrafts.push(createPlayerDraft());
-  }
-
-  return nextDrafts;
-}
 
 interface SessionState {
   gameState: GameState;
@@ -796,9 +792,6 @@ function applyFinishedSessionState(
 }
 
 function App() {
-  const [playerDrafts, setPlayerDrafts] = useState<PlayerDraft[]>(() =>
-    ensureTrailingBlankDraft(createInitialDrafts()),
-  );
   const {
     historyState,
     present: historySnapshot,
@@ -818,6 +811,7 @@ function App() {
   const challengeDecisionButtonRef = useRef<HTMLButtonElement>(null);
   const challengeResumeButtonRef = useRef<HTMLButtonElement>(null);
   const challengeHistoryRestorePauseRef = useRef(false);
+  const lastTickSecondRef = useRef(-1);
   const syllableStatusBarHistoryRef = useRef<HTMLDivElement>(null);
   const segmentationCacheRef = useRef<
     Map<string, SyllableSegmentationResponse>
@@ -1896,7 +1890,6 @@ function App() {
     const rosterDrafts = playerNamesFromTextarea.map((name) =>
       createPlayerDraft(name),
     );
-    setPlayerDrafts(rosterDrafts);
 
     resetHistory({
       sessionState: {
@@ -1973,6 +1966,29 @@ function App() {
     gameState.isEliminationPause,
     isAwaitingRoundSummary,
   ]);
+
+  // Handle Countdown Ticking Sound
+  useEffect(() => {
+    if (
+      gameState.phase !== "playing" ||
+      isPausedTurn ||
+      isChallengeActive ||
+      gameState.isAwaitingFirstTurnStart
+    ) {
+      lastTickSecondRef.current = -1;
+      return;
+    }
+
+    const secondsLeft = Math.ceil(gameState.timeLeftMs / 1000);
+    if (
+      secondsLeft <= 3 &&
+      secondsLeft > 0 &&
+      secondsLeft !== lastTickSecondRef.current
+    ) {
+      lastTickSecondRef.current = secondsLeft;
+      SoundSynth.playTick(secondsLeft === 1);
+    }
+  }, [gameState.timeLeftMs, gameState.phase, isPausedTurn, isChallengeActive]);
 
   function handleContinueToRoundSummary() {
     SoundSynth.init();
@@ -2385,7 +2401,7 @@ function App() {
     setIsSubmittingTurn(false);
     resetChallengeChallengerTypeahead();
     challengeHistoryRestorePauseRef.current = false;
-    setPlayerDrafts(ensureTrailingBlankDraft(createInitialDrafts()));
+    setPlayerNamesTextarea(playerNamesFromTextarea.join("\n"));
     resetHistory(createInitialHistorySnapshot());
   }
 
