@@ -670,6 +670,7 @@ interface SettingsDropdownProps {
   onToggleGmOpening: () => void;
   onToggleSyllableDebug: () => void;
   isSubmittingTurn: boolean;
+  canToggleGmOpening: boolean;
 }
 
 function SettingsDropdown({
@@ -678,6 +679,7 @@ function SettingsDropdown({
   onToggleGmOpening,
   onToggleSyllableDebug,
   isSubmittingTurn,
+  canToggleGmOpening,
 }: SettingsDropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -760,7 +762,7 @@ function SettingsDropdown({
               e.currentTarget.focus();
               onToggleGmOpening();
             }}
-            disabled={isSubmittingTurn}
+            disabled={isSubmittingTurn || !canToggleGmOpening}
             aria-pressed={isGmOpeningEnabled}
           >
             <span className="settings-dropdown-item-check" aria-hidden="true">
@@ -3079,6 +3081,7 @@ function App() {
                                 setIsSyllableDebugVisible((current) => !current)
                               }
                               isSubmittingTurn={isSubmittingTurn}
+                              canToggleGmOpening={historyState.past.length === 0}
                             />
                           </div>
                         )}
