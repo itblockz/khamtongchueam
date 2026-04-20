@@ -2806,15 +2806,7 @@ function App() {
                         </div>
                       )}
                   </div>
-                  {challengeNote && (
-                    <p
-                      className="challenge-note"
-                      role="status"
-                      aria-live="polite"
-                    >
-                      {challengeNote}
-                    </p>
-                  )}
+
 
                   {segmentationError && (
                     <p className="segmentation-error" role="alert">
