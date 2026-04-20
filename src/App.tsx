@@ -1958,6 +1958,21 @@ function App() {
     }
   }, [isAwaitingRoundSummary, winner?.id, gameState.isEliminationPause]);
 
+  // Auto-focus primary action button when it becomes available
+  useEffect(() => {
+    if (requiresPrimaryAction && !isGmOpeningWordMode) {
+      const timer = setTimeout(() => {
+        startFirstTurnButtonRef.current?.focus();
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [
+    requiresPrimaryAction,
+    isGmOpeningWordMode,
+    gameState.isEliminationPause,
+    isAwaitingRoundSummary,
+  ]);
+
   function handleContinueToRoundSummary() {
     SoundSynth.init();
     commitGameAction((current) => acknowledgeRoundSummary(current));
@@ -3064,6 +3079,7 @@ function App() {
                       <>
                         {gameState.isEliminationPause ? (
                           <button
+                            ref={startFirstTurnButtonRef}
                             type="button"
                             className="primary-button start-turn-button"
                             onClick={handleStartFirstTurn}
