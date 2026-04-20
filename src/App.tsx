@@ -151,6 +151,35 @@ const SoundSynth = {
     osc.start(now);
     osc.stop(now + 0.1);
   },
+
+  playChallenge() {
+    this.init();
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+
+    const playNote = (freq: number, start: number, duration: number, type: OscillatorType = "sine", volume = 0.5) => {
+      const osc = this.ctx!.createOscillator();
+      const gain = this.ctx!.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, start);
+      gain.gain.setValueAtTime(volume, start);
+      gain.gain.exponentialRampToValueAtTime(0.01, start + duration);
+      osc.connect(gain);
+      gain.connect(this.ctx!.destination);
+      osc.start(start);
+      osc.stop(start + duration);
+    };
+
+    // More dramatic sequence: Rising tension + longer sustained impact
+    playNote(261.63, now, 0.2, "sine", 0.4);      // C4
+    playNote(329.63, now + 0.15, 0.2, "sine", 0.4); // E4
+    playNote(392.00, now + 0.3, 0.2, "sine", 0.4);  // G4
+
+    // Final impact note (using triangle for more character and detuning for thickness)
+    [523.25, 528.25].forEach((f) => {
+      playNote(f, now + 0.45, 1.5, "triangle", 0.3);
+    });
+  },
 };
 
 const ConfettiRain = () => {
@@ -1198,7 +1227,7 @@ function App() {
     : isChallengeSelecting
       ? "ชาเลนจ์"
       : isChallengeDebating
-        ? "ชาเลนจ์"
+        ? `${formatSeconds(challengeTimeLeftMs)}s`
         : isChallengeJudging
           ? "ชาเลนจ์"
           : requiresManualTurnStart
@@ -1213,7 +1242,7 @@ function App() {
     : isChallengeSelecting
       ? "เวลา เลือกการชาเลนจ์"
       : isChallengeDebating
-        ? "กำลังชาเลนจ์"
+        ? `กำลังชาเลนจ์ เหลือเวลา ${formatSeconds(challengeTimeLeftMs)} วินาที`
         : isChallengeJudging
           ? "กำลังตัดสินการชาเลนจ์"
           : requiresManualTurnStart
@@ -1977,6 +2006,12 @@ function App() {
     }
   }, [isAwaitingRoundSummary, winner?.id, gameState.isEliminationPause]);
 
+  useEffect(() => {
+    if (isChallengeActive) {
+      SoundSynth.playChallenge();
+    }
+  }, [isChallengeActive]);
+
   // Auto-focus primary action button when it becomes available
   useEffect(() => {
     if (requiresPrimaryAction && !isGmOpeningWordMode) {
@@ -1994,26 +2029,43 @@ function App() {
 
   // Handle Countdown Ticking Sound
   useEffect(() => {
-    if (
-      gameState.phase !== "playing" ||
-      isPausedTurn ||
-      isChallengeActive ||
-      gameState.isAwaitingFirstTurnStart
-    ) {
+    const isRegularTurnTicking =
+      gameState.phase === "playing" &&
+      !isPausedTurn &&
+      !isChallengeActive &&
+      !gameState.isAwaitingFirstTurnStart;
+
+    const isChallengeTicking =
+      isChallengeDebating && !challengeState?.segmentAwaitingContinue;
+
+    if (!isRegularTurnTicking && !isChallengeTicking) {
       lastTickSecondRef.current = -1;
       return;
     }
 
-    const secondsLeft = Math.ceil(gameState.timeLeftMs / 1000);
-    if (
-      secondsLeft <= 3 &&
-      secondsLeft > 0 &&
-      secondsLeft !== lastTickSecondRef.current
-    ) {
+    const secondsLeft = isChallengeTicking
+      ? Math.ceil(challengeTimeLeftMs / 1000)
+      : Math.ceil(gameState.timeLeftMs / 1000);
+
+    const isCritical = isChallengeTicking ? secondsLeft <= 3 : secondsLeft === 1;
+
+    const shouldTick = isChallengeTicking
+      ? secondsLeft > 0 && secondsLeft <= 15
+      : secondsLeft > 0 && secondsLeft <= 3;
+
+    if (shouldTick && secondsLeft !== lastTickSecondRef.current) {
       lastTickSecondRef.current = secondsLeft;
-      SoundSynth.playTick(secondsLeft === 1);
+      SoundSynth.playTick(isCritical);
     }
-  }, [gameState.timeLeftMs, gameState.phase, isPausedTurn, isChallengeActive]);
+  }, [
+    gameState.timeLeftMs,
+    challengeTimeLeftMs,
+    gameState.phase,
+    isPausedTurn,
+    isChallengeActive,
+    isChallengeDebating,
+    challengeState?.segmentAwaitingContinue,
+  ]);
 
   function handleContinueToRoundSummary() {
     SoundSynth.init();
@@ -2190,6 +2242,7 @@ function App() {
   }
 
   function handleOpenChallenge() {
+    SoundSynth.init();
     if (gameState.phase !== "playing") {
       return;
     }
@@ -2776,13 +2829,6 @@ function App() {
                               ช่วง {challengeSegmentIndex + 1}/
                               {CHALLENGE_DEBATE_SEGMENT_COUNT}
                             </p>
-                            <div
-                              className={`turn-timer-pill ${timerTone}`}
-                              aria-live="polite"
-                            >
-                              <span>เวลา</span>
-                              <strong>{formatSeconds(challengeTimeLeftMs)}s</strong>
-                            </div>
                             <span className="challenge-debate-speaker">
                               <strong>{challengeSpeakerName}</strong>
                               <span className="challenge-debate-speaker-role">
@@ -3217,47 +3263,51 @@ function App() {
 
               </section>
 
-              {isSyllableDebugVisible && (
-                <div className="syllable-status-bar" role="status" aria-label="สถานะการแยกพยางค์">
-                  <div className="status-section">
-                    <span className="status-label">กำลังพิมพ์</span>
-                    <div className="status-content">
-                      {isSegmentingCurrentInput ? (
-                        <span className="status-placeholder">รอกราดรหัส...</span>
-                      ) : currentInputSyllables.length > 0 ? (
-                        currentInputSyllables.map((s, i) => (
-                          <span key={i} className="status-pill is-current">{s}</span>
-                        ))
-                      ) : (
-                        <span className="status-placeholder">-</span>
-                      )}
+              {
+                isSyllableDebugVisible && (
+                  <div className="syllable-status-bar" role="status" aria-label="สถานะการแยกพยางค์">
+                    <div className="status-section">
+                      <span className="status-label">กำลังพิมพ์</span>
+                      <div className="status-content">
+                        {isSegmentingCurrentInput ? (
+                          <span className="status-placeholder">รอกราดรหัส...</span>
+                        ) : currentInputSyllables.length > 0 ? (
+                          currentInputSyllables.map((s, i) => (
+                            <span key={i} className="status-pill is-current">{s}</span>
+                          ))
+                        ) : (
+                          <span className="status-placeholder">-</span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="status-divider" />
+
+                    <div className="status-section">
+                      <span className="status-label">พยางค์ที่บันทึก</span>
+                      <div
+                        className="status-content"
+                        ref={syllableStatusBarHistoryRef}
+                        style={{ scrollBehavior: 'smooth' }}
+                      >
+                        {gameState.usedSyllablesInRound.length > 0 ? (
+                          gameState.usedSyllablesInRound.map((s, i) => (
+                            <span key={i} className="status-pill">{s}</span>
+                          ))
+                        ) : (
+                          <span className="status-placeholder">-</span>
+                        )}
+                      </div>
                     </div>
                   </div>
+                )
+              }
+            </section >
+          )
+        }
 
-                  <div className="status-divider" />
-
-                  <div className="status-section">
-                    <span className="status-label">พยางค์ที่บันทึก</span>
-                    <div
-                      className="status-content"
-                      ref={syllableStatusBarHistoryRef}
-                      style={{ scrollBehavior: 'smooth' }}
-                    >
-                      {gameState.usedSyllablesInRound.length > 0 ? (
-                        gameState.usedSyllablesInRound.map((s, i) => (
-                          <span key={i} className="status-pill">{s}</span>
-                        ))
-                      ) : (
-                        <span className="status-placeholder">-</span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
-            </section>
-          )}
-
-        {gameState.phase === "finished" &&
+        {
+          gameState.phase === "finished" &&
           winner &&
           !gameState.isAwaitingRoundSummary && (
             <section className="phase-screen result-screen">
@@ -3407,9 +3457,10 @@ function App() {
                 </div>
               </section>
             </section>
-          )}
-      </main>
-    </div>
+          )
+        }
+      </main >
+    </div >
   );
 }
 
