@@ -684,20 +684,6 @@ function SettingsDropdown({
   const [isOpen, setIsOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
-  const closeIfFocusLeftDropdown = useCallback(() => {
-    const activeElement = document.activeElement;
-
-    if (
-      activeElement instanceof Node &&
-      (menuRef.current?.contains(activeElement) ||
-        buttonRef.current?.contains(activeElement))
-    ) {
-      return;
-    }
-
-    setIsOpen(false);
-  }, []);
-
   useEffect(() => {
     if (!isOpen) return;
     const handleClickOutside = (event: MouseEvent) => {
@@ -722,7 +708,20 @@ function SettingsDropdown({
   };
 
   return (
-    <div className="settings-dropdown">
+    <div
+      className="settings-dropdown"
+      onBlur={(e) => {
+        const nextTarget = e.relatedTarget;
+        if (
+          nextTarget instanceof Node &&
+          (menuRef.current?.contains(nextTarget) ||
+            buttonRef.current?.contains(nextTarget))
+        ) {
+          return;
+        }
+        setIsOpen(false);
+      }}
+    >
       <button
         ref={buttonRef}
         type="button"
@@ -741,19 +740,6 @@ function SettingsDropdown({
           className="settings-dropdown-menu surface-card"
           role="menu"
           onKeyDown={handleKeyDown}
-          onBlur={(e) => {
-            const nextTarget = e.relatedTarget;
-
-            if (
-              nextTarget instanceof Node &&
-              (menuRef.current?.contains(nextTarget) ||
-                buttonRef.current?.contains(nextTarget))
-            ) {
-              return;
-            }
-
-            window.setTimeout(closeIfFocusLeftDropdown, 0);
-          }}
         >
           <button
             type="button"
