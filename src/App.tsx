@@ -1896,6 +1896,7 @@ function App() {
     const rosterDrafts = playerNamesFromTextarea.map((name) =>
       createPlayerDraft(name),
     );
+    setPlayerDrafts(rosterDrafts);
 
     resetHistory({
       sessionState: {
@@ -2356,7 +2357,9 @@ function App() {
     resetHistory({
       sessionState: {
         gameState: createConfirmedGameState(
-          prepareRoster(playerDrafts),
+          prepareRoster(
+            playerNamesFromTextarea.map((name) => createPlayerDraft(name)),
+          ),
           TURN_DURATION_MS,
           getTurnDirectionForMatchRound(nextMatchRound),
         ),
