@@ -450,6 +450,7 @@ function finalizePlayingState(
       challenge: createIdleChallengeState(),
       challengeBonusPointsByPlayerId: nextChallengeBonusPointsByPlayerId,
       isHistoryRestorePause: false,
+      isEliminationPause: shouldPauseNextTurn,
     }
   }
 
@@ -796,7 +797,7 @@ export function startActiveTurn(
   durationMs = TURN_DURATION_MS,
 ): GameState {
   if (
-    state.phase !== 'playing' ||
+    (state.phase !== 'playing' && state.phase !== 'finished') ||
     state.activePlayerId === null ||
     state.turnStartedAt !== null ||
     state.turnDeadlineAt !== null ||
@@ -811,7 +812,9 @@ export function startActiveTurn(
     isAwaitingFirstTurnStart: false,
     isEliminationPause: false,
     isHistoryRestorePause: false,
-    ...buildTurnState(now, durationMs),
+    ...(state.phase === 'finished'
+      ? { turnStartedAt: null, turnDeadlineAt: null, timeLeftMs: 0 }
+      : buildTurnState(now, durationMs)),
   }
 }
 

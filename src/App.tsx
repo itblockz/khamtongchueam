@@ -1021,14 +1021,14 @@ function App() {
   const isAwaitingFirstTurnStart =
     gameState.phase === "playing" && gameState.isAwaitingFirstTurnStart;
   const isPausedTurn =
-    gameState.phase === "playing" &&
+    (gameState.phase === "playing" || gameState.phase === "finished") &&
     !isChallengeActive &&
     !gameState.isAwaitingFirstTurnStart &&
     gameState.activePlayerId !== null &&
     gameState.turnStartedAt === null &&
     !gameState.isSafeToFinish;
   const requiresManualTurnStart =
-    gameState.phase === "playing" && (isAwaitingFirstTurnStart || isPausedTurn);
+    isAwaitingFirstTurnStart || (isPausedTurn && !isAwaitingRoundSummary);
   const requiresPrimaryAction =
     requiresManualTurnStart || isAwaitingRoundSummary;
   const isGmOpeningWordMode =
@@ -2674,15 +2674,21 @@ function App() {
                 </section>
               ) : (
                 <main className="focus-stage">
-                  <div className="stage-player-sequence">
-                    <span className="player-name current">
-                      {isGmOpeningWordMode ? "ผู้คุมเกม" : playScreenPlayer?.name}
-                    </span>
-                    <ChevronRight className="sequence-arrow" size={24} />
-                    <span className="player-name next">
-                      {isGmOpeningWordMode ? playScreenPlayer?.name : nextPlayer?.name}
-                    </span>
-                  </div>
+                  {!isAwaitingRoundSummary && (
+                    <div className="stage-player-sequence">
+                      <span className="player-name current">
+                        {isGmOpeningWordMode
+                          ? "ผู้คุมเกม"
+                          : playScreenPlayer?.name}
+                      </span>
+                      <ChevronRight className="sequence-arrow" size={24} />
+                      <span className="player-name next">
+                        {isGmOpeningWordMode
+                          ? playScreenPlayer?.name
+                          : nextPlayer?.name}
+                      </span>
+                    </div>
+                  )}
 
                   {isPausedTurn && gameState.isEliminationPause && latestEliminatedPlayer ? (
                     <div className="stage-content is-elimination">
@@ -2692,6 +2698,15 @@ function App() {
                       <div className="stage-instruction">
                         {renderEliminationReasonDetail(latestEliminatedPlayer)}
                       </div>
+                    </div>
+                  ) : isAwaitingRoundSummary && winner ? (
+                    <div className="stage-content is-winner">
+                      <div className="stage-word-wrapper">
+                        <h1 className="stage-word">{winner.name} ชนะรอบนี้!</h1>
+                      </div>
+                      <p className="stage-instruction">
+                        ยอดเยี่ยมมาก! เตรียมตัวดูคะแนนสรุปรอบ
+                      </p>
                     </div>
                   ) : lastAnswer && gameState.phase === "playing" ? (
                     <div className="stage-content">
@@ -2896,17 +2911,31 @@ function App() {
                       <span className="button-copy">กำลังชาเลนจ์</span>
                     </button>
                   ) : isAwaitingRoundSummary ? (
-                    <button
-                      ref={startFirstTurnButtonRef}
-                      type="button"
-                      className="primary-button start-turn-button"
-                      onClick={handleContinueToRoundSummary}
-                      onKeyDown={handleStartFirstTurnKeyDown}
-                      aria-label="สรุปรอบ"
-                      title="สรุปรอบ"
-                    >
-                      <span className="button-copy">สรุปรอบ</span>
-                    </button>
+                    <>
+                      {gameState.isEliminationPause ? (
+                        <button
+                          type="button"
+                          className="primary-button start-turn-button"
+                          onClick={handleStartFirstTurn}
+                          aria-label="ประกาศผู้ชนะ"
+                          title="ประกาศผู้ชนะ"
+                        >
+                          <span className="button-copy">ประกาศผู้ชนะ</span>
+                        </button>
+                      ) : (
+                        <button
+                          ref={startFirstTurnButtonRef}
+                          type="button"
+                          className="primary-button start-turn-button"
+                          onClick={handleContinueToRoundSummary}
+                          onKeyDown={handleStartFirstTurnKeyDown}
+                          aria-label="สรุปรอบ"
+                          title="สรุปรอบ"
+                        >
+                          <span className="button-copy">สรุปรอบ</span>
+                        </button>
+                      )}
+                    </>
                   ) : isGmOpeningWordMode ? (
                     <button
                       type="submit"
