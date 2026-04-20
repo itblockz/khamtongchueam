@@ -439,8 +439,8 @@ describe('advanceTurn', () => {
     ).toBe('duplicate_syllable')
     expect(
       afterDuplicateSubmit.players.find((player) => player.id === 'b')
-        ?.duplicateSyllable,
-    ).toBe('กา')
+        ?.duplicateSyllables,
+    ).toEqual(['กา'])
     expect(
       afterDuplicateSubmit.players.find((player) => player.id === 'b')
         ?.duplicateSourceAnswer,

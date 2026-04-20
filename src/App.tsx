@@ -329,9 +329,9 @@ function renderEliminationReasonDetail(
     if (details) {
       return (
         <>
-          {renderHighlightedAnswer(details.submittedAnswer, details.duplicateSyllable)}
+          {renderHighlightedAnswer(details.submittedAnswer, details.duplicateSyllables)}
           {" ซ้ำกับ "}
-          {renderHighlightedAnswer(details.sourceAnswer, details.duplicateSyllable)}
+          {renderHighlightedAnswer(details.sourceAnswer, details.duplicateSyllables)}
         </>
       );
     }
@@ -463,7 +463,7 @@ function getDuplicateSyllableDetails(
   if (
     !player ||
     player.eliminationReason !== "duplicate_syllable" ||
-    !player.duplicateSyllable ||
+    !player.duplicateSyllables ||
     !player.duplicateSourceAnswer ||
     !player.duplicateSubmittedAnswer
   ) {
@@ -471,35 +471,60 @@ function getDuplicateSyllableDetails(
   }
 
   return {
-    duplicateSyllable: player.duplicateSyllable,
+    duplicateSyllables: player.duplicateSyllables,
     sourceAnswer: player.duplicateSourceAnswer,
     submittedAnswer: player.duplicateSubmittedAnswer,
   };
 }
 
-function renderHighlightedAnswer(answer: string, syllable: string) {
-  if (!syllable || !answer.includes(syllable)) {
+function renderHighlightedAnswer(answer: string, syllables: string | string[]) {
+  const syllableList = Array.isArray(syllables) ? syllables : [syllables].filter(Boolean);
+
+  if (syllableList.length === 0) {
     return <span className="duplicate-answer-text">{answer}</span>;
   }
 
-  const parts: ReactNode[] = [];
-  const segments = answer.split(syllable);
+  const sortedSyllables = [...syllableList].sort((a, b) => b.length - a.length);
+  const pattern = sortedSyllables
+    .map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+    .join("|");
 
-  segments.forEach((segment, index) => {
-    if (segment) {
-      parts.push(<span key={`segment-${index}`}>{segment}</span>);
+  if (!pattern) {
+    return <span className="duplicate-answer-text">{answer}</span>;
+  }
+
+  const regex = new RegExp(`(${pattern})`, "g");
+  const parts = answer.split(regex);
+
+  const combined: { text: string; isMark: boolean }[] = [];
+  for (const part of parts) {
+    if (part === "") continue;
+    const isMark = syllableList.includes(part);
+    const last = combined[combined.length - 1];
+    if (last && last.isMark === isMark) {
+      last.text += part;
+    } else {
+      combined.push({ text: part, isMark });
     }
+  }
 
-    if (index < segments.length - 1) {
-      parts.push(
-        <mark className="duplicate-syllable-mark" key={`match-${index}`}>
-          {syllable}
-        </mark>,
-      );
-    }
-  });
+  if (combined.length === 0) {
+    return <span className="duplicate-answer-text">{answer}</span>;
+  }
 
-  return <span className="duplicate-answer-text">{parts}</span>;
+  return (
+    <span className="duplicate-answer-text">
+      {combined.map((item, i) =>
+        item.isMark ? (
+          <mark className="duplicate-syllable-mark" key={i}>
+            {item.text}
+          </mark>
+        ) : (
+          <span key={i}>{item.text}</span>
+        )
+      )}
+    </span>
+  );
 }
 
 function getSegmentationCacheKey(text: string) {

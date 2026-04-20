@@ -36,7 +36,7 @@ export interface Player {
   eliminatedAtTurnCycle: number | null
   eliminatedOrder: number | null
   eliminationReason: EliminationReason | null
-  duplicateSyllable: string | null
+  duplicateSyllables: string[] | null
   duplicateSourceAnswer: string | null
   duplicateSubmittedAnswer: string | null
   challengeSourceAnswer: string | null
@@ -287,7 +287,7 @@ function createPlayers(playerSeeds: PlayerSeed[]): Player[] {
     eliminatedAtTurnCycle: null,
     eliminatedOrder: null,
     eliminationReason: null,
-    duplicateSyllable: null,
+    duplicateSyllables: null,
     duplicateSourceAnswer: null,
     duplicateSubmittedAnswer: null,
     challengeSourceAnswer: null,
@@ -1335,7 +1335,7 @@ export function resolveChallenge(
         decision === 'not_connects'
           ? ('invalid_connection' as const)
           : ('failed_challenge' as const),
-      duplicateSyllable: null,
+      duplicateSyllables: null,
       duplicateSourceAnswer: null,
       duplicateSubmittedAnswer: null,
       challengeSourceAnswer: previousValidAnswer.answer,
@@ -1413,7 +1413,7 @@ export function hostEliminateCurrentPlayer(
         eliminatedAtTurnCycle: state.turnCycle,
         eliminatedOrder: nextEliminatedOrder,
         eliminationReason,
-        duplicateSyllable: null,
+        duplicateSyllables: null,
         duplicateSourceAnswer: null,
         duplicateSubmittedAnswer: state.currentInput,
         challengeSourceAnswer: null,
@@ -1495,7 +1495,7 @@ export function advanceTurn(
             eliminatedAtTurnCycle: state.turnCycle,
             eliminatedOrder: nextEliminatedOrder,
             eliminationReason: 'late_submit' as const,
-            duplicateSyllable: null,
+            duplicateSyllables: null,
             duplicateSourceAnswer: null,
             duplicateSubmittedAnswer: null,
             challengeSourceAnswer: null,
@@ -1525,7 +1525,13 @@ export function advanceTurn(
               eliminatedAtTurnCycle: state.turnCycle,
               eliminatedOrder: nextEliminatedOrder,
               eliminationReason: 'duplicate_syllable' as const,
-              duplicateSyllable: duplicateSyllableEntry.syllable,
+              duplicateSyllables: Array.from(new Set(
+                nextSyllables.filter((s) =>
+                  state.usedSyllableEntriesInRound.some(
+                    (entry) => entry.answer === duplicateSyllableEntry.answer && entry.syllable === s
+                  )
+                )
+              )),
               duplicateSourceAnswer: duplicateSyllableEntry.answer,
               duplicateSubmittedAnswer: answer,
               challengeSourceAnswer: null,
@@ -1575,7 +1581,7 @@ export function advanceTurn(
           eliminatedAtTurnCycle: state.turnCycle,
           eliminatedOrder: nextEliminatedOrder,
           eliminationReason: 'timeout' as const,
-          duplicateSyllable: null,
+          duplicateSyllables: null,
           duplicateSourceAnswer: null,
           duplicateSubmittedAnswer: null,
           challengeSourceAnswer: null,
