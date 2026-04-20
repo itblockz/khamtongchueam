@@ -2888,9 +2888,6 @@ function App() {
                         <div className="stage-word-wrapper">
                           <h1 className="stage-word">{winner.name} ชนะรอบนี้!</h1>
                         </div>
-                        <p className="stage-instruction">
-                          ยอดเยี่ยมมาก! เตรียมตัวดูคะแนนสรุปรอบ
-                        </p>
                       </div>
                     ) : lastAnswer && gameState.phase === "playing" ? (
                       <div className="stage-content">
@@ -2906,9 +2903,13 @@ function App() {
                         {isGmOpeningWordMode ? (
                           <p className="stage-instruction">รอผู้คุมเกมกำหนดคำแรก</p>
                         ) : isAwaitingFirstTurnStart ? (
-                          <p className="stage-instruction">เตรียมพร้อมเริ่มรอบแรก</p>
+                          <div className="stage-word-wrapper">
+                            <h1 className="stage-word">พูดคำนามอะไรก็ได้</h1>
+                          </div>
                         ) : (
-                          <p className="stage-instruction">ต้อนรับสู่เกมคำต่อคำ</p>
+                          <div className="stage-word-wrapper">
+                            <h1 className="stage-word">พูดคำนามอะไรก็ได้</h1>
+                          </div>
                         )}
                       </div>
                     )}
