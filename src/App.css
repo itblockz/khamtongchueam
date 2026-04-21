@@ -428,6 +428,24 @@
   border-radius: 10px;
 }
 
+.host-eliminate-reason-button {
+  min-width: auto;
+  padding: 0 10px;
+  border-color: rgba(176, 126, 82, 0.22);
+}
+
+.host-eliminate-reason-button:hover {
+  background-color: rgba(239, 68, 68, 0.05);
+  /* very subtle red */
+  border-color: rgba(239, 68, 68, 0.4);
+  color: var(--danger);
+}
+
+.host-eliminate-label {
+  font-size: 0.8rem;
+  letter-spacing: -0.01em;
+}
+
 .start-button {
   min-width: 78px;
   min-height: 60px;

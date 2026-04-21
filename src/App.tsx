@@ -20,7 +20,7 @@ import {
   ListBoxItem,
   Popover,
 } from "react-aria-components";
-import { Settings, ChevronRight, X, HelpCircle } from "lucide-react";
+import { Settings, ChevronRight, HelpCircle } from "lucide-react";
 import CodeMirror from "@uiw/react-codemirror";
 import { EditorView, keymap } from "@codemirror/view";
 import { indentLess, indentMore } from "@codemirror/commands";
@@ -59,6 +59,7 @@ import {
   type GameState,
   type LeaderboardAward,
   type TurnDirection,
+  type EliminationReason,
 } from "./game";
 import {
   DEFAULT_SYLLABLE_ENGINE,
@@ -364,6 +365,13 @@ function renderEliminationReasonDetail(
         </>
       );
     }
+    if (player.duplicateSubmittedAnswer) {
+      return (
+        <>
+          <span className="elimination-target-word">{player.duplicateSubmittedAnswer}</span> ใช้พยางค์ซ้ำ
+        </>
+      );
+    }
     return "ใช้พยางค์ซ้ำ";
   }
 
@@ -408,6 +416,17 @@ function renderEliminationReasonDetail(
     return "ไม่ใช่คำนาม";
   }
 
+  if (player.eliminationReason === "forbidden_word") {
+    if (player.duplicateSubmittedAnswer) {
+      return (
+        <>
+          <span className="elimination-target-word">{player.duplicateSubmittedAnswer}</span> เป็นคำต้องห้าม
+        </>
+      );
+    }
+    return "เป็นคำต้องห้าม";
+  }
+
   const reasonMap: Record<string, string> = {
     timeout: "ไม่ทันเวลา",
     late_submit: "ส่งคำช้าเกินเวลา",
@@ -415,6 +434,7 @@ function renderEliminationReasonDetail(
     failed_challenge: "ชาเลนจ์ไม่สำเร็จ",
     invalid_connection: "คำไม่เชื่อมกัน",
     not_noun: "ไม่ใช่คำนาม",
+    forbidden_word: "คำต้องห้าม",
   };
 
   return (player.eliminationReason && reasonMap[player.eliminationReason]) || "ผิดกติกา";
@@ -434,6 +454,10 @@ function getEliminatedPlayerSummary(
 
     if (player.duplicateSourceAnswer) {
       return `${player.name} ตกรอบเพราะคำตอบซ้ำกับคำ "${player.duplicateSourceAnswer}"`;
+    }
+
+    if (player.duplicateSubmittedAnswer) {
+      return `${player.name} ตกรอบเพราะ "${player.duplicateSubmittedAnswer}" ใช้พยางค์ซ้ำ`;
     }
 
     return `${player.name} ตกรอบเพราะใช้พยางค์ซ้ำ`;
@@ -468,6 +492,13 @@ function getEliminatedPlayerSummary(
       return `${player.name} ตกรอบเพราะ "${player.duplicateSubmittedAnswer}" ไม่ใช่คำนาม`;
     }
     return `${player.name} ตกรอบเพราะไม่ใช่คำนาม`;
+  }
+
+  if (player.eliminationReason === "forbidden_word") {
+    if (player.duplicateSubmittedAnswer) {
+      return `${player.name} ตกรอบเพราะคำบอก "${player.duplicateSubmittedAnswer}" เป็นคำต้องห้าม`;
+    }
+    return `${player.name} ตกรอบเพราะใช้คำต้องห้าม`;
   }
 
   return `${player.name} ตกรอบ`;
@@ -1974,10 +2005,10 @@ function App() {
     setIsGmOpeningWordEnabled((current) => !current);
   }
 
-  function handleHostEliminateNotNoun() {
+  function handleHostEliminate(reason: EliminationReason) {
     SoundSynth.init();
     commitGameAction((current) =>
-      hostEliminateCurrentPlayer(current, "not_noun"),
+      hostEliminateCurrentPlayer(current, reason),
     );
   }
 
@@ -3229,12 +3260,30 @@ function App() {
                       <>
                         <button
                           type="button"
-                          className="secondary-button symbol-button compact-symbol-button"
-                          onClick={handleHostEliminateNotNoun}
-                          aria-label="คำไม่ใช่คำนาม"
-                          title="คำไม่ใช่คำนาม"
+                          className="secondary-button symbol-button compact-symbol-button host-eliminate-reason-button"
+                          onClick={() => handleHostEliminate("not_noun")}
+                          aria-label="ไม่ใช่คำนาม"
+                          title="ไม่ใช่คำนาม"
                         >
-                          <X size={16} aria-hidden="true" />
+                          <span className="host-eliminate-label">ไม่ใช่คำนาม</span>
+                        </button>
+                        <button
+                          type="button"
+                          className="secondary-button symbol-button compact-symbol-button host-eliminate-reason-button"
+                          onClick={() => handleHostEliminate("forbidden_word")}
+                          aria-label="คำต้องห้าม"
+                          title="คำต้องห้าม"
+                        >
+                          <span className="host-eliminate-label">คำต้องห้าม</span>
+                        </button>
+                        <button
+                          type="button"
+                          className="secondary-button symbol-button compact-symbol-button host-eliminate-reason-button"
+                          onClick={() => handleHostEliminate("duplicate_syllable")}
+                          aria-label="พยางค์ซ้ำ"
+                          title="พยางค์ซ้ำ"
+                        >
+                          <span className="host-eliminate-label">พยางค์ซ้ำ</span>
                         </button>
                         <button
                           type="submit"

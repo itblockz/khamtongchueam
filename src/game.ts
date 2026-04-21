@@ -17,6 +17,7 @@ export type EliminationReason =
   | 'failed_challenge'
   | 'invalid_connection'
   | 'not_noun'
+  | 'forbidden_word'
 
 export interface PlayerDraft {
   id: string
@@ -1383,7 +1384,7 @@ export function resolveChallenge(
 
 export function hostEliminateCurrentPlayer(
   state: GameState,
-  eliminationReason: 'not_noun',
+  eliminationReason: EliminationReason,
   durationMs = TURN_DURATION_MS,
 ): GameState {
   if (
