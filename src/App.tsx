@@ -2467,12 +2467,19 @@ function App() {
       ? 1
       : sessionState.completedRoundsInMatch + 1;
 
+    const playerToIdMap = new Map(
+      gameState.players.map((player) => [player.name, player.id]),
+    );
+
+    const rosterDrafts = playerNamesFromTextarea.map((name) => {
+      const existingId = playerToIdMap.get(name);
+      return existingId ? { id: existingId, name } : createPlayerDraft(name);
+    });
+
     resetHistory({
       sessionState: {
         gameState: createConfirmedGameState(
-          prepareRoster(
-            playerNamesFromTextarea.map((name) => createPlayerDraft(name)),
-          ),
+          prepareRoster(rosterDrafts),
           TURN_DURATION_MS,
           getTurnDirectionForMatchRound(nextMatchRound),
         ),
