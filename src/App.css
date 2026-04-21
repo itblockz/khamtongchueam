@@ -675,7 +675,7 @@ button:disabled {
 
 .answer-panel {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(300px, 520px);
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 540px);
   gap: 14px;
   align-items: end;
 }
