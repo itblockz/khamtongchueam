@@ -754,7 +754,7 @@ function SettingsDropdown({
             <span className="settings-dropdown-item-check" aria-hidden="true">
               {isGmOpeningEnabled ? "✓" : ""}
             </span>
-            ผู้คุมเกมเริ่ม
+            พิธีกรเริ่ม
           </button>
           <button
             type="button"
@@ -1166,7 +1166,7 @@ function App() {
     ? gmOpeningWordDraft
     : gameState.currentInput;
   const answerInputLabel = isGmOpeningWordMode
-    ? "คำแรกจากผู้คุมเกม"
+    ? "คำแรกจากพิธีกร"
     : `คำตอบของ ${playScreenPlayer?.name ?? ""}`;
   const answerInputPlaceholder = isGmOpeningWordMode
     ? "พิมพ์คำแรกเพื่อเริ่มเกม"
@@ -1242,7 +1242,7 @@ function App() {
                 : "เวลา";
   const displayedTimerValue = isGmOpeningWordMode ? "รอคำแรก" : timerValue;
   const displayedTimerAriaLabel = isGmOpeningWordMode
-    ? "เวลารอคำแรกของผู้คุมเกม"
+    ? "เวลารอคำแรกของพิธีกร"
     : timerAriaLabel;
   const challengeNote = isChallengeSelecting
     ? null
@@ -2930,7 +2930,7 @@ function App() {
                       <div className="stage-player-sequence">
                         <span className="player-name current">
                           {isGmOpeningWordMode
-                            ? "ผู้คุมเกม"
+                            ? "พิธีกร"
                             : playScreenPlayer?.name}
                         </span>
                         <ChevronRight className="sequence-arrow" size={24} />
@@ -2969,7 +2969,7 @@ function App() {
                     ) : (
                       <div className="stage-placeholder">
                         {isGmOpeningWordMode ? (
-                          <p className="stage-instruction">รอผู้คุมเกมกำหนดคำแรก</p>
+                          <p className="stage-instruction">รอพิธีกรกำหนดคำแรก</p>
                         ) : isAwaitingFirstTurnStart ? (
                           <div className="stage-word-wrapper">
                             <h1 className="stage-word">พูดคำนามอะไรก็ได้</h1>
@@ -3092,7 +3092,7 @@ function App() {
                             : isAwaitingRoundSummary
                               ? `${eliminatedPlayerSummary} กดสรุปรอบเพื่อดูตารางคะแนนของ ${playScreenPlayer.name}`
                               : isGmOpeningWordMode
-                                ? `ผู้คุมเกมพิมพ์คำแรกของรอบ แล้วกดเริ่มด้วยคำนี้เพื่อเริ่มจับเวลา ${playScreenPlayer.name}`
+                                ? `พิธีกรพิมพ์คำแรกของรอบ แล้วกดเริ่มด้วยคำนี้เพื่อเริ่มจับเวลา ${playScreenPlayer.name}`
                                 : isAwaitingFirstTurnStart
                                   ? `ยืนยันผู้เล่นแล้ว กดเริ่มรอบแรกเพื่อเริ่มจับเวลา ${playScreenPlayer.name}`
                                   : gameState.isHistoryRestorePause

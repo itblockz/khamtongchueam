@@ -1,6 +1,6 @@
-export const TURN_DURATION_MS = 3000
-export const CHALLENGE_DEBATE_SEGMENT_DURATION_MS = 15000
-export const CHALLENGE_DEBATE_SEGMENT_COUNT = 4
+export const TURN_DURATION_MS = 3000;
+export const CHALLENGE_DEBATE_SEGMENT_DURATION_MS = 15000;
+export const CHALLENGE_DEBATE_SEGMENT_COUNT = 4;
 const CHALLENGE_BONUS_POINTS = 2
 
 export type PlayerStatus = 'active' | 'eliminated' | 'winner'
@@ -552,7 +552,7 @@ export function startRoundWithOpeningWord(
       ...state.answerHistory,
       createAnswerRecord(
         state.activePlayerId,
-        'ผู้คุมเกม',
+        'พิธีกร',
         normalizedAnswer,
         normalizedSyllables,
         null,
@@ -1550,7 +1550,7 @@ export function advanceTurn(
             syllable,
             answer,
           })),
-        ]
+        ];
         nextPlayers = state.players.map((player, index) =>
           index === currentIndex
             ? {
