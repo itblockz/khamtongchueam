@@ -769,13 +769,21 @@ export function createConfirmedGameState(
   playerSeeds: PlayerSeed[],
   durationMs = TURN_DURATION_MS,
   turnDirection: TurnDirection = 1,
+  startingPlayerId: string | null = null,
 ): GameState {
   const players = createPlayers(playerSeeds)
+  const overrideStartingPlayerId =
+    startingPlayerId !== null &&
+    players.some((player) => player.id === startingPlayerId)
+      ? startingPlayerId
+      : null
 
   return {
     phase: 'playing',
     players,
-    activePlayerId: getActivePlayerIdForDirection(players, turnDirection),
+    activePlayerId:
+      overrideStartingPlayerId ??
+      getActivePlayerIdForDirection(players, turnDirection),
     turnCycle: 1,
     turnDirection,
     winnerId: null,

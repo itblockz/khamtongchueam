@@ -2476,12 +2476,15 @@ function App() {
       return existingId ? { id: existingId, name } : createPlayerDraft(name);
     });
 
+    const previousRoundWinnerId = gameState.winnerId;
+
     resetHistory({
       sessionState: {
         gameState: createConfirmedGameState(
           prepareRoster(rosterDrafts),
           TURN_DURATION_MS,
           getTurnDirectionForMatchRound(nextMatchRound),
+          previousRoundWinnerId,
         ),
         leaderboardScores: shouldStartNewMatch
           ? {}
