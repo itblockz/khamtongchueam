@@ -911,6 +911,17 @@ export function acknowledgeRoundSummary(state: GameState): GameState {
   }
 }
 
+export function acknowledgeEliminationPause(state: GameState): GameState {
+  if (!state.isEliminationPause) {
+    return state
+  }
+
+  return {
+    ...state,
+    isEliminationPause: false,
+  }
+}
+
 export function applyInputChange(
   state: GameState,
   nextValue: string,

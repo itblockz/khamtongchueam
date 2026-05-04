@@ -33,6 +33,7 @@ import {
   CHALLENGE_DEBATE_SEGMENT_COUNT,
   CHALLENGE_DEBATE_SEGMENT_DURATION_MS,
   TURN_DURATION_MS,
+  acknowledgeEliminationPause,
   applyScoreAwards,
   advanceChallengeDebate,
   advanceTurn,
@@ -1991,6 +1992,12 @@ function App() {
     }
   }
 
+  function handleDismissEliminationPause() {
+    SoundSynth.init();
+    setSegmentationError(null);
+    commitGameAction(acknowledgeEliminationPause);
+  }
+
   function handleToggleGmOpeningWord() {
     if (isSubmittingTurn) {
       return;
@@ -3276,6 +3283,17 @@ function App() {
                         title="เริ่มด้วยคำนี้"
                       >
                         <span className="button-copy">เริ่มด้วยคำนี้</span>
+                      </button>
+                    ) : gameState.isEliminationPause ? (
+                      <button
+                        ref={startFirstTurnButtonRef}
+                        type="button"
+                        className="primary-button start-turn-button"
+                        onClick={handleDismissEliminationPause}
+                        aria-label="ไปต่อ"
+                        title="ไปต่อ"
+                      >
+                        <span className="button-copy">ไปต่อ</span>
                       </button>
                     ) : requiresManualTurnStart ? (
                       <button
