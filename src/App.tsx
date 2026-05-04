@@ -20,7 +20,7 @@ import {
   ListBoxItem,
   Popover,
 } from "react-aria-components";
-import { Settings, ChevronRight, HelpCircle } from "lucide-react";
+import { Settings, ChevronRight, HelpCircle, ArrowDown, ArrowUp } from "lucide-react";
 import CodeMirror from "@uiw/react-codemirror";
 import { EditorView, keymap } from "@codemirror/view";
 import { indentLess, indentMore } from "@codemirror/commands";
@@ -2476,7 +2476,7 @@ function App() {
       return existingId ? { id: existingId, name } : createPlayerDraft(name);
     });
 
-    const previousRoundWinnerId = gameState.winnerId;
+    const startingPlayerId = shouldStartNewMatch ? null : gameState.winnerId;
 
     resetHistory({
       sessionState: {
@@ -2484,7 +2484,7 @@ function App() {
           prepareRoster(rosterDrafts),
           TURN_DURATION_MS,
           getTurnDirectionForMatchRound(nextMatchRound),
-          previousRoundWinnerId,
+          startingPlayerId,
         ),
         leaderboardScores: shouldStartNewMatch
           ? {}
@@ -2582,7 +2582,28 @@ function App() {
             <aside className="focus-sidebar surface-card">
               <div className="sidebar-header">
                 <h2 className="sidebar-title">คิวผู้เล่น</h2>
-                <span className="count-badge">{visiblePlayers.length}</span>
+                <div className="sidebar-header-meta">
+                  <span
+                    className="sidebar-direction"
+                    aria-label={
+                      gameState.turnDirection === 1
+                        ? "ลำดับจากบนลงล่าง"
+                        : "ลำดับจากล่างขึ้นบน"
+                    }
+                    title={
+                      gameState.turnDirection === 1
+                        ? "ลำดับจากบนลงล่าง"
+                        : "ลำดับจากล่างขึ้นบน"
+                    }
+                  >
+                    {gameState.turnDirection === 1 ? (
+                      <ArrowDown size={16} aria-hidden="true" />
+                    ) : (
+                      <ArrowUp size={16} aria-hidden="true" />
+                    )}
+                  </span>
+                  <span className="count-badge">{visiblePlayers.length}</span>
+                </div>
               </div>
 
               <div className="sidebar-scroll-area">
