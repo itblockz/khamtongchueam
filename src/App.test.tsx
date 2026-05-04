@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import App from './App'
 
-const MATCH_ROUNDS_PER_MATCH = 4
+const MATCH_ROUNDS_PER_MATCH = 3
 const SEGMENTATION_DEBOUNCE_MS = 250
 const CHALLENGE_SEGMENT_MS = 15000
 const SEGMENTATION_ERROR_TEXT = 'ระบบแยกพยางค์ไม่พร้อมใช้งาน'
@@ -716,7 +716,7 @@ describe('คำต้องเชื่อม', () => {
     expect(
       screen.getByRole('heading', { name: 'ถึงตา ก้อย' }),
     ).toBeInTheDocument()
-    expect(screen.getByText('รอบ 1/4')).toBeInTheDocument()
+    expect(screen.getByText(`รอบ 1/${MATCH_ROUNDS_PER_MATCH}`)).toBeInTheDocument()
     expect(screen.queryByLabelText('การแยกพยางค์')).not.toBeInTheDocument()
 
     fireEvent.change(answerInput, { target: { value: 'กาแฟ' } })
@@ -1300,15 +1300,20 @@ describe('คำต้องเชื่อม', () => {
     await openRoundSummary()
     await waitForLeaderboard()
 
-    expect(screen.getByRole('columnheader', { name: 'รอบที่ 1' })).toBeInTheDocument()
-    expect(screen.getByRole('columnheader', { name: 'รอบที่ 2' })).toBeInTheDocument()
-    expect(screen.getByRole('columnheader', { name: 'รอบที่ 3' })).toBeInTheDocument()
-    expect(screen.getByRole('columnheader', { name: 'รอบที่ 4' })).toBeInTheDocument()
+    for (let roundNumber = 1; roundNumber <= MATCH_ROUNDS_PER_MATCH; roundNumber += 1) {
+      expect(
+        screen.getByRole('columnheader', { name: `รอบที่ ${roundNumber}` }),
+      ).toBeInTheDocument()
+    }
     expect(screen.getByRole('columnheader', { name: 'คะแนนรวม' })).toBeInTheDocument()
-    expectLeaderboardRow('เอ', [3, '-', '-', '-'], 3)
-    expectLeaderboardRow('ซี', [1, '-', '-', '-'], 1)
-    expectLeaderboardRow('ดี', [1, '-', '-', '-'], 1)
-    expectLeaderboardRow('บี', [0, '-', '-', '-'], 0)
+    const remainingRoundPlaceholders = Array.from(
+      { length: MATCH_ROUNDS_PER_MATCH - 1 },
+      () => '-',
+    )
+    expectLeaderboardRow('เอ', [3, ...remainingRoundPlaceholders], 3)
+    expectLeaderboardRow('ซี', [1, ...remainingRoundPlaceholders], 1)
+    expectLeaderboardRow('ดี', [1, ...remainingRoundPlaceholders], 1)
+    expectLeaderboardRow('บี', [0, ...remainingRoundPlaceholders], 0)
   })
 
   it('keeps eliminated players in roster order even when they are eliminated later', async () => {

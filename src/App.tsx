@@ -276,7 +276,7 @@ function exitEditor(): boolean {
   return true;
 }
 
-const MATCH_ROUNDS_PER_MATCH = 4;
+const MATCH_ROUNDS_PER_MATCH = 3;
 const SYLLABLE_REQUEST_DEBOUNCE_MS = 250;
 const SYLLABLE_DEBUG_STORAGE_KEY = "khamtongchueam:show-syllable-debug";
 const GM_OPENING_WORD_STORAGE_KEY = "khamtongchueam:gm-opening-word-enabled";
@@ -3371,10 +3371,17 @@ function App() {
                     <thead>
                       <tr>
                         <th scope="col">ผู้เล่น</th>
-                        <th scope="col">รอบที่ 1</th>
-                        <th scope="col">รอบที่ 2</th>
-                        <th scope="col">รอบที่ 3</th>
-                        <th scope="col">รอบที่ 4</th>
+                        {Array.from(
+                          { length: MATCH_ROUNDS_PER_MATCH },
+                          (_, roundIndex) => (
+                            <th
+                              key={`round-header-${roundIndex + 1}`}
+                              scope="col"
+                            >
+                              รอบที่ {roundIndex + 1}
+                            </th>
+                          ),
+                        )}
                         <th scope="col">คะแนนรวม</th>
                       </tr>
                     </thead>
