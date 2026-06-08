@@ -29,8 +29,8 @@ COPY --from=builder /app/dist ./dist
 # Copy backend source
 COPY backend/ ./backend/
 
-# Expose port
+# Expose port (Railway/Render inject the real port via $PORT)
 EXPOSE 8080
 
-# Run FastAPI
-CMD ["uvicorn", "backend.app.main:app", "--host", "0.0.0.0", "--port", "8080"]
+# Run FastAPI — bind to $PORT when the platform provides it, else 8080
+CMD ["sh", "-c", "uvicorn backend.app.main:app --host 0.0.0.0 --port ${PORT:-8080}"]
