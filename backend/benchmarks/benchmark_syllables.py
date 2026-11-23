@@ -18,8 +18,20 @@ from backend.app.syllables import (
 )
 
 
-def load_gold_entries() -> list[dict[str, object]]:
-  gold_path = Path(__file__).with_name('gold_written_syllables.json')
+# gold_verified_syllables.json: every entry was confirmed by the project owner
+#   in a manual review. Change it only from the owner's own review.
+# gold_unverified_syllables.json (optional): proposed entries nobody has
+#   confirmed yet. Reported separately and never mixed into the verified score.
+VERIFIED_GOLD = 'gold_verified_syllables.json'
+UNVERIFIED_GOLD = 'gold_unverified_syllables.json'
+
+
+def load_gold_entries(filename: str = VERIFIED_GOLD) -> list[dict[str, object]]:
+  gold_path = Path(__file__).with_name(filename)
+
+  if not gold_path.exists():
+    return []
+
   return json.loads(gold_path.read_text(encoding='utf-8'))
 
 
@@ -172,7 +184,7 @@ def main() -> None:
   results: list[dict[str, object]] = []
 
   print('Thai syllable segmentation benchmark')
-  print(f'Gold entries: {len(entries)}')
+  print(f'Verified gold entries (confirmed by the project owner): {len(entries)}')
   print()
 
   for engine in engines:
@@ -228,6 +240,19 @@ def main() -> None:
     if recommended_result['avg_latency_ms'] is not None
     else f"Recommended engine: {recommended_result['engine']}"
   )
+
+  unverified_entries = load_gold_entries(UNVERIFIED_GOLD)
+
+  if unverified_entries:
+    result = benchmark_engine(DEFAULT_ENGINE, unverified_entries)
+    print()
+    print(f'Unverified entries (not confirmed yet, not part of the score above): {len(unverified_entries)}')
+    print(
+      f"{DEFAULT_ENGINE}: exact_match={result['exact_match_accuracy']:.4f}, "
+      f"boundary_f1={result['boundary_f1']:.4f}",
+    )
+    for text, expected, actual in result['mismatches']:  # type: ignore[union-attr]
+      print(f"    - {text}: {'|'.join(expected)} -> {'|'.join(actual)}")
 
 
 if __name__ == '__main__':
