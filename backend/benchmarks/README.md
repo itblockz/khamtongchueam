@@ -8,7 +8,7 @@ npm run benchmark:syllables
 
 | File | What it holds | Who may change it |
 | --- | --- | --- |
-| `gold_verified_syllables.json` | 149 words reviewed and confirmed one by one by the project owner (2026-11-23). This is the score that counts. | Only from the owner's own review. |
+| `gold_verified_syllables.json` | 146 words reviewed and confirmed one by one by the project owner (2026-11-23). Single Thai words only: entries with symbols or spaces were removed because the game does not accept them. This is the score that counts. | Only from the owner's own review. |
 | `gold_unverified_syllables.json` (optional) | Proposed words and segmentations nobody has confirmed yet. Reported separately. | Anyone. Move an entry to the verified file only after the owner confirms it. |
 
 Each entry:

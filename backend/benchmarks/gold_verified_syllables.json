@@ -144,8 +144,5 @@
   {"text": "ไอศกรีม", "syllables": ["ไอ", "ศ", "กรีม"], "spoken_syllables": 3, "category": "loanword"},
   {"text": "ช็อกโกแลต", "syllables": ["ช็อก", "โก", "แลต"], "spoken_syllables": 3, "category": "loanword"},
   {"text": "เทคโนโลยี", "syllables": ["เทค", "โน", "โล", "ยี"], "spoken_syllables": 4, "category": "loanword"},
-  {"text": "ยีราฟ", "syllables": ["ยี", "ราฟ"], "spoken_syllables": 2, "category": "loanword"},
-  {"text": "กาแฟ กล้วย", "syllables": ["กา", "แฟ", "กล้วย"], "spoken_syllables": 3, "category": "multi_token"},
-  {"text": "ประเทศไทย!", "syllables": ["ประ", "เทศ", "ไทย"], "spoken_syllables": 3, "category": "multi_token"},
-  {"text": "เด็กๆ", "syllables": ["เด็ก"], "spoken_syllables": 1, "category": "multi_token"}
+  {"text": "ยีราฟ", "syllables": ["ยี", "ราฟ"], "spoken_syllables": 2, "category": "loanword"}
 ]

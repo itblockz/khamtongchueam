@@ -31,6 +31,5 @@
   {"text": "ตะวัน", "syllables": ["ตะ", "วัน"], "spoken_syllables": 2, "category": "basic"},
   {"text": "ชีวิต", "syllables": ["ชี", "วิต"], "spoken_syllables": 2, "category": "basic"},
   {"text": "อาจารย์", "syllables": ["อา", "จารย์"], "spoken_syllables": 2, "category": "silent_letter"},
-  {"text": "ทิศทาง", "syllables": ["ทิศ", "ทาง"], "spoken_syllables": 2, "category": "basic"},
-  {"text": "ไทย!", "syllables": ["ไทย"], "spoken_syllables": 1, "category": "multi_token"}
+  {"text": "ทิศทาง", "syllables": ["ทิศ", "ทาง"], "spoken_syllables": 2, "category": "basic"}
 ]
