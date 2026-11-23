@@ -105,6 +105,19 @@ def is_leading_consonant_pair(first: str, second: str) -> bool:
   return first in (HIGH_CLASS | MID_CLASS) and second in LOW_SINGLE
 
 
+_SILENT_PATTERN = re.compile('[ก-ฮ][ิุ]?์')
+
+
+def is_pronounceable(text: str) -> bool:
+  """True if `text` can stand as a syllable: it has a vowel sign, or at least two
+  sounding consonants (initial + final). Silent letters marked with ์ do not count,
+  so the rest of วงศ์ (งศ์) or ทนต์ (นต์) is not a syllable on its own."""
+  sounding = _SILENT_PATTERN.sub('', text)
+  if any(char not in THAI_CONSONANTS for char in sounding):
+    return True
+  return len(sounding) >= 2
+
+
 def split_unwritten_vowel(chunk: str) -> list[str]:
   if len(chunk) < 3 or chunk[0] not in THAI_CONSONANTS:
     return [chunk]
@@ -121,6 +134,7 @@ def split_unwritten_vowel(chunk: str) -> list[str]:
     or rest.startswith('รร')
     or second == 'อ'
     or (second == 'ว' and all(char in THAI_CONSONANTS for char in rest[1:]))
+    or not is_pronounceable(rest)
   ):
     return [chunk]
 
