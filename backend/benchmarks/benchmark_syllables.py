@@ -29,17 +29,39 @@ def to_boundaries(syllables: list[str]) -> set[int]:
   return boundaries
 
 
+def best_reference(actual: list[str], references: list[list[str]]) -> list[str]:
+  actual_boundaries = to_boundaries(actual)
+  return max(
+    references,
+    key=lambda reference: (
+      reference == actual,
+      len(to_boundaries(reference) & actual_boundaries)
+      - len(to_boundaries(reference) ^ actual_boundaries),
+    ),
+  )
+
+
 def benchmark_engine(engine: str, entries: list[dict[str, object]]) -> dict[str, object]:
   exact_matches = 0
   true_positives = 0
   false_positives = 0
   false_negatives = 0
+  spoken_total = 0
+  spoken_matches = 0
   total_duration_ms = 0.0
   failures: list[tuple[str, str]] = []
+  mismatches: list[tuple[str, list[str], list[str]]] = []
+  per_category: dict[str, list[int]] = {}
 
   for entry in entries:
     text = str(entry['text'])
-    expected = [str(syllable) for syllable in entry['syllables']]
+    references = [[str(syllable) for syllable in entry['syllables']]]
+    references.extend(
+      [str(syllable) for syllable in alternative]
+      for alternative in entry.get('accept', [])  # type: ignore[union-attr]
+    )
+    category = str(entry.get('category', 'uncategorized'))
+    spoken_syllables = entry.get('spoken_syllables')
 
     started_at = perf_counter()
 
@@ -51,8 +73,19 @@ def benchmark_engine(engine: str, entries: list[dict[str, object]]) -> dict[str,
 
     total_duration_ms += (perf_counter() - started_at) * 1000
 
+    expected = best_reference(actual, references)
+    category_counts = per_category.setdefault(category, [0, 0])
+    category_counts[1] += 1
+
     if actual == expected:
       exact_matches += 1
+      category_counts[0] += 1
+    else:
+      mismatches.append((text, expected, actual))
+
+    if isinstance(spoken_syllables, int):
+      spoken_total += 1
+      spoken_matches += int(len(actual) == spoken_syllables)
 
     expected_boundaries = to_boundaries(expected)
     actual_boundaries = to_boundaries(actual)
@@ -82,6 +115,9 @@ def benchmark_engine(engine: str, entries: list[dict[str, object]]) -> dict[str,
     'engine': engine,
     'exact_match_accuracy': exact_matches / len(entries),
     'boundary_f1': boundary_f1,
+    'spoken_count_accuracy': spoken_matches / spoken_total if spoken_total > 0 else None,
+    'per_category': per_category,
+    'mismatches': mismatches,
     'avg_latency_ms': total_duration_ms / completed_runs if completed_runs > 0 else None,
     'failures': failures,
   }
@@ -136,6 +172,20 @@ def main() -> None:
       f"avg_latency_ms={result['avg_latency_ms']:.2f}" if result['avg_latency_ms'] is not None else
       f"{result['engine']}: failed",
     )
+
+    if result['spoken_count_accuracy'] is not None:
+      print(f"  spoken_syllable_count_match={result['spoken_count_accuracy']:.4f}")
+
+    category_summary = ', '.join(
+      f'{category}={correct}/{total}'
+      for category, (correct, total) in result['per_category'].items()  # type: ignore[union-attr]
+    )
+    print(f'  per_category: {category_summary}')
+
+    if result['mismatches']:
+      print('  mismatches (expected -> actual):')
+      for text, expected, actual in result['mismatches']:  # type: ignore[union-attr]
+        print(f"    - {text}: {'|'.join(expected)} -> {'|'.join(actual)}")
 
     if result['failures']:
       print('  failures:')
