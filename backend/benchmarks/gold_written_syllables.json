@@ -114,7 +114,7 @@
   {"text": "สามารถ", "syllables": ["สา", "มารถ"], "spoken_syllables": 2, "category": "pali_sanskrit"},
   {"text": "ปรากฏ", "syllables": ["ปรา", "กฏ"], "spoken_syllables": 2, "category": "pali_sanskrit"},
   {"text": "ประวัติศาสตร์", "syllables": ["ประ", "วัติ", "ศาสตร์"], "accept": [["ประ", "วัติ", "ติ", "ศาสตร์"]], "spoken_syllables": 3, "category": "pali_sanskrit"},
-  {"text": "มหาวิทยาลัย", "syllables": ["ม", "หา", "วิท", "ยา", "ลัย"], "spoken_syllables": 4, "category": "pali_sanskrit"},
+  {"text": "มหาวิทยาลัย", "syllables": ["ม", "หา", "วิท", "ยา", "ลัย"], "spoken_syllables": 6, "category": "pali_sanskrit"},
   {"text": "คณิตศาสตร์", "syllables": ["ค", "ณิต", "ศาสตร์"], "spoken_syllables": 3, "category": "pali_sanskrit"},
   {"text": "บริษัท", "syllables": ["บ", "ริ", "ษัท"], "spoken_syllables": 3, "category": "pali_sanskrit"},
   {"text": "อัตโนมัติ", "syllables": ["อัต", "โน", "มัติ"], "spoken_syllables": 4, "category": "pali_sanskrit"},
