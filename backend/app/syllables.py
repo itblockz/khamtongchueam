@@ -118,6 +118,21 @@ def is_pronounceable(text: str) -> bool:
   return len(sounding) >= 2
 
 
+# Word beginnings that look like a leading-consonant pair (or a cluster) but are
+# usually read with a separate first syllable: สมาคม = สะ-มา-คม, อนาคต = อะ-นา-คด,
+# ขมิ้น = ขะ-มิ้น. Mined from tltk readings of the PyThaiNLP word list (7,603 words
+# starting with such a pair): a prefix is listed when at least 5 words start with
+# it and words read split outnumber words read as a leading pair at least 3 to 1.
+# สระ, บรา and ปริ were removed after checking examples (สระน้ำ, บราซิล, ปริ่ม).
+# See backend/benchmarks/mine_leading_pairs.py.
+SPLIT_PREFIXES = frozenset(
+  {
+    'ขมิ', 'จรา', 'ศรา', 'สมณ', 'สมา', 'สรณ', 'สรี', 'หริ', 'อนง',
+    'อนั', 'อนา', 'อนี', 'อนุ', 'อมร', 'อรั', 'อรา', 'อรุ', 'อวั', 'อวิ',
+  },
+)
+
+
 def split_unwritten_vowel(chunk: str) -> list[str]:
   if len(chunk) < 3 or chunk[0] not in THAI_CONSONANTS:
     return [chunk]
@@ -126,6 +141,9 @@ def split_unwritten_vowel(chunk: str) -> list[str]:
 
   if second in LEADING_VOWELS:
     return [first, rest]
+
+  if chunk[:3] in SPLIT_PREFIXES and is_pronounceable(rest):
+    return [first, *split_unwritten_vowel(rest)]
 
   if (
     second not in THAI_CONSONANTS
@@ -147,7 +165,12 @@ def apply_syllable_rules(chunks: list[str]) -> list[str]:
   for chunk in chunks:
     previous = syllables[-1] if syllables else ''
 
-    if len(previous) == 1 and chunk and is_leading_consonant_pair(previous, chunk[0]):
+    if (
+      len(previous) == 1
+      and chunk
+      and is_leading_consonant_pair(previous, chunk[0])
+      and (previous + chunk)[:3] not in SPLIT_PREFIXES
+    ):
       syllables[-1] = previous + chunk
       continue
 
