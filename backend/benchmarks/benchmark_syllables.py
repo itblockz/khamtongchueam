@@ -10,7 +10,12 @@ ROOT_DIR = Path(__file__).resolve().parents[2]
 if str(ROOT_DIR) not in sys.path:
   sys.path.insert(0, str(ROOT_DIR))
 
-from backend.app.syllables import DEFAULT_ENGINE, get_supported_engines, segment_syllables
+from backend.app.syllables import (
+  DEFAULT_ENGINE,
+  SYLLABLE_EXCEPTIONS,
+  get_supported_engines,
+  segment_syllables,
+)
 
 
 def load_gold_entries() -> list[dict[str, object]]:
@@ -43,6 +48,8 @@ def best_reference(actual: list[str], references: list[list[str]]) -> list[str]:
 
 def benchmark_engine(engine: str, entries: list[dict[str, object]]) -> dict[str, object]:
   exact_matches = 0
+  rule_entries = 0
+  rule_exact_matches = 0
   true_positives = 0
   false_positives = 0
   false_negatives = 0
@@ -77,8 +84,12 @@ def benchmark_engine(engine: str, entries: list[dict[str, object]]) -> dict[str,
     category_counts = per_category.setdefault(category, [0, 0])
     category_counts[1] += 1
 
+    uses_exception = any(word in text for word in SYLLABLE_EXCEPTIONS)
+    rule_entries += int(not uses_exception)
+
     if actual == expected:
       exact_matches += 1
+      rule_exact_matches += int(not uses_exception)
       category_counts[0] += 1
     else:
       mismatches.append((text, expected, actual))
@@ -114,6 +125,8 @@ def benchmark_engine(engine: str, entries: list[dict[str, object]]) -> dict[str,
   return {
     'engine': engine,
     'exact_match_accuracy': exact_matches / len(entries),
+    'rule_exact_match_accuracy': rule_exact_matches / rule_entries if rule_entries > 0 else None,
+    'rule_entries': rule_entries,
     'boundary_f1': boundary_f1,
     'spoken_count_accuracy': spoken_matches / spoken_total if spoken_total > 0 else None,
     'per_category': per_category,
@@ -172,6 +185,12 @@ def main() -> None:
       f"avg_latency_ms={result['avg_latency_ms']:.2f}" if result['avg_latency_ms'] is not None else
       f"{result['engine']}: failed",
     )
+
+    if result['rule_exact_match_accuracy'] is not None:
+      print(
+        f"  exact_match_without_exception_words={result['rule_exact_match_accuracy']:.4f} "
+        f"({result['rule_entries']} words)",
+      )
 
     if result['spoken_count_accuracy'] is not None:
       print(f"  spoken_syllable_count_match={result['spoken_count_accuracy']:.4f}")
