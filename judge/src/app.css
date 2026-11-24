@@ -256,3 +256,43 @@ button.outline-danger.selected {
   background: var(--danger);
   color: #fff;
 }
+
+.choice {
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+
+.choice input {
+  width: auto;
+}
+
+.timer {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.timer > button.big {
+  flex: 1 1 200px;
+  min-height: 64px;
+  font-size: 1.3rem;
+}
+
+.timer > .note {
+  flex: 1 1 auto;
+}
+
+.countdown {
+  font-variant-numeric: tabular-nums;
+  margin-left: 8px;
+}
+
+.late {
+  flex: 1 1 auto;
+  margin: 0;
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--danger);
+}

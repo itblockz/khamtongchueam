@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import App from './App'
 
 const SYLLABLES: Record<string, string[]> = {
@@ -225,5 +225,54 @@ describe('judge app', () => {
 
     expect(screen.getByText('“ดาวอังคาร” ไม่เชื่อม')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'บีม ตกรอบ' })).toBeInTheDocument()
+  })
+
+  describe('turn timer', () => {
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    it('waits for the judge on the first turn, then runs out of time', () => {
+      vi.useFakeTimers()
+      startWith('ออย\nบีม\nเจ')
+      fireEvent.click(screen.getByRole('button', { name: /เริ่มจับเวลา/ }))
+      expect(screen.getByRole('button', { name: /พูดแล้ว/ })).toBeInTheDocument()
+
+      act(() => vi.advanceTimersByTime(3100))
+      expect(screen.getByText('หมดเวลา')).toBeInTheDocument()
+
+      fireEvent.click(screen.getByRole('button', { name: 'ไม่ทันเวลา' }))
+      expect(screen.getByRole('heading', { name: 'ออย ตกรอบ' })).toBeInTheDocument()
+      expect(screen.getByText('บีม', { selector: 'strong' })).toBeInTheDocument()
+    })
+
+    it('stops counting at the first sound', () => {
+      vi.useFakeTimers()
+      startWith('ออย\nบีม')
+      fireEvent.click(screen.getByRole('button', { name: /เริ่มจับเวลา/ }))
+      act(() => vi.advanceTimersByTime(1000))
+      fireEvent.click(screen.getByRole('button', { name: /พูดแล้ว/ }))
+      act(() => vi.advanceTimersByTime(5000))
+
+      expect(screen.queryByText('หมดเวลา')).not.toBeInTheDocument()
+      expect(screen.getByText('เปล่งเสียงทันเวลา')).toBeInTheDocument()
+    })
+
+    it('starts counting on its own after a word is sent', async () => {
+      startWith('ออย\nบีม\nเจ')
+      await submit('กาแฟ')
+      expect(screen.getByRole('button', { name: /พูดแล้ว/ })).toBeInTheDocument()
+    })
+
+    it('waits for the signal every turn when set up that way', async () => {
+      render(<App />)
+      fireEvent.change(screen.getByLabelText(/รายชื่อผู้เล่น/), { target: { value: 'ออย\nบีม\nเจ' } })
+      fireEvent.change(screen.getByLabelText(/เวลาเปล่งเสียงแรก/), { target: { value: '5' } })
+      fireEvent.click(screen.getByLabelText(/กรรมการให้สัญญาณ/))
+      fireEvent.click(screen.getByRole('button', { name: 'เริ่มเกม' }))
+
+      await submit('กาแฟ')
+      expect(screen.getByRole('button', { name: 'เริ่มจับเวลา (5 วิ)' })).toBeInTheDocument()
+    })
   })
 })

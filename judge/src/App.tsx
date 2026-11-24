@@ -5,6 +5,8 @@ import {
   JUDGE_REASON_LABEL,
   judgeReasonsAt,
   judgeOut,
+  judgedText,
+  needsWord,
   type JudgeReason,
   applyEdit,
   applyJudge,
@@ -23,9 +25,26 @@ import {
 
 const PREVIEW_DELAY_MS = 250
 
+/** How the turn timer starts: when the previous word is sent (the previous player has
+ * finished), or when the judge gives the signal. */
+type StartMode = 'auto' | 'signal'
+interface TimerSettings {
+  seconds: number
+  start: StartMode
+}
+const DEFAULT_TIMER: TimerSettings = { seconds: 3, start: 'auto' }
+
+/** idle: not counting yet · counting: since startedAt · spoke: first sound in time · late: time ran out */
+type TimerState =
+  | { phase: 'idle' }
+  | { phase: 'counting'; startedAt: number }
+  | { phase: 'spoke' }
+  | { phase: 'late' }
+
 export default function App() {
   const [namesText, setNamesText] = useState('')
   const [round, setRound] = useState<Round | null>(null)
+  const [timer, setTimer] = useState<TimerSettings>(DEFAULT_TIMER)
   const game = useMemo(() => (round ? replay(round) : null), [round])
 
   if (!round || !game) {
@@ -33,6 +52,8 @@ export default function App() {
       <Setup
         namesText={namesText}
         onNamesChange={setNamesText}
+        timer={timer}
+        onTimerChange={setTimer}
         onStart={(names) => setRound(startRound(names))}
       />
     )
@@ -69,17 +90,21 @@ export default function App() {
     )
   }
 
-  return <Play round={round} game={game} onChange={setRound} undoButton={undoButton} />
+  return <Play round={round} game={game} onChange={setRound} undoButton={undoButton} timer={timer} />
 }
 
 function Setup({
   namesText,
   onNamesChange,
   onStart,
+  timer,
+  onTimerChange,
 }: {
   namesText: string
   onNamesChange: (text: string) => void
   onStart: (names: string[]) => void
+  timer: TimerSettings
+  onTimerChange: (timer: TimerSettings) => void
 }) {
   const { names, duplicates, canStart } = parseNames(namesText)
 
@@ -109,6 +134,41 @@ function Setup({
               ? 'ต้องมีผู้เล่นอย่างน้อย 2 คน'
               : `ผู้เล่น ${names.length} คน`}
         </p>
+        <label htmlFor="seconds">เวลาเปล่งเสียงแรก (วินาที)</label>
+        <input
+          id="seconds"
+          type="number"
+          inputMode="decimal"
+          min={1}
+          max={30}
+          step={0.5}
+          value={timer.seconds}
+          onChange={(event) => {
+            const seconds = Number(event.target.value)
+            if (seconds > 0) onTimerChange({ ...timer, seconds })
+          }}
+        />
+        <fieldset className="stack choice">
+          <legend>เริ่มจับเวลาเมื่อ</legend>
+          <label>
+            <input
+              type="radio"
+              name="start"
+              checked={timer.start === 'auto'}
+              onChange={() => onTimerChange({ ...timer, start: 'auto' })}
+            />{' '}
+            คนก่อนพูดจบ (กดส่งคำแล้วเริ่มนับทันที)
+          </label>
+          <label>
+            <input
+              type="radio"
+              name="start"
+              checked={timer.start === 'signal'}
+              onChange={() => onTimerChange({ ...timer, start: 'signal' })}
+            />{' '}
+            กรรมการให้สัญญาณ (กดเริ่มทุกตา)
+          </label>
+        </fieldset>
         <button type="submit" disabled={!canStart}>
           เริ่มเกม
         </button>
@@ -122,12 +182,45 @@ function Play({
   game,
   onChange,
   undoButton,
+  timer: settings,
 }: {
   round: Round
   game: GameState
   onChange: (round: Round) => void
   undoButton: ReactNode
+  timer: TimerSettings
 }) {
+  const [timer, setTimer] = useState<TimerState>({ phase: 'idle' })
+  const [now, setNow] = useState(() => Date.now())
+  /** Set when this screen sends a word or a decision, so the next turn can start counting. */
+  const turnEnded = useRef(false)
+  const eventCount = round.events.length
+
+  // A new turn: start counting straight away after a word was sent here (auto mode),
+  // otherwise wait for the judge (signal mode, the first turn, after undo or an edit).
+  useEffect(() => {
+    const auto = turnEnded.current && settings.start === 'auto'
+    turnEnded.current = false
+    setTimer(auto ? { phase: 'counting', startedAt: Date.now() } : { phase: 'idle' })
+    setNow(Date.now())
+  }, [eventCount, settings.start])
+
+  useEffect(() => {
+    if (timer.phase !== 'counting') return
+    const id = window.setInterval(() => {
+      const current = Date.now()
+      setNow(current)
+      if (current - timer.startedAt >= settings.seconds * 1000) {
+        setTimer({ phase: 'late' })
+        navigator.vibrate?.(300)
+      }
+    }, 100)
+    return () => window.clearInterval(id)
+  }, [timer, settings.seconds])
+
+  const remaining =
+    timer.phase === 'counting' ? Math.max(0, settings.seconds - (now - timer.startedAt) / 1000) : 0
+
   const [word, setWord] = useState('')
   const [preview, setPreview] = useState<string[]>([])
   /** null: use the segmenter's split; otherwise the judge's correction (space separated). */
@@ -174,6 +267,7 @@ function Play({
         setError('ใส่การแยกพยางค์ก่อนส่ง')
         return
       }
+      turnEnded.current = true
       onChange(addWord(round, text, syllables, manual))
       setWord('')
       setPreview([])
@@ -194,6 +288,49 @@ function Play({
           <span className="next"> · ถัดไป {next.name}</span>
         </span>
         {undoButton}
+      </div>
+
+      <div className={`timer timer-${timer.phase}`} role="timer" aria-label="จับเวลา">
+        {timer.phase === 'idle' && (
+          <button
+            type="button"
+            className="big"
+            onClick={() => {
+              setNow(Date.now())
+              setTimer({ phase: 'counting', startedAt: Date.now() })
+            }}
+          >
+            เริ่มจับเวลา ({settings.seconds} วิ)
+          </button>
+        )}
+        {timer.phase === 'counting' && (
+          <button type="button" className="big" onClick={() => setTimer({ phase: 'spoke' })}>
+            พูดแล้ว <span className="countdown">{remaining.toFixed(1)}</span>
+          </button>
+        )}
+        {timer.phase === 'spoke' && <p className="note">เปล่งเสียงทันเวลา</p>}
+        {timer.phase === 'late' && (
+          <>
+            <p className="late">หมดเวลา</p>
+            <button type="button" className="secondary" onClick={() => setTimer({ phase: 'spoke' })}>
+              ทัน
+            </button>
+          </>
+        )}
+        <button
+          type="button"
+          className={timer.phase === 'late' ? 'outline-danger selected' : 'outline-danger'}
+          onClick={() => {
+            turnEnded.current = true
+            onChange(judgeOut(round, 'too-slow', word))
+            setWord('')
+            setPreview([])
+            setManualSplit(null)
+            setError(null)
+          }}
+        >
+          ไม่ทันเวลา
+        </button>
       </div>
 
       <form className="row" onSubmit={handleSubmit}>
@@ -254,13 +391,14 @@ function Play({
         </div>
       )}
       <div className="row judge-actions">
-        {judgeReasonsAt(game).map((reason) => (
+        {judgeReasonsAt(game).filter(needsWord).map((reason) => (
           <button
             key={reason}
             type="button"
             className="outline-danger"
             disabled={!word.trim()}
             onClick={() => {
+              turnEnded.current = true
               onChange(judgeOut(round, reason, word))
               setWord('')
               setPreview([])
@@ -302,9 +440,7 @@ function EliminationNotice({ game }: { game: GameState }) {
     <section className="elimination" role="status">
       <h2>{name} ตกรอบ</h2>
       {elimination.reason ? (
-        <p>
-          “{elimination.word}” {JUDGE_REASON_LABEL[elimination.reason]}
-        </p>
+        <p>{judgedText(elimination.word, elimination.reason)}</p>
       ) : (
         <p>
           “{elimination.word}” ({elimination.syllables.join(' | ')})

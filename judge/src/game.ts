@@ -36,7 +36,7 @@ export interface WordEvent {
   manual?: boolean
 }
 
-export type JudgeReason = 'not-connected' | 'not-noun' | 'forbidden'
+export type JudgeReason = 'not-connected' | 'not-noun' | 'forbidden' | 'too-slow'
 
 /** The judge put the current player out for the word they said. */
 export interface JudgeEvent {
@@ -52,10 +52,22 @@ export const JUDGE_REASON_LABEL: Record<JudgeReason, string> = {
   'not-connected': 'ไม่เชื่อม',
   'not-noun': 'ไม่ใช่คำนาม',
   forbidden: 'คำต้องห้าม',
+  'too-slow': 'ไม่ทันเวลา',
 }
 
 /** Judge reasons in the order the buttons show them. */
-export const JUDGE_REASONS: JudgeReason[] = ['not-connected', 'not-noun', 'forbidden']
+export const JUDGE_REASONS: JudgeReason[] = ['not-connected', 'not-noun', 'forbidden', 'too-slow']
+
+/** Reasons that need the word typed first. "ไม่ทันเวลา" (no first sound in time, or
+ * stretching a sound to think) can happen before any word is spoken. */
+export function needsWord(reason: JudgeReason): boolean {
+  return reason !== 'too-slow'
+}
+
+/** How a judged word reads: “word” reason, or just the reason when nothing was said. */
+export function judgedText(word: string, reason: JudgeReason): string {
+  return word ? `“${word}” ${JUDGE_REASON_LABEL[reason]}` : JUDGE_REASON_LABEL[reason]
+}
 
 export interface Round {
   players: { id: string; name: string }[]
@@ -382,7 +394,7 @@ export function applyEdit(
 /** The judge puts the current player out, e.g. the word is not a noun. */
 export function judgeOut(round: Round, reason: JudgeReason, word: string): Round {
   const state = replay(round)
-  if (state.winnerId || !word.trim()) {
+  if (state.winnerId || (needsWord(reason) && !word.trim())) {
     return round
   }
   const event: JudgeEvent = { type: 'judge', playerId: currentPlayer(state).id, word: word.trim(), reason }

@@ -359,3 +359,18 @@ describe('applyJudge', () => {
     expect(applyJudge(judged, 4, 'forbidden').round).toBe(judged)
   })
 })
+
+describe('too slow', () => {
+  it('puts the player out without a typed word', async () => {
+    const { judgeOut, replay, startRound } = await import('./game')
+    const state = replay(judgeOut(startRound(['ก', 'ข', 'ค']), 'too-slow', ''))
+    expect(state.lastElimination?.reason).toBe('too-slow')
+    expect(state.players[0].out).toBe(true)
+  })
+
+  it('still needs a word for other decisions', async () => {
+    const { judgeOut, startRound } = await import('./game')
+    const round = startRound(['ก', 'ข'])
+    expect(judgeOut(round, 'not-noun', ' ')).toBe(round)
+  })
+})
