@@ -337,3 +337,8 @@ button.outline-danger.selected {
 .games .row > button {
   min-height: 40px;
 }
+
+.clash-ref {
+  color: var(--danger);
+  font-size: 0.85rem;
+}

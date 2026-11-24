@@ -598,6 +598,11 @@ function WordList({
               <span className="word">{result.word}</span>
               <span className="word-syllables">{result.syllables.join(' | ')}</span>
             </div>
+            {result.status === 'duplicate' && (
+              <div className="clash-ref">
+                {result.clashes.map((clash) => describeClash(clash, game.players)).join(', ')}
+              </div>
+            )}
             <div className="word-meta">
               <span className="word-player">{nameOf(result.playerId)}</span>
               {result.manual && <span className="tag">แยกเอง</span>}

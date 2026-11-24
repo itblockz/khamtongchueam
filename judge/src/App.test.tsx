@@ -68,6 +68,8 @@ describe('judge app', () => {
     expect(within(notice).getByText('“ทราย” ซ้ำกับ คำที่ 1 “หาดทราย” ของ ออย')).toBeInTheDocument()
     expect(screen.getByText('เจ', { selector: 'strong' })).toBeInTheDocument()
     expect(screen.getByText('คำในรอบนี้ (นับ 1)')).toBeInTheDocument()
+    // once in the notice, once in the word list
+    expect(screen.getAllByText('“ทราย” ซ้ำกับ คำที่ 1 “หาดทราย” ของ ออย')).toHaveLength(2)
 
     await submit('กาแฟ')
     expect(screen.queryByRole('heading', { name: 'บีม ตกรอบ' })).not.toBeInTheDocument()
