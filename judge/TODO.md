@@ -21,9 +21,9 @@ Ideas agreed but not built yet, roughly in the order planned.
    The GM word counts as the first word: the first player must connect to it,
    "ไม่เชื่อม" and challenges apply from the first player, its syllables count as
    used. In competition mode `mustConnect` just never resets on an elimination.
-4. **Send split corrections to Supabase.** Every "แก้การแยก" is a segmenter mistake.
-   Needs the in-game notice like the old app, and production only so test data
-   does not mix with real data.
+4. ~~Send games to Supabase~~ done: `judge_games`, one anonymous row per game.
+   Next: tools to review the data (segmenter corrections, nouns, connections,
+   forbidden words). Player stats can be built later from games kept on the device.
 5. **Switch production to the judge app** (merge to master). Render keeps the old app.
 6. **Matches of several rounds and scores.** A successful challenge earns the
    challenger points; the log already records who challenged (`challengerId` on the

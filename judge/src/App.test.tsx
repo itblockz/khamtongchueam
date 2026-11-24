@@ -406,6 +406,52 @@ describe('judge app', () => {
     expect(screen.getByText('“กาแฟ” ไม่เชื่อม (ชาเลนจ์โดย ออย)')).toBeInTheDocument()
     expect(screen.queryByText('บิกินี')).not.toBeInTheDocument()
   })
+
+  it('sends the game without names a moment after it changes', async () => {
+    startWith('ออย\nบีม')
+    await submit('กาแฟ')
+    const fetchMock = vi.mocked(fetch)
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some(([url]) => url === '/api/judge/games')).toBe(true),
+      { timeout: 3000 },
+    )
+    const [, init] = fetchMock.mock.calls.find(([url]) => url === '/api/judge/games')!
+    const body = String(init?.body)
+    expect(body).toContain('กาแฟ')
+    expect(body).not.toMatch(/ออย|บีม/)
+  })
+
+  it('imports games from an exported file', async () => {
+    render(<App />)
+    const file = new File(
+      [
+        JSON.stringify({
+          app: 'khamtongchueam-judge',
+          version: 1,
+          exportedAt: 1,
+          games: [
+            {
+              id: 'imported1',
+              createdAt: 1,
+              updatedAt: 1,
+              round: {
+                players: [
+                  { id: 'p1', name: 'ออย' },
+                  { id: 'p2', name: 'บีม' },
+                ],
+                events: [{ type: 'word', playerId: 'p1', word: 'กาแฟ', syllables: ['กา', 'แฟ'] }],
+              },
+            },
+          ],
+        }),
+      ],
+      'games.json',
+      { type: 'application/json' },
+    )
+    fireEvent.change(screen.getByLabelText('ไฟล์เกมที่จะนำเข้า'), { target: { files: [file] } })
+    expect(await screen.findByText('นำเข้า 1 เกมใหม่')).toBeInTheDocument()
+    expect(screen.getByText('กำลังเล่น · ตาของ บีม')).toBeInTheDocument()
+  })
 })
 
 function cleanupAndRender() {

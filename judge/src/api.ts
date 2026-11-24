@@ -20,3 +20,21 @@ export async function segment(text: string, signal?: AbortSignal): Promise<strin
 
   return payload.syllables.map(String)
 }
+
+/**
+ * Send a game's log for collection (see backend feedback.py). The server only stores
+ * it in production; elsewhere it answers without storing. Failures are ignored: the
+ * game never depends on this.
+ */
+export async function uploadGame(id: string, data: unknown): Promise<void> {
+  try {
+    await fetch('/api/judge/games', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, data }),
+      keepalive: true,
+    })
+  } catch {
+    /* offline or blocked: skip */
+  }
+}

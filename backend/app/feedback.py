@@ -76,3 +76,11 @@ def record_report(
     },
   )
   record_word_event(text, segmenter_syllables, model_version, 'report')
+
+
+def record_judge_game(game_id: str, data: dict[str, object], model_version: str) -> None:
+  """Store (or replace) one judge-app game log. `data` carries no player names."""
+  _post(
+    '/rest/v1/rpc/record_judge_game',
+    {'p_id': game_id, 'p_data': data, 'p_model_version': model_version},
+  )

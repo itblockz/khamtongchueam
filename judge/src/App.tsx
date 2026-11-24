@@ -1,6 +1,15 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
-import { SegmentError, segment } from './api'
-import { load, MAX_GAMES, newId, save, type SavedGame } from './storage'
+import { SegmentError, segment, uploadGame } from './api'
+import {
+  anonymize,
+  exportGames,
+  load,
+  mergeGames,
+  newId,
+  parseExport,
+  save,
+  type SavedGame,
+} from './storage'
 import {
   addWord,
   JUDGE_REASON_LABEL,
@@ -30,6 +39,7 @@ import {
 } from './game'
 
 const PREVIEW_DELAY_MS = 250
+const UPLOAD_DELAY_MS = 1500
 
 /** Pressing a timer button must not take focus from the word input, or the phone
  * keyboard closes and the judge loses a beat reopening it. */
@@ -54,10 +64,39 @@ export default function App() {
   const [games, setGames] = useState<SavedGame[]>(saved.games ?? [])
   const [currentId, setCurrentId] = useState<string | null>(saved.currentId ?? null)
 
+  /** How many finished games were dropped because storage was full (shown once). */
+  const [dropped, setDropped] = useState(0)
+
   // Keep every game in this browser so a reload or a sleeping phone does not lose it
   useEffect(() => {
-    save({ namesText, seconds: timer.seconds, games, currentId })
+    const result = save({ namesText, seconds: timer.seconds, games, currentId })
+    if (result.dropped > 0) {
+      // Rare: storage was full and old finished games had to go. Show what was kept.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setGames(result.games)
+      setDropped((n) => n + result.dropped)
+    }
   }, [namesText, timer.seconds, games, currentId])
+
+  // Send changed games for collection, anonymously, a moment after they settle.
+  // Games loaded at start count as already sent.
+  const sent = useRef<Map<string, string> | null>(null)
+  if (sent.current === null) {
+    sent.current = new Map((saved.games ?? []).map((g) => [g.id, JSON.stringify(anonymize(g))]))
+  }
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      for (const g of games) {
+        if (g.round.events.length === 0) continue
+        const data = anonymize(g)
+        const json = JSON.stringify(data)
+        if (sent.current?.get(g.id) === json) continue
+        sent.current?.set(g.id, json)
+        void uploadGame(g.id, data)
+      }
+    }, UPLOAD_DELAY_MS)
+    return () => window.clearTimeout(timer)
+  }, [games])
 
   const round = games.find((g) => g.id === currentId)?.round ?? null
   const game = useMemo(() => (round ? replay(round) : null), [round])
@@ -69,7 +108,7 @@ export default function App() {
   function startGame(names: string[]) {
     const now = Date.now()
     const created: SavedGame = { id: newId(), createdAt: now, updatedAt: now, round: startRound(names) }
-    setGames((all) => [created, ...all].slice(0, MAX_GAMES))
+    setGames((all) => [created, ...all])
     setCurrentId(created.id)
   }
 
@@ -90,6 +129,12 @@ export default function App() {
         games={games}
         onOpen={setCurrentId}
         onDelete={(id) => setGames((all) => all.filter((g) => g.id !== id))}
+        onImport={(incoming) => {
+          const result = mergeGames(games, incoming)
+          setGames(result.games)
+          return result
+        }}
+        dropped={dropped}
       />
     )
   }
@@ -144,6 +189,8 @@ function Setup({
   games,
   onOpen,
   onDelete,
+  onImport,
+  dropped,
 }: {
   namesText: string
   onNamesChange: (text: string) => void
@@ -153,6 +200,8 @@ function Setup({
   games: SavedGame[]
   onOpen: (id: string) => void
   onDelete: (id: string) => void
+  onImport: (games: SavedGame[]) => { added: number; updated: number }
+  dropped: number
 }) {
   const { names, duplicates, canStart } = parseNames(namesText)
 
@@ -200,7 +249,17 @@ function Setup({
           เริ่มเกม
         </button>
       </form>
+      <p className="note">
+        แอปเก็บคำ การแยกพยางค์ และผลการตัดสินแบบไม่ระบุตัวตน (ไม่เก็บชื่อผู้เล่น)
+        เพื่อใช้พัฒนาระบบ
+      </p>
       <SavedGames games={games} onOpen={onOpen} onDelete={onDelete} />
+      {dropped > 0 && (
+        <p className="note error" role="status">
+          ลบเกมเก่าที่จบแล้ว {dropped} เกม เพราะพื้นที่เก็บในเบราว์เซอร์เต็ม
+        </p>
+      )}
+      <BackupFile games={games} onImport={onImport} />
     </main>
   )
 }
@@ -308,7 +367,7 @@ function Play({
         return
       }
       turnEnded.current = true
-      onChange(addWord(round, text, syllables, manual))
+      onChange(addWord(round, text, syllables, manual, manual ? preview : undefined))
       setWord('')
       setPreview([])
       setManualSplit(null)
@@ -480,6 +539,10 @@ function SavedGames({
   return (
     <section>
       <h2 className="small-heading">เกมที่บันทึกไว้ในเครื่องนี้</h2>
+      <p className="note">
+        เก็บไว้ในเบราว์เซอร์ของเครื่องนี้เท่านั้น ถ้าพื้นที่เต็ม เกมที่จบแล้วที่เก่าที่สุดจะถูกลบอัตโนมัติ
+        และถ้าล้างข้อมูลเบราว์เซอร์ เกมทั้งหมดจะหาย ส่งออกเป็นไฟล์ไว้ได้ถ้าอยากเก็บถาวร
+      </p>
       <ul className="games">
         {sorted.map((saved) => {
           const state = replay(saved.round)
@@ -517,6 +580,72 @@ function SavedGames({
           )
         })}
       </ul>
+    </section>
+  )
+}
+
+/** Keep games in a file, or bring them back (also moves games between devices). */
+function BackupFile({
+  games,
+  onImport,
+}: {
+  games: SavedGame[]
+  onImport: (games: SavedGame[]) => { added: number; updated: number }
+}) {
+  const [message, setMessage] = useState<string | null>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
+
+  function download() {
+    const blob = new Blob([JSON.stringify(exportGames(games))], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `khamtongchueam-${new Date().toISOString().slice(0, 10)}.json`
+    link.click()
+    URL.revokeObjectURL(url)
+  }
+
+  async function read(file: File) {
+    const incoming = parseExport(await file.text())
+    if (!incoming) {
+      setMessage('ไฟล์นี้ไม่ใช่ไฟล์เกมที่ส่งออกจากแอปนี้')
+      return
+    }
+    const { added, updated } = onImport(incoming)
+    setMessage(
+      added + updated === 0
+        ? 'ไม่มีเกมใหม่ในไฟล์นี้'
+        : `นำเข้า ${added} เกมใหม่${updated > 0 ? ` · อัปเดต ${updated} เกม` : ''}`,
+    )
+  }
+
+  return (
+    <section className="stack">
+      <div className="row">
+        <button type="button" className="secondary" onClick={download} disabled={games.length === 0}>
+          ส่งออกเกมทั้งหมด
+        </button>
+        <button type="button" className="secondary" onClick={() => fileRef.current?.click()}>
+          นำเข้า
+        </button>
+        <input
+          ref={fileRef}
+          type="file"
+          accept="application/json,.json"
+          className="visually-hidden"
+          aria-label="ไฟล์เกมที่จะนำเข้า"
+          onChange={(event) => {
+            const file = event.target.files?.[0]
+            event.target.value = ''
+            if (file) void read(file)
+          }}
+        />
+      </div>
+      {message && (
+        <p className="note" role="status">
+          {message}
+        </p>
+      )}
     </section>
   )
 }

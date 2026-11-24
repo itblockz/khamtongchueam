@@ -44,6 +44,8 @@ export interface WordEvent {
   syllables: string[]
   /** The judge typed the syllables instead of using the segmenter's split. */
   manual?: boolean
+  /** With `manual`: the segmenter's own split, kept to learn from the correction. */
+  segmented?: string[]
 }
 
 export type JudgeReason = 'not-connected' | 'not-noun' | 'forbidden' | 'too-slow'
@@ -371,7 +373,13 @@ export function nextPlayer(state: GameState): Player {
 }
 
 /** Log the current player's word. `manual` means the judge typed the split. */
-export function addWord(round: Round, word: string, syllables: string[], manual = false): Round {
+export function addWord(
+  round: Round,
+  word: string,
+  syllables: string[],
+  manual = false,
+  segmented?: string[],
+): Round {
   const trimmed = word.trim()
   const state = replay(round)
   if (state.winnerId || !trimmed || syllables.length === 0) {
@@ -386,6 +394,7 @@ export function addWord(round: Round, word: string, syllables: string[], manual 
   }
   if (manual) {
     event.manual = true
+    if (segmented && segmented.length > 0) event.segmented = segmented
   }
   return { ...round, events: [...round.events, event] }
 }
@@ -405,7 +414,9 @@ export function editWord(round: Round, index: number, syllables: string[]): Roun
     return round
   }
   const events = round.events.slice()
-  events[index] = { ...event, syllables, manual: true }
+  // Keep the segmenter's split from before the first correction
+  const segmented = event.manual ? event.segmented : event.syllables
+  events[index] = { ...event, syllables, manual: true, ...(segmented ? { segmented } : {}) }
   return { ...round, events }
 }
 

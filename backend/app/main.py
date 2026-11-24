@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -124,6 +124,55 @@ def record_syllable_report(payload: SyllableReportRequest, background_tasks: Bac
   text, syllables = segmented
   background_tasks.add_task(
     feedback.record_report, text, syllables, reported, get_model_version(DEFAULT_ENGINE),
+  )
+  return FeedbackResponse(recorded=True)
+
+
+PlayerId = Field(pattern=r'^p[0-9]{1,3}$')
+ShortText = Field(max_length=feedback.MAX_TEXT_LENGTH)
+
+
+class JudgeGameEvent(BaseModel):
+  """One entry of a judge-app game log. Players are seat ids only, never names."""
+
+  model_config = {'extra': 'forbid'}
+
+  type: Literal['word', 'judge', 'challenge-lost']
+  playerId: str = PlayerId
+  word: str = ShortText
+  syllables: list[Annotated[str, Field(max_length=20)]] | None = Field(default=None, max_length=30)
+  segmented: list[Annotated[str, Field(max_length=20)]] | None = Field(default=None, max_length=30)
+  manual: bool | None = None
+  reason: Literal['not-connected', 'not-noun', 'forbidden', 'too-slow'] | None = None
+  challengerId: str | None = Field(default=None, pattern=r'^p[0-9]{1,3}$')
+  targetIndex: int | None = Field(default=None, ge=0)
+
+
+class JudgeGameData(BaseModel):
+  model_config = {'extra': 'forbid'}
+
+  version: Literal[1]
+  mode: Literal['normal']
+  playerCount: int = Field(ge=2, le=100)
+  startedAt: int
+  events: list[JudgeGameEvent] = Field(max_length=2000)
+
+
+class JudgeGameRequest(BaseModel):
+  id: str = Field(pattern=r'^[a-z0-9]{6,40}$')
+  data: JudgeGameData
+
+
+@app.post('/api/judge/games', response_model=FeedbackResponse, status_code=202)
+def record_judge_game(payload: JudgeGameRequest, background_tasks: BackgroundTasks) -> FeedbackResponse:
+  """Keep the latest state of a judge-app game, anonymously (see feedback.py)."""
+  if not feedback.is_enabled():
+    return FeedbackResponse(recorded=False)
+  background_tasks.add_task(
+    feedback.record_judge_game,
+    payload.id,
+    payload.data.model_dump(exclude_none=True),
+    get_model_version(DEFAULT_ENGINE),
   )
   return FeedbackResponse(recorded=True)
 
