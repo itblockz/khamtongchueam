@@ -24,6 +24,9 @@ Ideas agreed but not built yet, roughly in the order planned.
 4. ~~Send games to Supabase~~ done: `judge_games`, one anonymous row per game.
    Next: tools to review the data (segmenter corrections, nouns, connections,
    forbidden words). Player stats can be built later from games kept on the device.
+   **Never feed game data straight into the segmenter or word lists.** Judges make
+   mistakes, so a game's split or decision is only a candidate: it goes to review,
+   and only what a person confirms is used (like the verified gold set).
 5. **Switch production to the judge app** (merge to master). Render keeps the old app.
 6. **Matches of several rounds and scores.** A successful challenge earns the
    challenger points; the log already records who challenged (`challengerId` on the
