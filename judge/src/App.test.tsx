@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import App from './App'
 
 const SYLLABLES: Record<string, string[]> = {
+  ไปรษณีย์: ['ไป', 'รษ', 'ณีย์'],
   มหา: ['ม', 'หา'],
   หาดทราย: ['หาด', 'ทราย'],
   ทรายทอง: ['ทราย', 'ทอง'],
@@ -80,5 +81,35 @@ describe('judge app', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'เล่นอีกรอบ' }))
     expect(screen.getByText('ยังไม่มีคำในรอบนี้')).toBeInTheDocument()
+  })
+
+  it('lets the judge correct the split before sending', async () => {
+    startWith('ออย\nบีม')
+    fireEvent.change(screen.getByLabelText(/^คำของ/), { target: { value: 'ไปรษณีย์' } })
+    expect(await screen.findByText('ไป | รษ | ณีย์')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'แก้การแยก' }))
+    const splitInput = screen.getByLabelText(/แก้การแยกพยางค์/)
+    expect(splitInput).toHaveValue('ไป รษ ณีย์')
+
+    fireEvent.change(splitInput, { target: { value: 'ไปร ษ ณีย์' } })
+    expect(screen.getByText('ไปร | ษ | ณีย์')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'ส่ง' }))
+
+    const list = await screen.findByRole('list')
+    expect(within(list).getByText('ไปร | ษ | ณีย์')).toBeInTheDocument()
+    expect(within(list).getByText('แยกเอง')).toBeInTheDocument()
+    expect(screen.queryByLabelText(/แก้การแยกพยางค์/)).not.toBeInTheDocument()
+  })
+
+  it('drops a correction when the word itself changes', async () => {
+    startWith('ออย\nบีม')
+    fireEvent.change(screen.getByLabelText(/^คำของ/), { target: { value: 'ไปรษณีย์' } })
+    await screen.findByText('ไป | รษ | ณีย์')
+    fireEvent.click(screen.getByRole('button', { name: 'แก้การแยก' }))
+
+    fireEvent.change(screen.getByLabelText(/^คำของ/), { target: { value: 'กาแฟ' } })
+
+    expect(screen.queryByLabelText(/แก้การแยกพยางค์/)).not.toBeInTheDocument()
   })
 })

@@ -4,6 +4,7 @@ import {
   findClashes,
   nextPlayer,
   parseNames,
+  parseSyllables,
   startGame,
   submitWord,
 } from './game'
@@ -92,5 +93,25 @@ describe('turns and duplicates', () => {
 
     expect(game.winnerId).toBe('p1')
     expect(submitWord(game, 'กาแฟ', ['กา', 'แฟ'])).toBe(game)
+  })
+
+  it('checks duplicates against a split the judge corrected and marks it', () => {
+    let game = startGame(['ออย', 'บีม', 'เจ'])
+    game = submitWord(game, 'ไปรษณีย์', parseSyllables('ไปร ษ ณีย์'), true)
+    expect(game.words[0]).toEqual({
+      word: 'ไปรษณีย์',
+      syllables: ['ไปร', 'ษ', 'ณีย์'],
+      playerId: 'p1',
+      manual: true,
+    })
+
+    game = submitWord(game, 'ไปร', ['ไปร'])
+    expect(game.lastElimination?.clashes).toEqual([{ syllable: 'ไปร', word: 'ไปรษณีย์' }])
+  })
+})
+
+describe('parseSyllables', () => {
+  it('splits on spaces, | and /', () => {
+    expect(parseSyllables(' ไปร  ษ|ณีย์ / ') ).toEqual(['ไปร', 'ษ', 'ณีย์'])
   })
 })

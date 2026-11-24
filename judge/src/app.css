@@ -174,3 +174,33 @@ button:disabled {
   clip: rect(0 0 0 0);
   white-space: nowrap;
 }
+
+.split-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: -4px;
+}
+
+.split-row .syllables {
+  margin: 0;
+}
+
+button.link {
+  background: none;
+  color: var(--accent);
+  min-height: 40px;
+  padding: 0 4px;
+  font-size: 0.95rem;
+  text-decoration: underline;
+}
+
+.tag {
+  font-size: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 0 4px;
+  margin-right: 8px;
+  color: var(--muted);
+}

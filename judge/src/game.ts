@@ -18,6 +18,8 @@ export interface WordEntry {
   word: string
   syllables: string[]
   playerId: string
+  /** The judge typed the syllables instead of using the segmenter's split. */
+  manual?: boolean
 }
 
 export interface Clash {
@@ -31,6 +33,7 @@ export interface Elimination {
   word: string
   syllables: string[]
   clashes: Clash[]
+  manual?: boolean
 }
 
 export interface GameState {
@@ -109,17 +112,39 @@ export function findClashes(words: WordEntry[], syllables: string[]): Clash[] {
     .map((syllable) => ({ syllable, word: firstUse.get(syllable)! }))
 }
 
-function acceptWord(state: GameState, word: string, syllables: string[]): GameState {
+function acceptWord(
+  state: GameState,
+  word: string,
+  syllables: string[],
+  manual: boolean,
+): GameState {
+  const entry: WordEntry = { word, syllables, playerId: currentPlayer(state).id }
+  if (manual) {
+    entry.manual = true
+  }
   return {
     ...state,
-    words: [...state.words, { word, syllables, playerId: currentPlayer(state).id }],
+    words: [...state.words, entry],
     turn: nextActiveIndex(state.players, state.turn),
     lastElimination: null,
   }
 }
 
-/** Submit the current player's word with the syllables from the segmenter. */
-export function submitWord(state: GameState, word: string, syllables: string[]): GameState {
+/** Split a judge-typed syllable list: spaces, | or / separate syllables. */
+export function parseSyllables(text: string): string[] {
+  return text.split(/[\s|/]+/).map((part) => part.trim()).filter(Boolean)
+}
+
+/**
+ * Submit the current player's word. `syllables` come from the segmenter, or from the
+ * judge when `manual` is true (the judge corrected the split).
+ */
+export function submitWord(
+  state: GameState,
+  word: string,
+  syllables: string[],
+  manual = false,
+): GameState {
   const trimmed = word.trim()
   if (state.winnerId || !trimmed || syllables.length === 0) {
     return state
@@ -127,7 +152,7 @@ export function submitWord(state: GameState, word: string, syllables: string[]):
 
   const clashes = findClashes(state.words, syllables)
   if (clashes.length === 0) {
-    return acceptWord(state, trimmed, syllables)
+    return acceptWord(state, trimmed, syllables, manual)
   }
 
   const out = currentPlayer(state)
@@ -140,7 +165,7 @@ export function submitWord(state: GameState, word: string, syllables: string[]):
     ...state,
     players,
     turn: nextActiveIndex(players, state.turn),
-    lastElimination: { playerId: out.id, word: trimmed, syllables, clashes },
+    lastElimination: { playerId: out.id, word: trimmed, syllables, clashes, ...(manual ? { manual } : {}) },
     winnerId: remaining.length === 1 ? remaining[0].id : null,
   }
 }

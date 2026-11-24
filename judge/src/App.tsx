@@ -4,6 +4,7 @@ import {
   currentPlayer,
   nextPlayer,
   parseNames,
+  parseSyllables,
   startGame,
   submitWord,
   type GameState,
@@ -95,6 +96,8 @@ function Setup({
 function Play({ game, onChange }: { game: GameState; onChange: (game: GameState) => void }) {
   const [word, setWord] = useState('')
   const [preview, setPreview] = useState<string[]>([])
+  /** null: use the segmenter's split; otherwise the judge's correction (space separated). */
+  const [manualSplit, setManualSplit] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -131,10 +134,16 @@ function Play({ game, onChange }: { game: GameState; onChange: (game: GameState)
     setIsSubmitting(true)
     setError(null)
     try {
-      const syllables = await segment(text)
-      onChange(submitWord(game, text, syllables))
+      const manual = manualSplit !== null
+      const syllables = manual ? parseSyllables(manualSplit) : await segment(text)
+      if (syllables.length === 0) {
+        setError('ใส่การแยกพยางค์ก่อนส่ง')
+        return
+      }
+      onChange(submitWord(game, text, syllables, manual))
       setWord('')
       setPreview([])
+      setManualSplit(null)
     } catch (caught) {
       setError(caught instanceof SegmentError ? caught.message : 'เชื่อมต่อระบบไม่ได้ ลองใหม่อีกครั้ง')
     } finally {
@@ -160,7 +169,10 @@ function Play({ game, onChange }: { game: GameState; onChange: (game: GameState)
           id="word"
           ref={inputRef}
           value={word}
-          onChange={(event) => setWord(event.target.value)}
+          onChange={(event) => {
+            setWord(event.target.value)
+            setManualSplit(null) // a correction belongs to the word it was made for
+          }}
           autoComplete="off"
           autoCorrect="off"
           spellCheck={false}
@@ -171,9 +183,41 @@ function Play({ game, onChange }: { game: GameState; onChange: (game: GameState)
           ส่ง
         </button>
       </form>
-      <p className="syllables" aria-label="พยางค์ของคำที่พิมพ์">
-        {preview.length > 0 ? preview.join(' | ') : ' '}
-      </p>
+      {manualSplit === null ? (
+        <div className="split-row">
+          <p className="syllables" aria-label="พยางค์ของคำที่พิมพ์">
+            {preview.length > 0 ? preview.join(' | ') : ' '}
+          </p>
+          {word.trim() && (
+            <button
+              type="button"
+              className="link"
+              onClick={() => setManualSplit(preview.length > 0 ? preview.join(' ') : word.trim())}
+            >
+              แก้การแยก
+            </button>
+          )}
+        </div>
+      ) : (
+        <div className="stack">
+          <label htmlFor="split">แก้การแยกพยางค์ (เว้นวรรคระหว่างพยางค์)</label>
+          <div className="row">
+            <input
+              id="split"
+              value={manualSplit}
+              onChange={(event) => setManualSplit(event.target.value)}
+              autoComplete="off"
+              autoCorrect="off"
+              spellCheck={false}
+              autoFocus
+            />
+            <button type="button" className="secondary" onClick={() => setManualSplit(null)}>
+              ใช้ของระบบ
+            </button>
+          </div>
+          <p className="syllables">{parseSyllables(manualSplit).join(' | ') || ' '}</p>
+        </div>
+      )}
       {error && (
         <p className="note error" role="alert">
           {error}
@@ -229,6 +273,7 @@ function WordList({ game }: { game: GameState }) {
           <li key={`${entry.word}-${index}`}>
             <span className="word">{entry.word}</span>
             <span className="word-syllables">{entry.syllables.join(' | ')}</span>
+            {entry.manual && <span className="tag">แยกเอง</span>}
             <span className="word-player">{nameOf(entry.playerId)}</span>
           </li>
         ))}
