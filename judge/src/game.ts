@@ -4,8 +4,8 @@
 // - Players take turns in roster order, skipping players who are out.
 // - A word is checked against every syllable already used in this round.
 //   Repeating a syllable inside the same word is allowed (นานา).
-// - The system only proposes a duplicate; the judge confirms (player is out)
-//   or overrules (the word counts). A word from a player who is out is not kept.
+// - A repeated syllable puts the player out straight away. Their word is not kept,
+//   and the round notes who went out and why so the judge can announce it.
 // - The last player left wins.
 
 export interface Player {
@@ -26,7 +26,8 @@ export interface Clash {
   word: string
 }
 
-export interface PendingDuplicate {
+export interface Elimination {
+  playerId: string
   word: string
   syllables: string[]
   clashes: Clash[]
@@ -38,8 +39,8 @@ export interface GameState {
   turn: number
   /** Words accepted this round, oldest first. */
   words: WordEntry[]
-  /** A word the system thinks repeats a syllable, waiting for the judge. */
-  pending: PendingDuplicate | null
+  /** The most recent player out and why; cleared when the next word is accepted. */
+  lastElimination: Elimination | null
   winnerId: string | null
 }
 
@@ -69,7 +70,7 @@ export function startGame(names: string[]): GameState {
     players: names.map((name, index) => ({ id: `p${index + 1}`, name, out: false })),
     turn: 0,
     words: [],
-    pending: null,
+    lastElimination: null,
     winnerId: null,
   }
 }
@@ -113,49 +114,33 @@ function acceptWord(state: GameState, word: string, syllables: string[]): GameSt
     ...state,
     words: [...state.words, { word, syllables, playerId: currentPlayer(state).id }],
     turn: nextActiveIndex(state.players, state.turn),
-    pending: null,
+    lastElimination: null,
   }
 }
 
 /** Submit the current player's word with the syllables from the segmenter. */
 export function submitWord(state: GameState, word: string, syllables: string[]): GameState {
   const trimmed = word.trim()
-  if (state.winnerId || state.pending || !trimmed || syllables.length === 0) {
+  if (state.winnerId || !trimmed || syllables.length === 0) {
     return state
   }
 
   const clashes = findClashes(state.words, syllables)
-  if (clashes.length > 0) {
-    return { ...state, pending: { word: trimmed, syllables, clashes } }
+  if (clashes.length === 0) {
+    return acceptWord(state, trimmed, syllables)
   }
 
-  return acceptWord(state, trimmed, syllables)
-}
-
-/** Judge agrees it is a duplicate: the current player is out. */
-export function confirmDuplicate(state: GameState): GameState {
-  if (!state.pending) {
-    return state
-  }
-
-  const players = state.players.map((player, index) =>
-    index === state.turn ? { ...player, out: true } : player,
+  const out = currentPlayer(state)
+  const players = state.players.map((player) =>
+    player.id === out.id ? { ...player, out: true } : player,
   )
   const remaining = players.filter((player) => !player.out)
 
   return {
     ...state,
     players,
-    pending: null,
     turn: nextActiveIndex(players, state.turn),
+    lastElimination: { playerId: out.id, word: trimmed, syllables, clashes },
     winnerId: remaining.length === 1 ? remaining[0].id : null,
   }
-}
-
-/** Judge rules it is not a duplicate: the word counts and play moves on. */
-export function overruleDuplicate(state: GameState): GameState {
-  if (!state.pending) {
-    return state
-  }
-  return acceptWord(state, state.pending.word, state.pending.syllables)
 }

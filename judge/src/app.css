@@ -79,10 +79,6 @@ button.secondary {
   color: var(--ink);
 }
 
-button.danger {
-  background: var(--danger);
-}
-
 button:disabled {
   opacity: 0.45;
   cursor: default;
@@ -119,25 +115,21 @@ button:disabled {
   font-size: 1.1rem;
 }
 
-.decision {
+.elimination {
   border: 2px solid var(--danger);
   border-radius: 10px;
   padding: 12px;
 }
 
-.decision h2 {
+.elimination h2 {
   margin: 0 0 4px;
   font-size: 1.2rem;
   color: var(--danger);
 }
 
-.decision p,
-.decision ul {
-  margin: 0 0 8px;
-}
-
-.decision .row > button {
-  flex: 1 1 140px;
+.elimination p,
+.elimination ul {
+  margin: 0 0 4px;
 }
 
 .small-heading {

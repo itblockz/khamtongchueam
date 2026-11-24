@@ -1,10 +1,8 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { SegmentError, segment } from './api'
 import {
-  confirmDuplicate,
   currentPlayer,
   nextPlayer,
-  overruleDuplicate,
   parseNames,
   startGame,
   submitWord,
@@ -31,6 +29,7 @@ export default function App() {
     const winner = game.players.find((player) => player.id === game.winnerId)
     return (
       <main className="page">
+        <EliminationNotice game={game} />
         <h1 className="winner">{winner?.name} ชนะ</h1>
         <WordList game={game} />
         <div className="row">
@@ -101,7 +100,6 @@ function Play({ game, onChange }: { game: GameState; onChange: (game: GameState)
   const inputRef = useRef<HTMLInputElement>(null)
   const player = currentPlayer(game)
   const next = nextPlayer(game)
-  const pending = game.pending
 
   // Live syllable preview while the judge types
   useEffect(() => {
@@ -127,7 +125,7 @@ function Play({ game, onChange }: { game: GameState; onChange: (game: GameState)
   async function handleSubmit(event: FormEvent) {
     event.preventDefault()
     const text = word.trim()
-    if (!text || isSubmitting || pending) {
+    if (!text || isSubmitting) {
       return
     }
     setIsSubmitting(true)
@@ -143,11 +141,6 @@ function Play({ game, onChange }: { game: GameState; onChange: (game: GameState)
       setIsSubmitting(false)
       inputRef.current?.focus()
     }
-  }
-
-  function decide(nextGame: GameState) {
-    onChange(nextGame)
-    inputRef.current?.focus()
   }
 
   return (
@@ -173,9 +166,8 @@ function Play({ game, onChange }: { game: GameState; onChange: (game: GameState)
           spellCheck={false}
           enterKeyHint="send"
           placeholder="พิมพ์คำที่ผู้เล่นพูด"
-          disabled={Boolean(pending)}
         />
-        <button type="submit" disabled={!word.trim() || isSubmitting || Boolean(pending)}>
+        <button type="submit" disabled={!word.trim() || isSubmitting}>
           ส่ง
         </button>
       </form>
@@ -188,29 +180,7 @@ function Play({ game, onChange }: { game: GameState; onChange: (game: GameState)
         </p>
       )}
 
-      {pending && (
-        <section className="decision" role="alertdialog" aria-labelledby="decision-title">
-          <h2 id="decision-title">พยางค์ซ้ำ?</h2>
-          <p>
-            “{pending.word}” ({pending.syllables.join(' | ')})
-          </p>
-          <ul>
-            {pending.clashes.map((clash) => (
-              <li key={clash.syllable}>
-                “{clash.syllable}” ซ้ำกับคำ “{clash.word}”
-              </li>
-            ))}
-          </ul>
-          <div className="row">
-            <button type="button" className="danger" onClick={() => decide(confirmDuplicate(game))}>
-              {player.name} ตกรอบ
-            </button>
-            <button type="button" className="secondary" onClick={() => decide(overruleDuplicate(game))}>
-              ไม่ซ้ำ ให้ผ่าน
-            </button>
-          </div>
-        </section>
-      )}
+      <EliminationNotice game={game} />
 
       <WordList game={game} />
 
@@ -220,6 +190,29 @@ function Play({ game, onChange }: { game: GameState; onChange: (game: GameState)
           ` · ตกรอบ: ${game.players.filter((p) => p.out).map((p) => p.name).join(', ')}`}
       </p>
     </main>
+  )
+}
+
+function EliminationNotice({ game }: { game: GameState }) {
+  const elimination = game.lastElimination
+  if (!elimination) {
+    return null
+  }
+  const name = game.players.find((player) => player.id === elimination.playerId)?.name
+  return (
+    <section className="elimination" role="status">
+      <h2>{name} ตกรอบ</h2>
+      <p>
+        “{elimination.word}” ({elimination.syllables.join(' | ')})
+      </p>
+      <ul>
+        {elimination.clashes.map((clash) => (
+          <li key={clash.syllable}>
+            “{clash.syllable}” ซ้ำกับคำ “{clash.word}”
+          </li>
+        ))}
+      </ul>
+    </section>
   )
 }
 

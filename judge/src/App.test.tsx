@@ -53,29 +53,30 @@ describe('judge app', () => {
     expect(screen.getByText('ม | หา')).toBeInTheDocument()
   })
 
-  it('asks the judge about a duplicate and lets the word pass when overruled', async () => {
-    startWith('ออย\nบีม')
+  it('puts the player out straight away on a repeated syllable and says why', async () => {
+    startWith('ออย\nบีม\nเจ')
     await submit('หาดทราย')
     await submit('ทรายทอง')
 
-    const dialog = screen.getByRole('alertdialog', { name: 'พยางค์ซ้ำ?' })
-    expect(within(dialog).getByText('“ทราย” ซ้ำกับคำ “หาดทราย”')).toBeInTheDocument()
+    const notice = screen.getByRole('status', { name: '' })
+    expect(within(notice).getByRole('heading', { name: 'บีม ตกรอบ' })).toBeInTheDocument()
+    expect(within(notice).getByText('“ทราย” ซ้ำกับคำ “หาดทราย”')).toBeInTheDocument()
+    expect(screen.getByText('เจ', { selector: 'strong' })).toBeInTheDocument()
+    expect(screen.getByText('คำที่ใช้แล้ว (1)')).toBeInTheDocument()
 
-    fireEvent.click(within(dialog).getByRole('button', { name: 'ไม่ซ้ำ ให้ผ่าน' }))
-
-    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
-    expect(screen.getByText('ออย', { selector: 'strong' })).toBeInTheDocument()
-    expect(screen.getByText('คำที่ใช้แล้ว (2)')).toBeInTheDocument()
+    await submit('กาแฟ')
+    expect(screen.queryByRole('heading', { name: 'บีม ตกรอบ' })).not.toBeInTheDocument()
   })
 
-  it('eliminates on a confirmed duplicate and shows the winner', async () => {
+  it('shows the winner with the reason for the last elimination', async () => {
     startWith('ออย\nบีม')
     await submit('หาดทราย')
-    await submit('ทรายทอง')
+    // the last word ends the game, so the input disappears instead of clearing
+    fireEvent.change(screen.getByLabelText(/^คำของ/), { target: { value: 'ทรายทอง' } })
+    fireEvent.click(screen.getByRole('button', { name: 'ส่ง' }))
 
-    fireEvent.click(screen.getByRole('button', { name: 'บีม ตกรอบ' }))
-
-    expect(screen.getByRole('heading', { name: 'ออย ชนะ' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'ออย ชนะ' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'บีม ตกรอบ' })).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'เล่นอีกรอบ' }))
     expect(screen.getByText('ยังไม่มีคำในรอบนี้')).toBeInTheDocument()

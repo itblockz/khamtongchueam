@@ -1,10 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
-  confirmDuplicate,
   currentPlayer,
   findClashes,
   nextPlayer,
-  overruleDuplicate,
   parseNames,
   startGame,
   submitWord,
@@ -43,7 +41,7 @@ describe('turns and duplicates', () => {
 
   it('allows a syllable repeated inside the same word', () => {
     const game = submitWord(startGame(['ออย', 'บีม']), 'นานา', ['นา', 'นา'])
-    expect(game.pending).toBeNull()
+    expect(game.lastElimination).toBeNull()
     expect(game.words).toHaveLength(1)
   })
 
@@ -58,42 +56,32 @@ describe('turns and duplicates', () => {
     ])
   })
 
-  it('holds a duplicate for the judge without moving the turn', () => {
+  it('puts the player out on a repeated syllable and says why', () => {
     let game = startGame(['ออย', 'บีม', 'เจ'])
     game = submitWord(game, 'มหา', ['ม', 'หา'])
-    game = submitWord(game, 'หาดทราย', ['หา', 'ดทราย'])
-
-    expect(game.pending).toEqual({
-      word: 'หาดทราย',
-      syllables: ['หา', 'ดทราย'],
-      clashes: [{ syllable: 'หา', word: 'มหา' }],
-    })
-    expect(currentPlayer(game).name).toBe('บีม')
-    // nothing else can be submitted until the judge decides
-    expect(submitWord(game, 'กาแฟ', ['กา', 'แฟ'])).toBe(game)
-  })
-
-  it('eliminates the player when the judge confirms, skipping them afterwards', () => {
-    let game = startGame(['ออย', 'บีม', 'เจ'])
-    game = submitWord(game, 'มหา', ['ม', 'หา'])
-    game = submitWord(game, 'หา', ['หา'])
-    game = confirmDuplicate(game)
+    game = submitWord(game, 'หาเงิน', ['หา', 'เงิน'])
 
     expect(game.players.find((p) => p.name === 'บีม')?.out).toBe(true)
+    expect(game.lastElimination).toEqual({
+      playerId: 'p2',
+      word: 'หาเงิน',
+      syllables: ['หา', 'เงิน'],
+      clashes: [{ syllable: 'หา', word: 'มหา' }],
+    })
+    // the word of a player who is out is not kept
     expect(game.words.map((w) => w.word)).toEqual(['มหา'])
     expect(currentPlayer(game).name).toBe('เจ')
     expect(nextPlayer(game).name).toBe('ออย')
     expect(game.winnerId).toBeNull()
   })
 
-  it('keeps the word and moves on when the judge overrules', () => {
-    let game = startGame(['ออย', 'บีม'])
+  it('clears the elimination notice once the next word is accepted', () => {
+    let game = startGame(['ออย', 'บีม', 'เจ'])
     game = submitWord(game, 'มหา', ['ม', 'หา'])
     game = submitWord(game, 'หา', ['หา'])
-    game = overruleDuplicate(game)
+    game = submitWord(game, 'กาแฟ', ['กา', 'แฟ'])
 
-    expect(game.pending).toBeNull()
-    expect(game.words.map((w) => w.word)).toEqual(['มหา', 'หา'])
+    expect(game.lastElimination).toBeNull()
     expect(currentPlayer(game).name).toBe('ออย')
   })
 
@@ -101,7 +89,6 @@ describe('turns and duplicates', () => {
     let game = startGame(['ออย', 'บีม'])
     game = submitWord(game, 'มหา', ['ม', 'หา'])
     game = submitWord(game, 'หา', ['หา'])
-    game = confirmDuplicate(game)
 
     expect(game.winnerId).toBe('p1')
     expect(submitWord(game, 'กาแฟ', ['กา', 'แฟ'])).toBe(game)
