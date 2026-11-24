@@ -61,8 +61,8 @@ describe('findClashes', () => {
       { word: 'หาดทราย', syllables: ['หาด', 'ทราย'], playerId: 'p2' },
     ]
     expect(findClashes(words, ['ทราย', 'หา'])).toEqual([
-      { syllable: 'ทราย', word: 'หาดทราย' },
-      { syllable: 'หา', word: 'มหา' },
+      { syllable: 'ทราย', word: 'หาดทราย', playerId: 'p2' },
+      { syllable: 'หา', word: 'มหา', playerId: 'p1' },
     ])
   })
 })
@@ -98,7 +98,7 @@ describe('playing a round', () => {
       playerId: 'p2',
       word: 'หาเงิน',
       syllables: ['หา', 'เงิน'],
-      clashes: [{ syllable: 'หา', word: 'มหา' }],
+      clashes: [{ syllable: 'หา', word: 'มหา', playerId: 'p1', index: 0 }],
     })
     expect(game.words.map((w) => w.word)).toEqual(['มหา'])
     expect(currentPlayer(game).name).toBe('เจ')
@@ -137,6 +137,7 @@ describe('playing a round', () => {
       syllables: ['ไปร', 'ษ', 'ณีย์'],
       playerId: 'p1',
       manual: true,
+      index: 0,
     })
   })
 })
@@ -196,7 +197,7 @@ describe('correcting an earlier split (replay)', () => {
     expect(fixed.results[1]).toMatchObject({
       status: 'duplicate',
       manual: true,
-      clashes: [{ syllable: 'อา', word: 'อาหาร' }],
+      clashes: [{ syllable: 'อา', word: 'อาหาร', playerId: 'p1', index: 0 }],
     })
     // นีออน still repeats นี, so ชช is out too and มม wins
     expect(fixed.results[3]).toMatchObject({ status: 'duplicate', playerId: 'p1' })
@@ -380,6 +381,6 @@ describe('single-consonant syllables', () => {
     const { findClashes } = await import('./game')
     const words = [{ word: 'สแปร์', syllables: ['ส', 'แปร์'], playerId: 'p1' }]
     expect(findClashes(words, ['ส', 'ปีก', 'เกอร์'])).toEqual([])
-    expect(findClashes(words, ['แปร์', 'ปลา'])).toEqual([{ syllable: 'แปร์', word: 'สแปร์' }])
+    expect(findClashes(words, ['แปร์', 'ปลา'])).toEqual([{ syllable: 'แปร์', word: 'สแปร์', playerId: 'p1' }])
   })
 })

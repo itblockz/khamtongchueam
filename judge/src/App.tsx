@@ -324,6 +324,11 @@ function Play({
         </span>
         {undoButton}
       </div>
+      <p className="note">
+        ยังเล่นอยู่: {game.players.filter((p) => !p.out).map((p) => p.name).join(', ')}
+        {game.players.some((p) => p.out) &&
+          ` · ตกรอบ: ${game.players.filter((p) => p.out).map((p) => p.name).join(', ')}`}
+      </p>
 
       <div className={`timer timer-${timer.phase}`} role="timer" aria-label="จับเวลา">
         {timer.phase === 'idle' && (
@@ -443,11 +448,6 @@ function Play({
 
       <WordList round={round} game={game} onChange={onChange} />
 
-      <p className="note">
-        ยังเล่นอยู่: {game.players.filter((p) => !p.out).map((p) => p.name).join(', ')}
-        {game.players.some((p) => p.out) &&
-          ` · ตกรอบ: ${game.players.filter((p) => p.out).map((p) => p.name).join(', ')}`}
-      </p>
       <div className="row">{homeButton}</div>
     </main>
   )
@@ -535,7 +535,8 @@ function EliminationNotice({ game }: { game: GameState }) {
       <ul>
         {elimination.clashes.map((clash) => (
           <li key={clash.syllable}>
-            “{clash.syllable}” ซ้ำกับคำ “{clash.word}”
+            “{clash.syllable}” ซ้ำกับ{clash.index !== undefined && ` คำที่ ${clash.index + 1}`} “{clash.word}” ของ{' '}
+            {game.players.find((p) => p.id === clash.playerId)?.name}
           </li>
         ))}
       </ul>

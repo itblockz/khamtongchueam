@@ -25,6 +25,10 @@ export interface Clash {
   syllable: string
   /** The earlier word that already used this syllable. */
   word: string
+  /** Who said that earlier word. */
+  playerId: string
+  /** Its position in the round (0-based), as numbered in the word list minus one. */
+  index?: number
 }
 
 export interface WordEvent {
@@ -94,6 +98,8 @@ export interface WordEntry {
   syllables: string[]
   playerId: string
   manual?: boolean
+  /** Position in the round (0-based). */
+  index?: number
 }
 
 export interface Elimination {
@@ -160,18 +166,26 @@ export function countsForClash(syllable: string): boolean {
 }
 
 export function findClashes(words: WordEntry[], syllables: string[]): Clash[] {
-  const firstUse = new Map<string, string>()
+  const firstUse = new Map<string, WordEntry>()
   for (const entry of words) {
     for (const syllable of entry.syllables) {
       if (!firstUse.has(syllable)) {
-        firstUse.set(syllable, entry.word)
+        firstUse.set(syllable, entry)
       }
     }
   }
 
   return Array.from(new Set(syllables))
     .filter((syllable) => countsForClash(syllable) && firstUse.has(syllable))
-    .map((syllable) => ({ syllable, word: firstUse.get(syllable)! }))
+    .map((syllable) => {
+      const entry = firstUse.get(syllable)!
+      return {
+        syllable,
+        word: entry.word,
+        playerId: entry.playerId,
+        ...(entry.index !== undefined ? { index: entry.index } : {}),
+      }
+    })
 }
 
 function nextActiveIndex(players: Player[], from: number): number {
@@ -255,7 +269,7 @@ export function replay(round: Round): GameState {
         winnerId = remaining[0].id
       }
     } else {
-      const entry: WordEntry = { word: event.word, syllables: event.syllables, playerId: speaker.id }
+      const entry: WordEntry = { word: event.word, syllables: event.syllables, playerId: speaker.id, index }
       if (event.manual) {
         entry.manual = true
       }

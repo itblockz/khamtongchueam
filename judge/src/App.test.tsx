@@ -65,7 +65,7 @@ describe('judge app', () => {
 
     const notice = screen.getByRole('status', { name: '' })
     expect(within(notice).getByRole('heading', { name: 'บีม ตกรอบ' })).toBeInTheDocument()
-    expect(within(notice).getByText('“ทราย” ซ้ำกับคำ “หาดทราย”')).toBeInTheDocument()
+    expect(within(notice).getByText('“ทราย” ซ้ำกับ คำที่ 1 “หาดทราย” ของ ออย')).toBeInTheDocument()
     expect(screen.getByText('เจ', { selector: 'strong' })).toBeInTheDocument()
     expect(screen.getByText('คำในรอบนี้ (นับ 1)')).toBeInTheDocument()
 
