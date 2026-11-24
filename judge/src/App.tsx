@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { SegmentError, segment } from './api'
+import { load, save } from './storage'
 import {
   addWord,
   JUDGE_REASON_LABEL,
@@ -42,9 +43,15 @@ const DEFAULT_TIMER: TimerSettings = { seconds: 3 }
 type TimerState = { phase: 'idle' } | { phase: 'counting'; startedAt: number } | { phase: 'late' }
 
 export default function App() {
-  const [namesText, setNamesText] = useState('')
-  const [round, setRound] = useState<Round | null>(null)
-  const [timer, setTimer] = useState<TimerSettings>(DEFAULT_TIMER)
+  const [saved] = useState(load)
+  const [namesText, setNamesText] = useState(saved.namesText ?? '')
+  const [round, setRound] = useState<Round | null>(saved.round ?? null)
+  const [timer, setTimer] = useState<TimerSettings>({ seconds: saved.seconds ?? DEFAULT_TIMER.seconds })
+
+  // Keep the game in this browser so a reload or a sleeping phone does not lose it
+  useEffect(() => {
+    save({ namesText, seconds: timer.seconds, round })
+  }, [namesText, timer.seconds, round])
   const game = useMemo(() => (round ? replay(round) : null), [round])
 
   if (!round || !game) {

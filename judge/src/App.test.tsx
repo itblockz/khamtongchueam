@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import App from './App'
 
 const SYLLABLES: Record<string, string[]> = {
@@ -14,6 +14,7 @@ const SYLLABLES: Record<string, string[]> = {
 }
 
 beforeEach(() => {
+  localStorage.clear()
   vi.stubGlobal(
     'fetch',
     vi.fn(async (_url: string, init?: RequestInit) => {
@@ -280,4 +281,40 @@ describe('judge app', () => {
       expect(await screen.findByRole('button', { name: 'เริ่มจับเวลา (5 วิ)' })).toBeInTheDocument()
     })
   })
+
+  describe('saved game', () => {
+    it('picks the round back up after a reload', async () => {
+      const { unmount } = render(<App />)
+      fireEvent.change(screen.getByLabelText(/รายชื่อผู้เล่น/), { target: { value: 'ออย\nบีม\nเจ' } })
+      fireEvent.change(screen.getByLabelText(/เวลาต่อตา/), { target: { value: '5' } })
+      fireEvent.click(screen.getByRole('button', { name: 'เริ่มเกม' }))
+      await submit('กาแฟ')
+      unmount()
+
+      render(<App />)
+      expect(screen.getByText('บีม', { selector: 'strong' })).toBeInTheDocument()
+      expect(screen.getByText('กา | แฟ')).toBeInTheDocument()
+
+      fireEvent.click(screen.getByRole('button', { name: 'ย้อนกลับ' }))
+      fireEvent.click(screen.getByRole('button', { name: 'ย้อนกลับ' }))
+      expect(screen.getByRole('button', { name: 'เริ่มจับเวลา (5 วิ)' })).toBeInTheDocument()
+    })
+
+    it('keeps a game in progress across a remount', () => {
+      startWith('ออย\nบีม')
+      cleanupAndRender()
+      expect(screen.getByText('ออย', { selector: 'strong' })).toBeInTheDocument()
+    })
+
+    it('ignores saved data it cannot read', () => {
+      localStorage.setItem('khamtongchueam.judge.v1', '{"round":{"players":"oops"}')
+      render(<App />)
+      expect(screen.getByLabelText(/รายชื่อผู้เล่น/)).toHaveValue('')
+    })
+  })
 })
+
+function cleanupAndRender() {
+  cleanup()
+  render(<App />)
+}
