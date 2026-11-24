@@ -99,13 +99,18 @@ button:disabled {
   font-size: 1.3rem;
   display: flex;
   justify-content: space-between;
-  align-items: baseline;
+  align-items: center;
   gap: 8px;
 }
 
 .turn .next {
   font-size: 0.95rem;
   color: var(--muted);
+}
+
+.turn > button {
+  min-height: 40px;
+  font-size: 0.95rem;
 }
 
 .syllables {

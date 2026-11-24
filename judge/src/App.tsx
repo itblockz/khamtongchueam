@@ -1,30 +1,45 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { SegmentError, segment } from './api'
 import {
+  addWord,
   currentPlayer,
   nextPlayer,
   parseNames,
   parseSyllables,
-  startGame,
-  submitWord,
+  replay,
+  startRound,
+  undo,
   type GameState,
+  type Round,
 } from './game'
 
 const PREVIEW_DELAY_MS = 250
 
 export default function App() {
   const [namesText, setNamesText] = useState('')
-  const [game, setGame] = useState<GameState | null>(null)
+  const [round, setRound] = useState<Round | null>(null)
+  const game = useMemo(() => (round ? replay(round) : null), [round])
 
-  if (!game) {
+  if (!round || !game) {
     return (
       <Setup
         namesText={namesText}
         onNamesChange={setNamesText}
-        onStart={(names) => setGame(startGame(names))}
+        onStart={(names) => setRound(startRound(names))}
       />
     )
   }
+
+  const undoButton = (
+    <button
+      type="button"
+      className="secondary"
+      onClick={() => setRound(undo(round))}
+      disabled={round.events.length === 0}
+    >
+      ย้อนกลับ
+    </button>
+  )
 
   if (game.winnerId) {
     const winner = game.players.find((player) => player.id === game.winnerId)
@@ -34,10 +49,11 @@ export default function App() {
         <h1 className="winner">{winner?.name} ชนะ</h1>
         <WordList game={game} />
         <div className="row">
-          <button type="button" onClick={() => setGame(startGame(game.players.map((p) => p.name)))}>
+          <button type="button" onClick={() => setRound(startRound(round.players.map((p) => p.name)))}>
             เล่นอีกรอบ
           </button>
-          <button type="button" className="secondary" onClick={() => setGame(null)}>
+          {undoButton}
+          <button type="button" className="secondary" onClick={() => setRound(null)}>
             แก้รายชื่อ
           </button>
         </div>
@@ -45,7 +61,7 @@ export default function App() {
     )
   }
 
-  return <Play game={game} onChange={setGame} />
+  return <Play round={round} game={game} onChange={setRound} undoButton={undoButton} />
 }
 
 function Setup({
@@ -93,7 +109,17 @@ function Setup({
   )
 }
 
-function Play({ game, onChange }: { game: GameState; onChange: (game: GameState) => void }) {
+function Play({
+  round,
+  game,
+  onChange,
+  undoButton,
+}: {
+  round: Round
+  game: GameState
+  onChange: (round: Round) => void
+  undoButton: ReactNode
+}) {
   const [word, setWord] = useState('')
   const [preview, setPreview] = useState<string[]>([])
   /** null: use the segmenter's split; otherwise the judge's correction (space separated). */
@@ -140,7 +166,7 @@ function Play({ game, onChange }: { game: GameState; onChange: (game: GameState)
         setError('ใส่การแยกพยางค์ก่อนส่ง')
         return
       }
-      onChange(submitWord(game, text, syllables, manual))
+      onChange(addWord(round, text, syllables, manual))
       setWord('')
       setPreview([])
       setManualSplit(null)
@@ -154,12 +180,13 @@ function Play({ game, onChange }: { game: GameState; onChange: (game: GameState)
 
   return (
     <main className="page">
-      <p className="turn">
+      <div className="turn">
         <span>
           ตาของ <strong>{player.name}</strong>
+          <span className="next"> · ถัดไป {next.name}</span>
         </span>
-        <span className="next">ถัดไป {next.name}</span>
-      </p>
+        {undoButton}
+      </div>
 
       <form className="row" onSubmit={handleSubmit}>
         <label htmlFor="word" className="visually-hidden">

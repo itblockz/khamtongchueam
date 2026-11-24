@@ -112,4 +112,31 @@ describe('judge app', () => {
 
     expect(screen.queryByLabelText(/แก้การแยกพยางค์/)).not.toBeInTheDocument()
   })
+
+  it('undoes the last word, bringing back a player who went out on it', async () => {
+    startWith('ออย\nบีม\nเจ')
+    expect(screen.getByRole('button', { name: 'ย้อนกลับ' })).toBeDisabled()
+    await submit('หาดทราย')
+    await submit('ทรายทอง')
+    expect(screen.getByRole('heading', { name: 'บีม ตกรอบ' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'ย้อนกลับ' }))
+
+    expect(screen.queryByRole('heading', { name: 'บีม ตกรอบ' })).not.toBeInTheDocument()
+    expect(screen.getByText('บีม', { selector: 'strong' })).toBeInTheDocument()
+    expect(screen.getByText(/ยังเล่นอยู่: ออย, บีม, เจ/)).toBeInTheDocument()
+  })
+
+  it('can undo from the winner screen back into the round', async () => {
+    startWith('ออย\nบีม')
+    await submit('หาดทราย')
+    fireEvent.change(screen.getByLabelText(/^คำของ/), { target: { value: 'ทรายทอง' } })
+    fireEvent.click(screen.getByRole('button', { name: 'ส่ง' }))
+    await screen.findByRole('heading', { name: 'ออย ชนะ' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'ย้อนกลับ' }))
+
+    expect(screen.queryByRole('heading', { name: 'ออย ชนะ' })).not.toBeInTheDocument()
+    expect(screen.getByText('บีม', { selector: 'strong' })).toBeInTheDocument()
+  })
 })
