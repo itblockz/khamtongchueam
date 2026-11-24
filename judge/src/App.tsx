@@ -13,6 +13,7 @@ import {
   applyJudge,
   applyChallenge,
   canChallenge,
+  defaultChallenger,
   describeChallenge,
   currentPlayer,
   describeChanges,
@@ -669,7 +670,7 @@ function WordList({
                   aria-label={`ชาเลนจ์ ${result.word}`}
                   onClick={() => {
                     setOpen({ index: result.index, kind: 'challenge' })
-                    setChallengerId(null)
+                    setChallengerId(defaultChallenger(game, result.index))
                     setSucceeded(null)
                   }}
                 >

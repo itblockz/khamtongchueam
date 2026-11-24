@@ -13,7 +13,10 @@
 //   was corrected) does not count, so its syllables stay free.
 // - Who said each word never changes; a player whose elimination is undone by a
 //   correction simply plays again from the current turn on.
-// - A challenge can be made against any counted word. If it succeeds, the word is
+// - The first word of a round, and the first word after someone goes out, start free:
+//   they do not have to connect (normal mode).
+// - A challenge can be made against a counted word that had to connect, said since
+//   the latest elimination. If it succeeds, the word is
 //   ruled out like a judge decision (the round goes back to it). If it fails, the
 //   challenger goes out on the spot and play carries on from the same turn.
 // - When one player is left the round ends; anything logged after that is ignored.
@@ -71,9 +74,16 @@ export type RoundEvent = WordEvent | JudgeEvent | ChallengeLostEvent
 /** Players can only challenge a word for not connecting to the word before it. */
 export const CHALLENGE_REASON: JudgeReason = 'not-connected'
 
-/** Whether the word at `index` can be challenged: it counts and has a word before it. */
+/**
+ * Whether players can challenge the word at `index`: it counts, it had to connect, and
+ * nobody has gone out since (a challenge only reaches back to the latest elimination).
+ */
 export function canChallenge(state: GameState, index: number): boolean {
-  return state.results[index]?.status === 'counted' && judgeReasonsAt(state, index).includes(CHALLENGE_REASON)
+  return (
+    state.results[index]?.status === 'counted' &&
+    mustConnect(state, index) &&
+    !state.results.some((r) => r.index > index && ELIMINATING.includes(r.status))
+  )
 }
 
 export const JUDGE_REASON_LABEL: Record<JudgeReason, string> = {
@@ -512,14 +522,27 @@ export function applyJudge(
   }
 }
 
+const ELIMINATING: WordStatus[] = ['duplicate', 'judged', 'challenge-lost']
+
+/**
+ * Whether the word at `index` had to connect to the word before it. The first word of
+ * a round starts free, and so does the first word after someone goes out (normal mode).
+ */
+export function mustConnect(state: GameState, index: number): boolean {
+  for (let i = index - 1; i >= 0; i -= 1) {
+    const status = state.results[i]?.status
+    if (status === 'counted') return true
+    if (status && ELIMINATING.includes(status)) return false
+  }
+  return false
+}
+
 /**
  * Decisions available for the word at `index` (default: the word being typed now).
- * "ไม่เชื่อม" needs an earlier counted word to connect to, so it is not offered for
- * the first word of a round.
+ * "ไม่เชื่อม" only applies to a word that had to connect.
  */
 export function judgeReasonsAt(state: GameState, index = state.results.length): JudgeReason[] {
-  const hasEarlier = state.results.some((r) => r.index < index && r.status === 'counted')
-  return hasEarlier ? JUDGE_REASONS : JUDGE_REASONS.filter((r) => r !== 'not-connected')
+  return mustConnect(state, index) ? JUDGE_REASONS : JUDGE_REASONS.filter((r) => r !== 'not-connected')
 }
 
 /**
@@ -567,4 +590,17 @@ export function applyChallenge(
 /** e.g. ชาเลนจ์ คำที่ 12 “ดาวอังคาร” ว่าไม่เชื่อม (numbered as in the word list). */
 export function describeChallenge(word: string, targetIndex: number): string {
   return `ชาเลนจ์ คำที่ ${targetIndex + 1} “${word}” ว่า${JUDGE_REASON_LABEL[CHALLENGE_REASON]}`
+}
+
+/**
+ * Who most likely challenges the word at `index`: whoever said the word before it
+ * (theirs is the word it failed to connect to), if still in. Otherwise the only
+ * player who could, if there is just one. Otherwise nobody: the judge picks.
+ */
+export function defaultChallenger(state: GameState, index: number): string | null {
+  const speakerId = state.results[index]?.playerId
+  const candidates = state.players.filter((p) => !p.out && p.id !== speakerId)
+  const previous = [...state.results].reverse().find((r) => r.index < index && r.status === 'counted')
+  if (previous && candidates.some((p) => p.id === previous.playerId)) return previous.playerId
+  return candidates.length === 1 ? candidates[0].id : null
 }

@@ -433,6 +433,35 @@ describe('challenge', () => {
     expect(game.applyChallenge(out, 1, 'p1', false).round).toBe(out)
   })
 
+  it('suggests whoever said the word before as the challenger', async () => {
+    const { game, round } = await setup()
+    expect(game.defaultChallenger(game.replay(round), 2)).toBe('p2')
+    // p2 is out: with two others left there is no single obvious choice
+    const out = game.applyChallenge(round, 2, 'p2', false).round
+    expect(game.defaultChallenger(game.replay(out), 2)).toBeNull()
+  })
+
+  it('only reaches back to the latest elimination', async () => {
+    const { game, round } = await setup()
+    // ง (p4) goes out too slow: words before that are closed to challenges
+    const after = game.judgeOut(round, 'too-slow', '')
+    expect(game.canChallenge(game.replay(round), 2)).toBe(true)
+    expect(game.canChallenge(game.replay(after), 2)).toBe(false)
+    expect(game.applyChallenge(after, 2, 'p1', false).round).toBe(after)
+  })
+
+  it('the first word after someone goes out starts free', async () => {
+    const { game, round } = await setup()
+    let after = game.judgeOut(round, 'too-slow', '') // ง out
+    expect(game.judgeReasonsAt(game.replay(after))).not.toContain('not-connected')
+    after = game.addWord(after, 'ลูกบอล', ['ลูก', 'บอล']) // ก starts free
+    const state = game.replay(after)
+    expect(game.canChallenge(state, 4)).toBe(false)
+    expect(game.judgeReasonsAt(state)).toContain('not-connected')
+    after = game.addWord(after, 'ชิงช้า', ['ชิง', 'ช้า']) // ข must connect to ลูกบอล
+    expect(game.canChallenge(game.replay(after), 5)).toBe(true)
+  })
+
   it('cannot be made against the first word, which has nothing to connect to', async () => {
     const { game, round } = await setup()
     expect(game.applyChallenge(round, 0, 'p3', false).round).toBe(round)

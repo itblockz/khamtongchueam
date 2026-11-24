@@ -399,7 +399,11 @@ describe('judge app', () => {
     await submit('บิกินี')
 
     fireEvent.click(screen.getByRole('button', { name: 'ชาเลนจ์ กาแฟ' }))
-    fireEvent.click(within(screen.getByRole('group', { name: 'คนชาเลนจ์' })).getByRole('button', { name: 'ออย' }))
+    // ออย said the word before, so ออย is picked already
+    expect(within(screen.getByRole('group', { name: 'คนชาเลนจ์' })).getByRole('button', { name: 'ออย' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
     fireEvent.click(screen.getByRole('button', { name: 'สำเร็จ (บีม ตก)' }))
     fireEvent.click(screen.getByRole('button', { name: 'ยืนยัน' }))
 
