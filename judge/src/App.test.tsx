@@ -203,6 +203,7 @@ describe('judge app', () => {
     await submit('กาแฟ')
 
     fireEvent.click(screen.getByRole('button', { name: 'ตัดสิน บิกินี' }))
+    expect(screen.getByRole('button', { name: 'ยืนยัน' })).toBeDisabled()
     fireEvent.click(screen.getByRole('button', { name: 'คำต้องห้าม' , pressed: false }))
     expect(screen.getByText('ย้อนกลับไปตาของ มม · ลบ 1 คำหลังจากนั้น: กาแฟ')).toBeInTheDocument()
 

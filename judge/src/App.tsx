@@ -580,7 +580,8 @@ function WordList({
 }) {
   const [open, setOpen] = useState<{ index: number; kind: 'split' | 'judge' | 'challenge' } | null>(null)
   const [draft, setDraft] = useState('')
-  const [reason, setReason] = useState<JudgeReason>(JUDGE_REASONS[0])
+  /** No reason is picked in advance: the judge chooses each time. */
+  const [reason, setReason] = useState<JudgeReason | null>(null)
   const [challengerId, setChallengerId] = useState<string | null>(null)
   const [succeeded, setSucceeded] = useState<boolean | null>(null)
 
@@ -592,7 +593,7 @@ function WordList({
 
   let pending: Pending | null = null
   if (open?.kind === 'split' && draftSyllables.length > 0) pending = applyEdit(round, open.index, draftSyllables)
-  if (open?.kind === 'judge') pending = applyJudge(round, open.index, reason)
+  if (open?.kind === 'judge' && reason) pending = applyJudge(round, open.index, reason)
   if (open?.kind === 'challenge' && challengerId && succeeded !== null) {
     pending = applyChallenge(round, open.index, challengerId, succeeded)
   }
@@ -657,7 +658,7 @@ function WordList({
                   aria-label={`ตัดสิน ${result.word}`}
                   onClick={() => {
                     setOpen({ index: result.index, kind: 'judge' })
-                    setReason(JUDGE_REASONS[0])
+                    setReason(null)
                   }}
                 >
                   ตัดสิน
