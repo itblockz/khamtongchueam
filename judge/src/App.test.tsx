@@ -261,18 +261,22 @@ describe('judge app', () => {
     it('starts counting on its own after a word is sent', async () => {
       startWith('ออย\nบีม\nเจ')
       await submit('กาแฟ')
-      expect(screen.getByRole('button', { name: /พูดแล้ว/ })).toBeInTheDocument()
+      expect(await screen.findByRole('button', { name: /พูดแล้ว/ })).toBeInTheDocument()
     })
 
-    it('waits for the signal every turn when set up that way', async () => {
+    it('waits for the signal after someone goes out, or when the judge stops it', async () => {
       render(<App />)
       fireEvent.change(screen.getByLabelText(/รายชื่อผู้เล่น/), { target: { value: 'ออย\nบีม\nเจ' } })
       fireEvent.change(screen.getByLabelText(/เวลาเปล่งเสียงแรก/), { target: { value: '5' } })
-      fireEvent.click(screen.getByLabelText(/กรรมการให้สัญญาณ/))
       fireEvent.click(screen.getByRole('button', { name: 'เริ่มเกม' }))
 
-      await submit('กาแฟ')
+      await submit('หาดทราย')
+      fireEvent.click(await screen.findByRole('button', { name: 'หยุด' }))
       expect(screen.getByRole('button', { name: 'เริ่มจับเวลา (5 วิ)' })).toBeInTheDocument()
+
+      await submit('ทรายทอง')
+      expect(screen.getByRole('heading', { name: 'บีม ตกรอบ' })).toBeInTheDocument()
+      expect(await screen.findByRole('button', { name: 'เริ่มจับเวลา (5 วิ)' })).toBeInTheDocument()
     })
   })
 })

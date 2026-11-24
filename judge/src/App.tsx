@@ -25,14 +25,11 @@ import {
 
 const PREVIEW_DELAY_MS = 250
 
-/** How the turn timer starts: when the previous word is sent (the previous player has
- * finished), or when the judge gives the signal. */
-type StartMode = 'auto' | 'signal'
 interface TimerSettings {
+  /** Time allowed from the start of a turn to the player's first sound. */
   seconds: number
-  start: StartMode
 }
-const DEFAULT_TIMER: TimerSettings = { seconds: 3, start: 'auto' }
+const DEFAULT_TIMER: TimerSettings = { seconds: 3 }
 
 /** idle: not counting yet · counting: since startedAt · spoke: first sound in time · late: time ran out */
 type TimerState =
@@ -148,27 +145,6 @@ function Setup({
             if (seconds > 0) onTimerChange({ ...timer, seconds })
           }}
         />
-        <fieldset className="stack choice">
-          <legend>เริ่มจับเวลาเมื่อ</legend>
-          <label>
-            <input
-              type="radio"
-              name="start"
-              checked={timer.start === 'auto'}
-              onChange={() => onTimerChange({ ...timer, start: 'auto' })}
-            />{' '}
-            คนก่อนพูดจบ (กดส่งคำแล้วเริ่มนับทันที)
-          </label>
-          <label>
-            <input
-              type="radio"
-              name="start"
-              checked={timer.start === 'signal'}
-              onChange={() => onTimerChange({ ...timer, start: 'signal' })}
-            />{' '}
-            กรรมการให้สัญญาณ (กดเริ่มทุกตา)
-          </label>
-        </fieldset>
         <button type="submit" disabled={!canStart}>
           เริ่มเกม
         </button>
@@ -196,14 +172,18 @@ function Play({
   const turnEnded = useRef(false)
   const eventCount = round.events.length
 
-  // A new turn: start counting straight away after a word was sent here (auto mode),
-  // otherwise wait for the judge (signal mode, the first turn, after undo or an edit).
+  const lastCounted = game.results.at(-1)?.status === 'counted'
+
+  // A new turn starts counting as soon as the previous player's word is sent (they have
+  // finished speaking). It waits for the judge's signal instead when someone just went
+  // out, on the first turn, and after an undo or an edit.
   useEffect(() => {
-    const auto = turnEnded.current && settings.start === 'auto'
+    const auto = turnEnded.current && lastCounted
     turnEnded.current = false
     setTimer(auto ? { phase: 'counting', startedAt: Date.now() } : { phase: 'idle' })
     setNow(Date.now())
-  }, [eventCount, settings.start])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only on a new turn
+  }, [eventCount])
 
   useEffect(() => {
     if (timer.phase !== 'counting') return
@@ -304,9 +284,14 @@ function Play({
           </button>
         )}
         {timer.phase === 'counting' && (
-          <button type="button" className="big" onClick={() => setTimer({ phase: 'spoke' })}>
-            พูดแล้ว <span className="countdown">{remaining.toFixed(1)}</span>
-          </button>
+          <>
+            <button type="button" className="big" onClick={() => setTimer({ phase: 'spoke' })}>
+              พูดแล้ว <span className="countdown">{remaining.toFixed(1)}</span>
+            </button>
+            <button type="button" className="secondary" onClick={() => setTimer({ phase: 'idle' })}>
+              หยุด
+            </button>
+          </>
         )}
         {timer.phase === 'spoke' && <p className="note">เปล่งเสียงทันเวลา</p>}
         {timer.phase === 'late' && (
