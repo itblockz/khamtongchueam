@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 import re
 from functools import lru_cache
 from importlib.metadata import version
@@ -18,8 +19,17 @@ class SegmentationEngineError(RuntimeError):
   """Raised when a configured segmentation engine is unavailable."""
 
 
+ENGINE_PACKAGES: dict[str, str] = {'han_solo': 'pycrfsuite', 'ssg': 'ssg', 'tltk': 'tltk'}
+
+
+@lru_cache(maxsize=1)
 def get_supported_engines() -> tuple[SyllableEngine, ...]:
-  return SUPPORTED_ENGINES
+  """Engines whose packages are installed. Production installs only han_solo's;
+  ssg and tltk come with backend/requirements-dev.txt."""
+  return tuple(
+    engine for engine in SUPPORTED_ENGINES
+    if importlib.util.find_spec(ENGINE_PACKAGES[engine]) is not None
+  )
 
 
 @lru_cache(maxsize=1)
