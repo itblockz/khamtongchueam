@@ -105,16 +105,16 @@ export default function App() {
     const winner = game.players.find((player) => player.id === game.winnerId)
     return (
       <main className="page">
-        <EliminationNotice game={game} />
-        <h1 className="winner">{winner?.name} ชนะ</h1>
-        <WordList round={round} game={game} onChange={setRound} />
-        <div className="row">
-          <button type="button" onClick={() => startGame(round.players.map((p) => p.name))}>
-            เล่นอีกรอบ
-          </button>
+        <div className="turn">
+          <h1 className="winner">{winner?.name} ชนะ</h1>
           {undoButton}
-          {home}
         </div>
+        <button type="button" onClick={() => startGame(round.players.map((p) => p.name))}>
+          เล่นอีกรอบ
+        </button>
+        <EliminationNotice game={game} />
+        <WordList round={round} game={game} onChange={setRound} />
+        <div className="row">{home}</div>
       </main>
     )
   }
