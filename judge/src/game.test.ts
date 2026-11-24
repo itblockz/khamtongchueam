@@ -384,3 +384,52 @@ describe('single-consonant syllables', () => {
     expect(findClashes(words, ['แปร์', 'ปลา'])).toEqual([{ syllable: 'แปร์', word: 'สแปร์', playerId: 'p1' }])
   })
 })
+
+describe('challenge', () => {
+  const setup = async () => {
+    const game = await import('./game')
+    let round = game.startRound(['ก', 'ข', 'ค', 'ง'])
+    round = game.addWord(round, 'กาแฟ', ['กา', 'แฟ'])
+    round = game.addWord(round, 'แฟนคลับ', ['แฟน', 'คลับ'])
+    round = game.addWord(round, 'ดาวอังคาร', ['ดาว', 'อัง', 'คาร'])
+    return { game, round }
+  }
+
+  it('a failed challenge puts the challenger out and keeps the turn', async () => {
+    const { game, round } = await setup()
+    // ง (p4) is up; ก (p1) challenges word 3 and loses
+    const { round: after, removed } = game.applyChallenge(round, 2, 'p1', 'not-connected', false)
+    const state = game.replay(after)
+    expect(removed).toEqual([])
+    expect(state.players.find((p) => p.id === 'p1')?.out).toBe(true)
+    expect(game.currentPlayer(state).id).toBe('p4')
+    expect(state.words).toHaveLength(3)
+    expect(state.lastElimination).toMatchObject({ playerId: 'p1', lostChallengeAt: 2 })
+    expect(game.describeChallenge('ดาวอังคาร', 2, 'not-connected')).toBe(
+      'ชาเลนจ์ คำที่ 3 “ดาวอังคาร” ว่าไม่เชื่อม',
+    )
+  })
+
+  it('moves the turn on when the player whose turn it is loses a challenge', async () => {
+    const { game, round } = await setup()
+    const state = game.replay(game.applyChallenge(round, 2, 'p4', 'not-noun', false).round)
+    expect(game.currentPlayer(state).id).toBe('p1')
+  })
+
+  it('a successful challenge rules the word out and goes back to it', async () => {
+    const { game, round } = await setup()
+    const { round: after, removed } = game.applyChallenge(round, 1, 'p4', 'not-connected', true)
+    const state = game.replay(after)
+    expect(removed.map((e) => e.word)).toEqual(['ดาวอังคาร'])
+    expect(state.players.find((p) => p.id === 'p2')?.out).toBe(true)
+    expect(state.results[1]).toMatchObject({ status: 'judged', challengerId: 'p4' })
+    expect(game.currentPlayer(state).id).toBe('p3')
+  })
+
+  it('cannot be made by the speaker or by someone who is out', async () => {
+    const { game, round } = await setup()
+    expect(game.applyChallenge(round, 1, 'p2', 'not-noun', false).round).toBe(round)
+    const out = game.applyChallenge(round, 2, 'p1', 'not-noun', false).round
+    expect(game.applyChallenge(out, 1, 'p1', 'not-noun', false).round).toBe(out)
+  })
+})

@@ -13,6 +13,9 @@
 //   was corrected) does not count, so its syllables stay free.
 // - Who said each word never changes; a player whose elimination is undone by a
 //   correction simply plays again from the current turn on.
+// - A challenge can be made against any counted word. If it succeeds, the word is
+//   ruled out like a judge decision (the round goes back to it). If it fails, the
+//   challenger goes out on the spot and play carries on from the same turn.
 // - When one player is left the round ends; anything logged after that is ignored.
 
 export interface Player {
@@ -48,9 +51,25 @@ export interface JudgeEvent {
   playerId: string
   word: string
   reason: JudgeReason
+  /** Set when the decision came from a player's successful challenge. */
+  challengerId?: string
 }
 
-export type RoundEvent = WordEvent | JudgeEvent
+/** A player challenged an earlier word and lost, so the challenger goes out. */
+export interface ChallengeLostEvent {
+  type: 'challenge-lost'
+  /** The challenger. */
+  playerId: string
+  /** The challenged word, and where it is in the round. */
+  word: string
+  targetIndex: number
+  reason: JudgeReason
+}
+
+export type RoundEvent = WordEvent | JudgeEvent | ChallengeLostEvent
+
+/** Reasons a player can challenge a word for. */
+export const CHALLENGE_REASONS: JudgeReason[] = ['not-connected', 'not-noun', 'forbidden']
 
 export const JUDGE_REASON_LABEL: Record<JudgeReason, string> = {
   'not-connected': 'ไม่เชื่อม',
@@ -78,7 +97,7 @@ export interface Round {
   events: RoundEvent[]
 }
 
-export type WordStatus = 'counted' | 'duplicate' | 'judged' | 'speaker-out' | 'after-end'
+export type WordStatus = 'counted' | 'duplicate' | 'judged' | 'challenge-lost' | 'speaker-out' | 'after-end'
 
 export interface WordResult {
   /** Position of this entry in `round.events`. */
@@ -89,8 +108,12 @@ export interface WordResult {
   manual: boolean
   status: WordStatus
   clashes: Clash[]
-  /** Set for judge decisions. */
+  /** Set for judge decisions and challenges. */
   reason?: JudgeReason
+  /** Who challenged: the word was ruled out on their challenge, or they lost it. */
+  challengerId?: string
+  /** For a lost challenge: the challenged word's position. */
+  targetIndex?: number
 }
 
 export interface WordEntry {
@@ -110,6 +133,10 @@ export interface Elimination {
   manual?: boolean
   /** Set when the judge put the player out; otherwise it was a repeated syllable. */
   reason?: JudgeReason
+  /** The word was ruled out on this player's challenge. */
+  challengerId?: string
+  /** The player lost a challenge against the word at this position. */
+  lostChallengeAt?: number
 }
 
 export interface GameState {
@@ -208,14 +235,17 @@ export function replay(round: Round): GameState {
   let winnerId: string | null = null
 
   round.events.forEach((event, index) => {
-    const isJudge = event.type === 'judge'
     const base = {
       index,
       word: event.word,
-      syllables: isJudge ? [] : event.syllables,
+      syllables: event.type === 'word' ? event.syllables : [],
       playerId: event.playerId,
-      manual: !isJudge && Boolean(event.manual),
-      ...(isJudge ? { reason: event.reason } : {}),
+      manual: event.type === 'word' && Boolean(event.manual),
+      ...(event.type !== 'word' ? { reason: event.reason } : {}),
+      ...(event.type === 'judge' && event.challengerId ? { challengerId: event.challengerId } : {}),
+      ...(event.type === 'challenge-lost'
+        ? { challengerId: event.playerId, targetIndex: event.targetIndex }
+        : {}),
     }
 
     if (winnerId) {
@@ -225,6 +255,33 @@ export function replay(round: Round): GameState {
 
     const speakerIndex = players.findIndex((player) => player.id === event.playerId)
     const speaker = players[speakerIndex]
+
+    if (event.type === 'challenge-lost') {
+      // Not a turn: the challenger goes out and the turn stays where it was
+      if (!speaker || speaker.out) {
+        results.push({ ...base, status: 'speaker-out', clashes: [] })
+        lastElimination = null
+        return
+      }
+      speaker.out = true
+      results.push({ ...base, status: 'challenge-lost', clashes: [] })
+      lastElimination = {
+        playerId: speaker.id,
+        word: event.word,
+        syllables: [],
+        clashes: [],
+        reason: event.reason,
+        lostChallengeAt: event.targetIndex,
+      }
+      const remaining = players.filter((player) => !player.out)
+      if (remaining.length === 1) {
+        winnerId = remaining[0].id
+      }
+      if (players[turn].out) {
+        turn = nextActiveIndex(players, turn)
+      }
+      return
+    }
 
     if (!speaker || speaker.out) {
       results.push({ ...base, status: 'speaker-out', clashes: [] })
@@ -244,6 +301,7 @@ export function replay(round: Round): GameState {
         syllables: [],
         clashes: [],
         reason: event.reason,
+        ...(event.challengerId ? { challengerId: event.challengerId } : {}),
       }
       const remaining = players.filter((player) => !player.out)
       if (remaining.length === 1) {
@@ -384,6 +442,7 @@ export const STATUS_LABEL: Record<WordStatus, string> = {
   counted: '',
   duplicate: 'พยางค์ซ้ำ',
   judged: 'กรรมการให้ตก',
+  'challenge-lost': 'ชาเลนจ์ไม่สำเร็จ',
   'speaker-out': 'ไม่นับ (ตกรอบไปแล้ว)',
   'after-end': 'ไม่นับ (หลังจบรอบ)',
 }
@@ -456,4 +515,51 @@ export function applyJudge(
 export function judgeReasonsAt(state: GameState, index = state.results.length): JudgeReason[] {
   const hasEarlier = state.results.some((r) => r.index < index && r.status === 'counted')
   return hasEarlier ? JUDGE_REASONS : JUDGE_REASONS.filter((r) => r !== 'not-connected')
+}
+
+/**
+ * A player challenges the counted word at `index`. If the challenge succeeds the word
+ * is ruled out (its speaker goes out and the round goes back to it). If it fails the
+ * challenger goes out and nothing else changes.
+ */
+export function applyChallenge(
+  round: Round,
+  index: number,
+  challengerId: string,
+  reason: JudgeReason,
+  succeeded: boolean,
+): { round: Round; removed: RoundEvent[] } {
+  const event = round.events[index]
+  const state = replay(round)
+  const challenger = state.players.find((player) => player.id === challengerId)
+  if (
+    !event ||
+    event.type !== 'word' ||
+    state.results[index]?.status !== 'counted' ||
+    !challenger ||
+    challenger.out ||
+    challengerId === event.playerId
+  ) {
+    return { round, removed: [] }
+  }
+  if (succeeded) {
+    const ruled: JudgeEvent = { type: 'judge', playerId: event.playerId, word: event.word, reason, challengerId }
+    return {
+      round: { ...round, events: [...round.events.slice(0, index), ruled] },
+      removed: round.events.slice(index + 1),
+    }
+  }
+  const lost: ChallengeLostEvent = {
+    type: 'challenge-lost',
+    playerId: challengerId,
+    word: event.word,
+    targetIndex: index,
+    reason,
+  }
+  return { round: { ...round, events: [...round.events, lost] }, removed: [] }
+}
+
+/** e.g. ชาเลนจ์ คำที่ 12 “ดาวอังคาร” ว่าไม่เชื่อม (numbered as in the word list). */
+export function describeChallenge(word: string, targetIndex: number, reason: JudgeReason): string {
+  return `ชาเลนจ์ คำที่ ${targetIndex + 1} “${word}” ว่า${JUDGE_REASON_LABEL[reason]}`
 }

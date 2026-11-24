@@ -34,7 +34,10 @@ function isRound(value: unknown): value is Round {
       (e) =>
         typeof e?.playerId === 'string' &&
         typeof e?.word === 'string' &&
-        (e.type === 'judge' ? typeof e.reason === 'string' : e.type === 'word' && Array.isArray(e.syllables)),
+        (e.type === 'word'
+          ? Array.isArray(e.syllables)
+          : (e.type === 'judge' || (e.type === 'challenge-lost' && typeof e.targetIndex === 'number')) &&
+            typeof e.reason === 'string'),
     )
   )
 }

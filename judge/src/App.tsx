@@ -11,6 +11,9 @@ import {
   type JudgeReason,
   applyEdit,
   applyJudge,
+  applyChallenge,
+  CHALLENGE_REASONS,
+  describeChallenge,
   currentPlayer,
   describeChanges,
   describeClash,
@@ -220,7 +223,7 @@ function Play({
   const [now, setNow] = useState(() => Date.now())
   /** Set when this screen sends a word or a decision, so the next turn can start counting. */
   const turnEnded = useRef(false)
-  const eventCount = round.events.length
+  const events = round.events
 
   const lastCounted = game.results.at(-1)?.status === 'counted'
 
@@ -233,7 +236,7 @@ function Play({
     setTimer(auto ? { phase: 'counting', startedAt: Date.now() } : { phase: 'idle' })
     setNow(Date.now())
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only on a new turn
-  }, [eventCount])
+  }, [events])
 
   useEffect(() => {
     if (timer.phase !== 'counting') return
@@ -526,8 +529,13 @@ function EliminationNotice({ game }: { game: GameState }) {
   return (
     <section className="elimination" role="status">
       <h2>{name} ตกรอบ</h2>
-      {elimination.reason ? (
-        <p>{judgedText(elimination.word, elimination.reason)}</p>
+      {elimination.lostChallengeAt !== undefined && elimination.reason ? (
+        <p>{describeChallenge(elimination.word, elimination.lostChallengeAt, elimination.reason)} ไม่สำเร็จ</p>
+      ) : elimination.reason ? (
+        <p>
+          {judgedText(elimination.word, elimination.reason)}
+          {elimination.challengerId && ` (ชาเลนจ์โดย ${game.players.find((p) => p.id === elimination.challengerId)?.name})`}
+        </p>
       ) : (
         <p>
           “{elimination.word}” ({elimination.syllables.join(' | ')})
@@ -569,9 +577,11 @@ function WordList({
   game: GameState
   onChange: (round: Round) => void
 }) {
-  const [open, setOpen] = useState<{ index: number; kind: 'split' | 'judge' } | null>(null)
+  const [open, setOpen] = useState<{ index: number; kind: 'split' | 'judge' | 'challenge' } | null>(null)
   const [draft, setDraft] = useState('')
   const [reason, setReason] = useState<JudgeReason>('not-connected')
+  const [challengerId, setChallengerId] = useState<string | null>(null)
+  const [succeeded, setSucceeded] = useState<boolean | null>(null)
 
   if (game.results.length === 0) {
     return <p className="note">ยังไม่มีคำในรอบนี้</p>
@@ -582,6 +592,9 @@ function WordList({
   let pending: Pending | null = null
   if (open?.kind === 'split' && draftSyllables.length > 0) pending = applyEdit(round, open.index, draftSyllables)
   if (open?.kind === 'judge') pending = applyJudge(round, open.index, reason)
+  if (open?.kind === 'challenge' && challengerId && succeeded !== null) {
+    pending = applyChallenge(round, open.index, challengerId, reason, succeeded)
+  }
   const canSave = Boolean(pending && pending.round !== round)
   const changes = summarize(round, game, pending)
 
@@ -592,12 +605,20 @@ function WordList({
         {[...game.results].reverse().map((result) => (
           <li
             key={result.index}
-            className={result.status === 'counted' || result.status === 'judged' ? '' : 'not-counted'}
+            className={
+              ['counted', 'judged', 'challenge-lost'].includes(result.status) ? '' : 'not-counted'
+            }
           >
-            <div>
-              <span className="word">{result.word}</span>
-              <span className="word-syllables">{result.syllables.join(' | ')}</span>
-            </div>
+            {result.status === 'challenge-lost' && result.reason && result.targetIndex !== undefined ? (
+              <div className="challenge-line">
+                {describeChallenge(result.word, result.targetIndex, result.reason)}
+              </div>
+            ) : (
+              <div>
+                <span className="word">{result.word}</span>
+                <span className="word-syllables">{result.syllables.join(' | ')}</span>
+              </div>
+            )}
             {result.status === 'duplicate' && (
               <div className="clash-ref">
                 {result.clashes.map((clash) => describeClash(clash, game.players)).join(', ')}
@@ -612,7 +633,10 @@ function WordList({
               {result.status === 'judged' && result.reason && (
                 <span className="tag status">{JUDGE_REASON_LABEL[result.reason]}</span>
               )}
-              {open?.index !== result.index && result.status !== 'judged' && (
+              {result.status === 'judged' && result.challengerId && (
+                <span className="tag">ชาเลนจ์โดย {nameOf(result.challengerId)}</span>
+              )}
+              {open?.index !== result.index && result.status !== 'judged' && result.status !== 'challenge-lost' && (
                 <button
                   type="button"
                   className="link"
@@ -638,6 +662,21 @@ function WordList({
                   ตัดสิน
                 </button>
               )}
+              {open?.index !== result.index && result.status === 'counted' && (
+                <button
+                  type="button"
+                  className="link"
+                  aria-label={`ชาเลนจ์ ${result.word}`}
+                  onClick={() => {
+                    setOpen({ index: result.index, kind: 'challenge' })
+                    setReason(judgeReasonsAt(game, result.index)[0])
+                    setChallengerId(null)
+                    setSucceeded(null)
+                  }}
+                >
+                  ชาเลนจ์
+                </button>
+              )}
             </div>
             {open?.index === result.index && (
               <div className="stack edit-box">
@@ -656,6 +695,60 @@ function WordList({
                       autoFocus
                     />
                     <p className="syllables">{draftSyllables.join(' | ') || ' '}</p>
+                  </>
+                ) : open.kind === 'challenge' ? (
+                  <>
+                    <p className="note">ใครชาเลนจ์</p>
+                    <div className="row" role="group" aria-label="คนชาเลนจ์">
+                      {game.players
+                        .filter((p) => !p.out && p.id !== result.playerId)
+                        .map((p) => (
+                          <button
+                            key={p.id}
+                            type="button"
+                            className={challengerId === p.id ? 'selected-choice' : 'secondary'}
+                            aria-pressed={challengerId === p.id}
+                            onClick={() => setChallengerId(p.id)}
+                          >
+                            {p.name}
+                          </button>
+                        ))}
+                    </div>
+                    <p className="note">ชาเลนจ์ว่า</p>
+                    <div className="row" role="group" aria-label="ชาเลนจ์ว่า">
+                      {judgeReasonsAt(game, result.index)
+                        .filter((r) => CHALLENGE_REASONS.includes(r))
+                        .map((option) => (
+                          <button
+                            key={option}
+                            type="button"
+                            className={reason === option ? 'selected-choice' : 'secondary'}
+                            aria-pressed={reason === option}
+                            onClick={() => setReason(option)}
+                          >
+                            {JUDGE_REASON_LABEL[option]}
+                          </button>
+                        ))}
+                    </div>
+                    <p className="note">ผล</p>
+                    <div className="row" role="group" aria-label="ผลชาเลนจ์">
+                      <button
+                        type="button"
+                        className={succeeded === true ? 'selected-choice' : 'secondary'}
+                        aria-pressed={succeeded === true}
+                        onClick={() => setSucceeded(true)}
+                      >
+                        สำเร็จ ({nameOf(result.playerId)} ตก)
+                      </button>
+                      <button
+                        type="button"
+                        className={succeeded === false ? 'selected-choice' : 'secondary'}
+                        aria-pressed={succeeded === false}
+                        onClick={() => setSucceeded(false)}
+                      >
+                        ไม่สำเร็จ{challengerId ? ` (${nameOf(challengerId)} ตก)` : ''}
+                      </button>
+                    </div>
                   </>
                 ) : (
                   <div className="row" role="group" aria-label={`ตัดสิน “${result.word}”`}>
@@ -693,7 +786,7 @@ function WordList({
                       setOpen(null)
                     }}
                   >
-                    {open.kind === 'judge' ? 'ยืนยัน' : 'บันทึก'}
+                    {open.kind === 'split' ? 'บันทึก' : 'ยืนยัน'}
                   </button>
                   <button type="button" className="secondary" onClick={() => setOpen(null)}>
                     ยกเลิก

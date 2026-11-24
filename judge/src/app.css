@@ -342,3 +342,17 @@ button.outline-danger.selected {
   color: var(--danger);
   font-size: 0.85rem;
 }
+
+button.selected-choice {
+  background: var(--ink);
+  color: #fff;
+}
+
+.edit-box .row > button {
+  min-height: 40px;
+  padding: 0 12px;
+}
+
+.challenge-line {
+  font-weight: 600;
+}

@@ -372,6 +372,39 @@ describe('judge app', () => {
       expect(screen.getByRole('button', { name: 'เริ่มจับเวลา (4 วิ)' })).toBeInTheDocument()
     })
   })
+
+  it('records a lost challenge against an earlier word', async () => {
+    startWith('ออย\nบีม\nเจ')
+    await submit('อาหาร')
+    await submit('กาแฟ')
+
+    fireEvent.click(screen.getByRole('button', { name: 'ชาเลนจ์ อาหาร' }))
+    fireEvent.click(within(screen.getByRole('group', { name: 'คนชาเลนจ์' })).getByRole('button', { name: 'เจ' }))
+    fireEvent.click(within(screen.getByRole('group', { name: 'ชาเลนจ์ว่า' })).getByRole('button', { name: 'ไม่ใช่คำนาม' }))
+    fireEvent.click(screen.getByRole('button', { name: 'ไม่สำเร็จ (เจ ตก)' }))
+    expect(screen.getByText('เจ ตกรอบ')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'ยืนยัน' }))
+
+    expect(screen.getByRole('heading', { name: 'เจ ตกรอบ' })).toBeInTheDocument()
+    expect(screen.getAllByText(/ชาเลนจ์ คำที่ 1 “อาหาร” ว่าไม่ใช่คำนาม/)).toHaveLength(2)
+    // it was เจ's turn, so the turn moves on
+    expect(screen.getByText('ออย', { selector: 'strong' })).toBeInTheDocument()
+  })
+
+  it('a successful challenge puts the speaker out and goes back to that word', async () => {
+    startWith('ออย\nบีม\nเจ')
+    await submit('อาหาร')
+    await submit('กาแฟ')
+
+    fireEvent.click(screen.getByRole('button', { name: 'ชาเลนจ์ อาหาร' }))
+    fireEvent.click(within(screen.getByRole('group', { name: 'คนชาเลนจ์' })).getByRole('button', { name: 'บีม' }))
+    fireEvent.click(screen.getByRole('button', { name: 'สำเร็จ (ออย ตก)' }))
+    fireEvent.click(screen.getByRole('button', { name: 'ยืนยัน' }))
+
+    expect(screen.getByRole('heading', { name: 'ออย ตกรอบ' })).toBeInTheDocument()
+    expect(screen.getByText('“อาหาร” ไม่ใช่คำนาม (ชาเลนจ์โดย บีม)')).toBeInTheDocument()
+    expect(screen.queryByText('กาแฟ')).not.toBeInTheDocument()
+  })
 })
 
 function cleanupAndRender() {
