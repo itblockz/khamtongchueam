@@ -284,25 +284,13 @@ function Play({
           </button>
         )}
         {timer.phase === 'counting' && (
-          <>
-            <button type="button" className="big" onClick={() => setTimer({ phase: 'spoke' })}>
-              พูดแล้ว <span className="countdown">{remaining.toFixed(1)}</span>
-            </button>
-            <button type="button" className="secondary" onClick={() => setTimer({ phase: 'idle' })}>
-              พักเวลา
-            </button>
-          </>
+          <button type="button" className="big" onClick={() => setTimer({ phase: 'spoke' })}>
+            พูดแล้ว <span className="countdown">{remaining.toFixed(1)}</span>
+          </button>
         )}
         {timer.phase === 'spoke' && <p className="note">พูดทันเวลา</p>}
-        {timer.phase === 'late' && (
-          <>
-            <p className="late">หมดเวลา</p>
-            <button type="button" className="secondary" onClick={() => setTimer({ phase: 'spoke' })}>
-              ทัน
-            </button>
-          </>
-        )}
-        {(timer.phase === 'spoke' || timer.phase === 'late') && (
+        {timer.phase === 'late' && <p className="late">หมดเวลา</p>}
+        {timer.phase !== 'idle' && (
           <button
             type="button"
             className="secondary"
