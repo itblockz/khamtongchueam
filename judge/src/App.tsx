@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { SegmentError, segment } from './api'
-import { load, save } from './storage'
+import { load, MAX_GAMES, newId, save, type SavedGame } from './storage'
 import {
   addWord,
   JUDGE_REASON_LABEL,
@@ -45,14 +45,34 @@ type TimerState = { phase: 'idle' } | { phase: 'counting'; startedAt: number } |
 export default function App() {
   const [saved] = useState(load)
   const [namesText, setNamesText] = useState(saved.namesText ?? '')
-  const [round, setRound] = useState<Round | null>(saved.round ?? null)
   const [timer, setTimer] = useState<TimerSettings>({ seconds: saved.seconds ?? DEFAULT_TIMER.seconds })
+  const [games, setGames] = useState<SavedGame[]>(saved.games ?? [])
+  const [currentId, setCurrentId] = useState<string | null>(saved.currentId ?? null)
 
-  // Keep the game in this browser so a reload or a sleeping phone does not lose it
+  // Keep every game in this browser so a reload or a sleeping phone does not lose it
   useEffect(() => {
-    save({ namesText, seconds: timer.seconds, round })
-  }, [namesText, timer.seconds, round])
+    save({ namesText, seconds: timer.seconds, games, currentId })
+  }, [namesText, timer.seconds, games, currentId])
+
+  const round = games.find((g) => g.id === currentId)?.round ?? null
   const game = useMemo(() => (round ? replay(round) : null), [round])
+
+  function setRound(next: Round) {
+    setGames((all) => all.map((g) => (g.id === currentId ? { ...g, round: next, updatedAt: Date.now() } : g)))
+  }
+
+  function startGame(names: string[]) {
+    const now = Date.now()
+    const created: SavedGame = { id: newId(), createdAt: now, updatedAt: now, round: startRound(names) }
+    setGames((all) => [created, ...all].slice(0, MAX_GAMES))
+    setCurrentId(created.id)
+  }
+
+  const home = (
+    <button type="button" className="secondary" onClick={() => setCurrentId(null)}>
+      หน้าแรก
+    </button>
+  )
 
   if (!round || !game) {
     return (
@@ -61,7 +81,10 @@ export default function App() {
         onNamesChange={setNamesText}
         timer={timer}
         onTimerChange={setTimer}
-        onStart={(names) => setRound(startRound(names))}
+        onStart={startGame}
+        games={games}
+        onOpen={setCurrentId}
+        onDelete={(id) => setGames((all) => all.filter((g) => g.id !== id))}
       />
     )
   }
@@ -85,13 +108,11 @@ export default function App() {
         <h1 className="winner">{winner?.name} ชนะ</h1>
         <WordList round={round} game={game} onChange={setRound} />
         <div className="row">
-          <button type="button" onClick={() => setRound(startRound(round.players.map((p) => p.name)))}>
+          <button type="button" onClick={() => startGame(round.players.map((p) => p.name))}>
             เล่นอีกรอบ
           </button>
           {undoButton}
-          <button type="button" className="secondary" onClick={() => setRound(null)}>
-            แก้รายชื่อ
-          </button>
+          {home}
         </div>
       </main>
     )
@@ -104,12 +125,7 @@ export default function App() {
       onChange={setRound}
       undoButton={undoButton}
       timer={timer}
-      onExit={() => {
-        // Leaving throws the round away, so ask first once it has words in it
-        if (round.events.length === 0 || window.confirm('ออกไปแก้รายชื่อ? คำในรอบนี้จะหายทั้งหมด')) {
-          setRound(null)
-        }
-      }}
+      homeButton={home}
     />
   )
 }
@@ -120,12 +136,18 @@ function Setup({
   onStart,
   timer,
   onTimerChange,
+  games,
+  onOpen,
+  onDelete,
 }: {
   namesText: string
   onNamesChange: (text: string) => void
   onStart: (names: string[]) => void
   timer: TimerSettings
   onTimerChange: (timer: TimerSettings) => void
+  games: SavedGame[]
+  onOpen: (id: string) => void
+  onDelete: (id: string) => void
 }) {
   const { names, duplicates, canStart } = parseNames(namesText)
 
@@ -173,6 +195,7 @@ function Setup({
           เริ่มเกม
         </button>
       </form>
+      <SavedGames games={games} onOpen={onOpen} onDelete={onDelete} />
     </main>
   )
 }
@@ -183,14 +206,14 @@ function Play({
   onChange,
   undoButton,
   timer: settings,
-  onExit,
+  homeButton,
 }: {
   round: Round
   game: GameState
   onChange: (round: Round) => void
   undoButton: ReactNode
   timer: TimerSettings
-  onExit: () => void
+  homeButton: ReactNode
 }) {
   const [timer, setTimer] = useState<TimerState>({ phase: 'idle' })
   const [now, setNow] = useState(() => Date.now())
@@ -425,12 +448,71 @@ function Play({
         {game.players.some((p) => p.out) &&
           ` · ตกรอบ: ${game.players.filter((p) => p.out).map((p) => p.name).join(', ')}`}
       </p>
-      <div className="row">
-        <button type="button" className="secondary" onClick={onExit}>
-          แก้รายชื่อ
-        </button>
-      </div>
+      <div className="row">{homeButton}</div>
     </main>
+  )
+}
+
+const DATE_FORMAT = new Intl.DateTimeFormat('th-TH', {
+  day: 'numeric',
+  month: 'short',
+  hour: '2-digit',
+  minute: '2-digit',
+})
+
+/** Games kept in this browser: carry on with one in progress or look back at a finished one. */
+function SavedGames({
+  games,
+  onOpen,
+  onDelete,
+}: {
+  games: SavedGame[]
+  onOpen: (id: string) => void
+  onDelete: (id: string) => void
+}) {
+  if (games.length === 0) return null
+  const sorted = [...games].sort((a, b) => b.updatedAt - a.updatedAt)
+  return (
+    <section>
+      <h2 className="small-heading">เกมที่บันทึกไว้ในเครื่องนี้</h2>
+      <ul className="games">
+        {sorted.map((saved) => {
+          const state = replay(saved.round)
+          const winner = state.players.find((p) => p.id === state.winnerId)
+          const names = saved.round.players.map((p) => p.name).join(', ')
+          return (
+            <li key={saved.id}>
+              <div>
+                <strong>{winner ? `${winner.name} ชนะ` : `กำลังเล่น · ตาของ ${currentPlayer(state).name}`}</strong>
+              </div>
+              <div className="note">
+                {DATE_FORMAT.format(saved.updatedAt)} · {state.words.length} คำ · {names}
+              </div>
+              <div className="row">
+                <button
+                  type="button"
+                  className="secondary"
+                  aria-label={`${winner ? 'ดู' : 'เล่นต่อ'} ${names}`}
+                  onClick={() => onOpen(saved.id)}
+                >
+                  {winner ? 'ดู' : 'เล่นต่อ'}
+                </button>
+                <button
+                  type="button"
+                  className="link"
+                  aria-label={`ลบเกม ${names}`}
+                  onClick={() => {
+                    if (window.confirm('ลบเกมนี้? กู้คืนไม่ได้')) onDelete(saved.id)
+                  }}
+                >
+                  ลบ
+                </button>
+              </div>
+            </li>
+          )
+        })}
+      </ul>
+    </section>
   )
 }
 

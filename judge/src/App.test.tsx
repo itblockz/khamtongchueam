@@ -307,25 +307,68 @@ describe('judge app', () => {
     })
 
     it('ignores saved data it cannot read', () => {
-      localStorage.setItem('khamtongchueam.judge.v1', '{"round":{"players":"oops"}')
+      localStorage.setItem('khamtongchueam.judge.v2', '{"games":[{"id":"x","round":{"players":"oops"}}]')
       render(<App />)
       expect(screen.getByLabelText(/รายชื่อผู้เล่น/)).toHaveValue('')
     })
   })
 
-  it('goes back to the names from a game in progress, asking first', async () => {
+  it('goes back to the first page and carries on with the same game', async () => {
     startWith('ออย\nบีม')
-    fireEvent.click(screen.getByRole('button', { name: 'แก้รายชื่อ' }))
-    expect(screen.getByLabelText(/รายชื่อผู้เล่น/)).toHaveValue('ออย\nบีม')
-
-    fireEvent.click(screen.getByRole('button', { name: 'เริ่มเกม' }))
     await submit('กาแฟ')
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true)
-    fireEvent.click(screen.getByRole('button', { name: 'แก้รายชื่อ' }))
+    fireEvent.click(screen.getByRole('button', { name: 'หน้าแรก' }))
+
+    expect(screen.getByLabelText(/รายชื่อผู้เล่น/)).toHaveValue('ออย\nบีม')
+    expect(screen.getByText('กำลังเล่น · ตาของ บีม')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'เล่นต่อ ออย, บีม' }))
     expect(screen.getByText('กา | แฟ')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'แก้รายชื่อ' }))
-    expect(screen.getByLabelText(/รายชื่อผู้เล่น/)).toBeInTheDocument()
-    expect(confirm).toHaveBeenCalledTimes(2)
+  })
+
+
+  describe('saved games', () => {
+    it('keeps a finished game when playing again, and lists both', async () => {
+      startWith('ออย\nบีม')
+      await submit('หาดทราย')
+      fireEvent.change(screen.getByLabelText(/^คำของ/), { target: { value: 'ทรายทอง' } })
+      fireEvent.click(screen.getByRole('button', { name: 'ส่ง' }))
+      await screen.findByRole('heading', { name: 'ออย ชนะ' })
+
+      fireEvent.click(screen.getByRole('button', { name: 'เล่นอีกรอบ' }))
+      fireEvent.click(screen.getByRole('button', { name: 'หน้าแรก' }))
+
+      expect(screen.getByText('ออย ชนะ')).toBeInTheDocument()
+      expect(screen.getByText('กำลังเล่น · ตาของ ออย')).toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: 'ดู ออย, บีม' }))
+      expect(screen.getByRole('heading', { name: 'ออย ชนะ' })).toBeInTheDocument()
+    })
+
+    it('deletes a game after asking', async () => {
+      startWith('ออย\nบีม')
+      fireEvent.click(screen.getByRole('button', { name: 'หน้าแรก' }))
+      vi.spyOn(window, 'confirm').mockReturnValue(true)
+      fireEvent.click(screen.getByRole('button', { name: 'ลบเกม ออย, บีม' }))
+      expect(screen.queryByText('เกมที่บันทึกไว้ในเครื่องนี้')).not.toBeInTheDocument()
+    })
+
+    it('carries over a game saved by the previous version', () => {
+      localStorage.setItem(
+        'khamtongchueam.judge.v1',
+        JSON.stringify({
+          namesText: 'ออย\nบีม',
+          seconds: 4,
+          round: {
+            players: [
+              { id: 'p1', name: 'ออย' },
+              { id: 'p2', name: 'บีม' },
+            ],
+            events: [{ type: 'word', playerId: 'p1', word: 'กาแฟ', syllables: ['กา', 'แฟ'] }],
+          },
+        }),
+      )
+      render(<App />)
+      expect(screen.getByText('กา | แฟ')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'เริ่มจับเวลา (4 วิ)' })).toBeInTheDocument()
+    })
   })
 })
 
