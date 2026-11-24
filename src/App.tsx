@@ -69,6 +69,12 @@ import {
   segmentThaiText,
 } from "./syllableClient";
 import { exportRoundToCsv } from "./exportRound";
+import {
+  getInitialSyllableFeedbackEnabled,
+  sendWordFeedback,
+  storeSyllableFeedbackEnabled,
+} from "./syllableFeedback";
+import { SyllableReportPanel } from "./SyllableReportPanel";
 import { useTurnTimer } from "./useTurnTimer";
 import { useUndoRedoHistory } from "./useUndoRedoHistory";
 
@@ -539,6 +545,30 @@ function getDuplicateSyllableDetails(
   };
 }
 
+/** Players the game itself eliminated for a duplicate syllable (not the host's button). */
+function getAutomaticDuplicateEliminations(state: GameState) {
+  return state.players.filter(
+    (player) =>
+      player.status === "eliminated" &&
+      player.eliminationReason === "duplicate_syllable" &&
+      player.duplicateSourceAnswer !== null,
+  );
+}
+
+function countAutomaticDuplicateEliminations(state: GameState) {
+  return getAutomaticDuplicateEliminations(state).length;
+}
+
+/** The answer that triggered the latest automatic duplicate-syllable elimination, if any. */
+function getLatestAutomaticDuplicateAnswer(state: GameState): string | null {
+  const latest = getAutomaticDuplicateEliminations(state)
+    .sort(
+      (left, right) => (right.eliminatedOrder ?? 0) - (left.eliminatedOrder ?? 0),
+    )[0];
+
+  return latest?.duplicateSubmittedAnswer ?? null;
+}
+
 function renderHighlightedAnswer(answer: string, syllables: string | string[]) {
   const syllableList = Array.isArray(syllables) ? syllables : [syllables].filter(Boolean);
 
@@ -700,8 +730,10 @@ function ChallengeChallengerListBox({
 interface SettingsDropdownProps {
   isGmOpeningEnabled: boolean;
   isSyllableDebugVisible: boolean;
+  isSyllableFeedbackEnabled: boolean;
   onToggleGmOpening: () => void;
   onToggleSyllableDebug: () => void;
+  onToggleSyllableFeedback: () => void;
   isSubmittingTurn: boolean;
   canToggleGmOpening: boolean;
 }
@@ -709,8 +741,10 @@ interface SettingsDropdownProps {
 function SettingsDropdown({
   isGmOpeningEnabled,
   isSyllableDebugVisible,
+  isSyllableFeedbackEnabled,
   onToggleGmOpening,
   onToggleSyllableDebug,
+  onToggleSyllableFeedback,
   isSubmittingTurn,
   canToggleGmOpening,
 }: SettingsDropdownProps) {
@@ -802,6 +836,25 @@ function SettingsDropdown({
               {isSyllableDebugVisible ? "✓" : ""}
             </span>
             <span>แสดงการแยกพยางค์</span>
+          </button>
+          <button
+            type="button"
+            className="settings-dropdown-item"
+            onClick={(e) => {
+              e.currentTarget.focus();
+              onToggleSyllableFeedback();
+            }}
+            aria-pressed={isSyllableFeedbackEnabled}
+          >
+            <span className="settings-dropdown-item-check" aria-hidden="true">
+              {isSyllableFeedbackEnabled ? "✓" : ""}
+            </span>
+            <span>
+              เก็บคำเพื่อปรับปรุงการแยกพยางค์
+              <span className="settings-dropdown-hint">
+                เก็บเฉพาะคำที่ส่ง ไม่เก็บชื่อผู้เล่น
+              </span>
+            </span>
           </button>
         </div>
       )}
@@ -910,6 +963,9 @@ function App() {
   );
   const [isSyllableDebugVisible, setIsSyllableDebugVisible] = useState(() =>
     getInitialSyllableDebugVisibility(),
+  );
+  const [isSyllableFeedbackEnabled, setIsSyllableFeedbackEnabled] = useState(
+    () => getInitialSyllableFeedbackEnabled(),
   );
   const [isFocusSidebarOpen, setIsFocusSidebarOpen] = useState(() =>
     getInitialFocusSidebarOpen(),
@@ -1446,6 +1502,13 @@ function App() {
 
     const currentGameState = historySnapshot.sessionState.gameState;
 
+    if (isSyllableFeedbackEnabled && currentGameState.isEliminationPause) {
+      const undoneDuplicate = getLatestAutomaticDuplicateAnswer(currentGameState);
+      if (undoneDuplicate) {
+        sendWordFeedback(undoneDuplicate, "undo_after_duplicate");
+      }
+    }
+
     const isTimerRunning =
       currentGameState.phase === "playing" &&
       currentGameState.turnStartedAt !== null &&
@@ -1512,6 +1575,7 @@ function App() {
     clearTransientUiState,
     historySnapshot,
     historyState.past,
+    isSyllableFeedbackEnabled,
     restoreHistorySnapshot,
     undoPresent,
     updatePresent,
@@ -1876,6 +1940,10 @@ function App() {
     }
   }, [isGmOpeningWordEnabled]);
 
+  useEffect(() => {
+    storeSyllableFeedbackEnabled(isSyllableFeedbackEnabled);
+  }, [isSyllableFeedbackEnabled]);
+
 
 
   useEffect(() => {
@@ -2015,6 +2083,9 @@ function App() {
 
   function handleHostEliminate(reason: EliminationReason) {
     SoundSynth.init();
+    if (reason === "duplicate_syllable" && isSyllableFeedbackEnabled) {
+      sendWordFeedback(gameState.currentInput, "host_duplicate");
+    }
     commitGameAction((current) =>
       hostEliminateCurrentPlayer(current, reason),
     );
@@ -2244,6 +2315,22 @@ function App() {
 
     try {
       const segmentation = await getSyllableSegmentation(answer);
+
+      if (isSyllableFeedbackEnabled) {
+        const predictedState = advanceTurn(currentGameState, {
+          type: "submit",
+          answer: currentGameState.currentInput,
+          syllables: segmentation.syllables,
+          now: submittedAt,
+        });
+        sendWordFeedback(answer, "submit");
+        if (
+          countAutomaticDuplicateEliminations(predictedState) >
+          countAutomaticDuplicateEliminations(currentGameState)
+        ) {
+          sendWordFeedback(answer, "duplicate_elimination");
+        }
+      }
 
       commitGameAction((current) => {
         if (
@@ -2749,6 +2836,20 @@ function App() {
                   <span className="button-copy">ยืนยันผู้เล่น</span>
                 </button>
               </div>
+              <p className="feedback-note">
+                {isSyllableFeedbackEnabled
+                  ? "คำที่ส่งเป็นคำตอบจะถูกเก็บแบบไม่ระบุตัวตน เพื่อปรับปรุงการแยกพยางค์"
+                  : "ปิดการเก็บคำเพื่อปรับปรุงการแยกพยางค์อยู่"}
+                <button
+                  type="button"
+                  className="ghost-button"
+                  onClick={() =>
+                    setIsSyllableFeedbackEnabled((current) => !current)
+                  }
+                >
+                  {isSyllableFeedbackEnabled ? "ปิดการเก็บคำ" : "เปิดการเก็บคำ"}
+                </button>
+              </p>
             </div>
           </section>
         )}
@@ -3033,6 +3134,17 @@ function App() {
                         <div className="stage-instruction">
                           {renderEliminationReasonDetail(latestEliminatedPlayer)}
                         </div>
+                        {isSyllableFeedbackEnabled &&
+                          latestEliminatedPlayer.eliminationReason ===
+                            "duplicate_syllable" && (
+                            <SyllableReportPanel
+                              key={latestEliminatedPlayer.id}
+                              words={[
+                                latestEliminatedPlayer.duplicateSubmittedAnswer ?? "",
+                                latestEliminatedPlayer.duplicateSourceAnswer ?? "",
+                              ]}
+                            />
+                          )}
                       </div>
                     ) : isAwaitingRoundSummary && winner ? (
                       <div className="stage-content is-winner">
@@ -3145,6 +3257,10 @@ function App() {
                             <SettingsDropdown
                               isGmOpeningEnabled={isGmOpeningWordEnabled}
                               isSyllableDebugVisible={isSyllableDebugVisible}
+                              isSyllableFeedbackEnabled={isSyllableFeedbackEnabled}
+                              onToggleSyllableFeedback={() =>
+                                setIsSyllableFeedbackEnabled((current) => !current)
+                              }
                               onToggleGmOpening={handleToggleGmOpeningWord}
                               onToggleSyllableDebug={() =>
                                 setIsSyllableDebugVisible((current) => !current)
