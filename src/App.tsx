@@ -350,8 +350,9 @@ function getInitialFocusSidebarOpen() {
     return true;
   }
 
-  // On phones the player list is an overlay drawer; start with it closed.
-  if (window.matchMedia?.("(max-width: 760px)").matches) {
+  // Below 1024px (phones, tablets in portrait) the player list is an overlay
+  // drawer; start with it closed.
+  if (window.matchMedia?.("(max-width: 1023px)").matches) {
     return false;
   }
 

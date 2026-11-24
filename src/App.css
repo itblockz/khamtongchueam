@@ -2656,12 +2656,13 @@ button:disabled {
 }
 
 /* ------------------------------------------------------------------
-   Mobile judge layout (phones, portrait). The judge is the only one
+   Mobile judge layout (phones and tablets in portrait, below 1024px,
+   where the desktop layout would overflow). The judge is the only one
    looking at the screen: status on top, controls pinned to the bottom
    so the input and buttons stay reachable above the keyboard.
    Desktop layout is unchanged.
 ------------------------------------------------------------------- */
-@media (max-width: 760px) {
+@media (max-width: 1023px) {
   .app-shell {
     padding: 10px 12px 0;
     min-height: 100dvh;
