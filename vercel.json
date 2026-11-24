@@ -1,8 +1,8 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "vite",
-  "buildCommand": "npm run build",
-  "outputDirectory": "dist",
+  "buildCommand": "npm run build:judge",
+  "outputDirectory": "judge/dist",
   "rewrites": [
     {
       "source": "/api/(.*)",
@@ -15,7 +15,7 @@
   "functions": {
     "api/index.py": {
       "maxDuration": 10,
-      "excludeFiles": "{.venv/**,node_modules/**,dist/**,src/**,public/**,supabase/**,scripts/**,backend/tests/**,backend/benchmarks/**}"
+      "excludeFiles": "{.venv/**,node_modules/**,dist/**,src/**,judge/**,public/**,supabase/**,scripts/**,backend/tests/**,backend/benchmarks/**}"
     }
   }
 }

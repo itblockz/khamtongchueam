@@ -1,0 +1,352 @@
+/* Plain, mobile-first styles. The input sits near the top so it stays visible above
+   on-screen keyboards without any positioning tricks. */
+:root {
+  --ink: #222;
+  --muted: #666;
+  --line: #ddd;
+  --accent: #1f6feb;
+  --danger: #c0392b;
+  --bg: #fff;
+  font-family: system-ui, -apple-system, 'Noto Sans Thai', sans-serif;
+  color: var(--ink);
+  background: var(--bg);
+  -webkit-text-size-adjust: 100%;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+.page {
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+h1 {
+  font-size: 1.4rem;
+  margin: 0;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.row > input {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+
+textarea,
+input {
+  font: inherit;
+  font-size: 18px; /* 16px+ keeps iOS from zooming in */
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  width: 100%;
+}
+
+button {
+  font: inherit;
+  font-size: 17px;
+  min-height: 48px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+}
+
+button.secondary {
+  background: #eee;
+  color: var(--ink);
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.note.error {
+  color: var(--danger);
+}
+
+.turn {
+  margin: 0;
+  font-size: 1.3rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.turn .next {
+  font-size: 0.95rem;
+  color: var(--muted);
+}
+
+.turn > button {
+  min-height: 40px;
+  font-size: 0.95rem;
+}
+
+.syllables {
+  margin: -4px 0 0;
+  min-height: 1.5em;
+  color: var(--muted);
+  font-size: 1.1rem;
+}
+
+.elimination {
+  border: 2px solid var(--danger);
+  border-radius: 10px;
+  padding: 12px;
+}
+
+.elimination h2 {
+  margin: 0 0 4px;
+  font-size: 1.2rem;
+  color: var(--danger);
+}
+
+.elimination p,
+.elimination ul {
+  margin: 0 0 4px;
+}
+
+.small-heading {
+  font-size: 1rem;
+  margin: 8px 0 4px;
+}
+
+.words {
+  margin: 0;
+  padding-left: 1.6em;
+}
+
+.words li {
+  padding: 4px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.word {
+  font-weight: 600;
+  margin-right: 8px;
+}
+
+.word-syllables {
+  color: var(--muted);
+  margin-right: 8px;
+}
+
+.word-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 8px;
+  font-size: 0.85rem;
+}
+
+.word-meta button.link {
+  min-height: 32px;
+}
+
+.word-player {
+  color: var(--muted);
+}
+
+.word-player::before {
+  content: '— ';
+}
+
+.winner {
+  font-size: 2rem;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.split-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: -4px;
+}
+
+.split-row .syllables {
+  margin: 0;
+}
+
+button.link {
+  background: none;
+  color: var(--accent);
+  min-height: 40px;
+  padding: 0 4px;
+  font-size: 0.95rem;
+  text-decoration: underline;
+}
+
+.tag {
+  font-size: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 0 4px;
+  margin-right: 8px;
+  color: var(--muted);
+}
+
+.not-counted .word,
+.not-counted .word-syllables {
+  text-decoration: line-through;
+  color: var(--muted);
+}
+
+.tag.status {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.edit-box {
+  margin-top: 6px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.changes {
+  margin: 0;
+  padding-left: 1.2em;
+  color: var(--danger);
+}
+
+.judge-actions {
+  margin-top: -4px;
+}
+
+.judge-actions > button {
+  flex: 1 1 0;
+  min-height: 44px;
+  padding: 0 6px;
+  font-size: 15px;
+}
+
+button.outline-danger {
+  background: #fff;
+  color: var(--danger);
+  border: 1px solid var(--danger);
+}
+
+button.outline-danger.selected {
+  background: var(--danger);
+  color: #fff;
+}
+
+.choice {
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+
+.choice input {
+  width: auto;
+}
+
+.timer {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.timer > button.big {
+  flex: 1 1 200px;
+  min-height: 64px;
+  font-size: 1.3rem;
+}
+
+.timer > .note {
+  flex: 1 1 auto;
+}
+
+.countdown {
+  flex: 1 1 auto;
+  margin: 0;
+  font-size: 2rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.late {
+  flex: 1 1 auto;
+  margin: 0;
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--danger);
+}
+
+.games {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.games li {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.games .row > button {
+  min-height: 40px;
+}
+
+.clash-ref {
+  color: var(--danger);
+  font-size: 0.85rem;
+}
+
+button.selected-choice {
+  background: var(--ink);
+  color: #fff;
+}
+
+.edit-box .row > button {
+  min-height: 40px;
+  padding: 0 12px;
+}
+
+.challenge-line {
+  font-weight: 600;
+}

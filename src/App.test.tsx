@@ -1,6 +1,7 @@
 import { act } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, within } from '@testing-library/react'
+import { EditorView } from '@codemirror/view'
 import App from './App'
 
 const MATCH_ROUNDS_PER_MATCH = 3
@@ -25,25 +26,32 @@ const mockSyllablesByText: Record<string, string[]> = {
   แกง: ['แกง'],
 }
 
-function fillSetupNames(playerNames: string[]) {
-  playerNames.forEach((playerName, index) => {
-    fireEvent.change(screen.getByLabelText(`ชื่อผู้เล่น ${index + 1}`), {
-      target: { value: playerName },
+function getSetupEditorView() {
+  const editorElement = document.querySelector('.cm-editor')
+  if (!(editorElement instanceof HTMLElement)) {
+    throw new Error('Player name editor not found')
+  }
+
+  const view = EditorView.findFromDOM(editorElement)
+  if (!view) {
+    throw new Error('Player name editor view not found')
+  }
+
+  return view
+}
+
+/** Replace the player list editor's text (one name per line), as a GM typing or pasting. */
+function setSetupText(text: string) {
+  const view = getSetupEditorView()
+  act(() => {
+    view.dispatch({
+      changes: { from: 0, to: view.state.doc.length, insert: text },
     })
   })
 }
 
-function createMockDataTransfer() {
-  let storedData = ''
-
-  return {
-    effectAllowed: 'all',
-    dropEffect: 'move',
-    setData: (_type: string, value: string) => {
-      storedData = value
-    },
-    getData: () => storedData,
-  }
+function fillSetupNames(playerNames: string[]) {
+  setSetupText(playerNames.join('\n'))
 }
 
 function startTwoPlayerGame(firstPlayer: string, secondPlayer: string) {
@@ -56,12 +64,19 @@ function startTwoPlayerGame(firstPlayer: string, secondPlayer: string) {
 function toggleSyllableDebug() {
   const settingsButton = screen.getByRole('button', { name: 'ตั้งค่าเกม' })
   fireEvent.click(settingsButton)
-  const toggleButton =
-    screen.queryByRole('button', { name: 'แสดงการแยกพยางค์' }) ??
-    screen.queryByRole('button', { name: 'ซ่อนการแยกพยางค์' })
+  const toggleButton = screen.queryByRole('button', { name: 'แสดงการแยกพยางค์' })
 
   expect(toggleButton).not.toBeNull()
   fireEvent.click(toggleButton!)
+}
+
+function getSettingsItem(name: string) {
+  const item = screen.queryByRole('button', { name })
+  if (item) {
+    return item
+  }
+  fireEvent.click(screen.getByRole('button', { name: 'ตั้งค่าเกม' }))
+  return screen.getByRole('button', { name })
 }
 
 function toggleGmOpeningWord() {
@@ -97,6 +112,14 @@ function expectPlayerListOrder(listLabel: string, expectedNames: string[]) {
   expect(
     items.map((item) => item.querySelector('strong')?.textContent?.trim()),
   ).toEqual(expectedNames)
+}
+
+function expectEliminatedPlayers(expectedNames: string[]) {
+  const eliminated = getPlayerListItems('ลำดับผู้เล่น')
+    .filter((item) => within(item).queryByText('ตกรอบ'))
+    .map((item) => item.querySelector('strong')?.textContent?.trim())
+
+  expect(eliminated).toEqual(expectedNames)
 }
 
 function expectCurrentTurnPlayer(listLabel: string, currentPlayerName: string) {
@@ -136,14 +159,34 @@ async function flushSegmentationDebounce() {
   })
 }
 
+async function resumeChallengeSegmentIfNeeded() {
+  const resumeButton =
+    screen.queryByRole('button', { name: 'เริ่ม' }) ??
+    screen.queryByRole('button', { name: 'ต่อ' })
+  if (resumeButton) {
+    fireEvent.click(resumeButton)
+    await flushAsyncWork()
+  }
+}
+
+/** Each debate segment waits for the host to press เริ่ม/ต่อ before its timer runs. */
 async function advanceChallengeDebateToJudging() {
   for (let segment = 0; segment < 4; segment += 1) {
+    await resumeChallengeSegmentIfNeeded()
     await advanceTimers(CHALLENGE_SEGMENT_MS)
   }
 }
 
+/** Enter first starts a waiting segment (เริ่ม/ต่อ), then a second Enter ends it. */
 async function skipChallengeDebateSegments(segmentCount: number) {
   for (let segment = 0; segment < segmentCount; segment += 1) {
+    const isAwaitingStart =
+      screen.queryByRole('button', { name: 'เริ่ม' }) ??
+      screen.queryByRole('button', { name: 'ต่อ' })
+    if (isAwaitingStart) {
+      fireEvent.keyDown(window, { key: 'Enter' })
+      await flushAsyncWork()
+    }
     fireEvent.keyDown(window, { key: 'Enter' })
     await flushAsyncWork()
   }
@@ -204,20 +247,26 @@ function getChallengeChallengerOptionLabels() {
     .map((option) => option.textContent?.trim())
 }
 
+// While the challenger combobox popover is open, react-aria hides the rest of
+// the page from assistive tech (aria-hidden), so look up hidden elements too.
+function getChallengeTargetGroup() {
+  return screen.getByRole('group', { name: 'คำที่ถูกชาเลนจ์', hidden: true })
+}
+
+function getSelectedChallengeTarget() {
+  return within(getChallengeTargetGroup())
+    .getAllByRole('button', { hidden: true })
+    .find((button) => button.getAttribute('aria-pressed') === 'true')
+    ?.textContent?.trim()
+}
+
 function selectChallengeTarget(answerText: string) {
-  const challengedAnswerSelect = screen.getByLabelText(
-    'คำที่ถูกชาเลนจ์',
-  ) as HTMLSelectElement
-  const option = Array.from(challengedAnswerSelect.options)
-    .find((candidate) =>
-      candidate.textContent?.trim().startsWith(`"${answerText}"`),
-    )
-
-  expect(option).toBeDefined()
-
-  fireEvent.change(challengedAnswerSelect, {
-    target: { value: option!.value },
-  })
+  fireEvent.click(
+    within(getChallengeTargetGroup()).getByRole('button', {
+      name: answerText,
+      hidden: true,
+    }),
+  )
 }
 
 async function waitForTurn(playerName: string) {
@@ -232,7 +281,24 @@ async function waitForLeaderboard() {
   expect(screen.getByLabelText('ตารางคะแนนสะสม')).toBeInTheDocument()
 }
 
+async function acknowledgeEliminationIfNeeded() {
+  const continueButton = screen.queryByRole('button', { name: 'ไปต่อ' })
+  if (continueButton) {
+    fireEvent.click(continueButton)
+    await flushAsyncWork()
+  }
+}
+
+async function announceWinnerIfNeeded() {
+  const announceButton = screen.queryByRole('button', { name: 'ประกาศผู้ชนะ' })
+  if (announceButton) {
+    fireEvent.click(announceButton)
+    await flushAsyncWork()
+  }
+}
+
 async function openRoundSummary() {
+  await announceWinnerIfNeeded()
   fireEvent.click(screen.getByRole('button', { name: 'สรุปรอบ' }))
   await flushAsyncWork()
 }
@@ -307,169 +373,66 @@ describe('คำต้องเชื่อม', () => {
     vi.unstubAllGlobals()
   })
 
-  it('starts setup with one focused blank row and adds a new blank row when typing in the last slot', () => {
+  it('requires at least two non-blank names and trims each line', () => {
     render(<App />)
+    const confirmButton = screen.getByRole('button', { name: 'ยืนยันผู้เล่น' })
 
-    const firstInput = screen.getByLabelText('ชื่อผู้เล่น 1')
+    expect(confirmButton).toBeDisabled()
+    expect(screen.getByText('ต้องมีผู้เล่นอย่างน้อย 2 คน')).toBeInTheDocument()
 
-    expect(firstInput).toHaveFocus()
-    expect(firstInput).toHaveValue('')
-    expect(screen.queryByLabelText('ชื่อผู้เล่น 2')).not.toBeInTheDocument()
+    setSetupText('ออย\n\n   \n')
+    expect(confirmButton).toBeDisabled()
 
-    fireEvent.change(firstInput, {
-      target: { value: 'มีน' },
-    })
+    setSetupText('  ออย  \n\nบีม\n')
+    expect(confirmButton).toBeEnabled()
+    expect(screen.getByText('พร้อมยืนยันผู้เล่น 2 คน')).toBeInTheDocument()
 
-    expect(screen.getByLabelText('ชื่อผู้เล่น 2')).toHaveValue('')
+    fireEvent.click(confirmButton)
 
-    fireEvent.change(screen.getByLabelText('ชื่อผู้เล่น 2'), {
-      target: { value: 'มายด์' },
-    })
-
-    expect(screen.getByLabelText('ชื่อผู้เล่น 3')).toHaveValue('')
+    expect(screen.getByRole('heading', { name: 'ถึงตา ออย' })).toBeInTheDocument()
   })
 
-  it('requires at least two unique trimmed names before starting', () => {
+  it('lets taps reach the player list editor so mobile keyboards can open', () => {
     render(<App />)
+    // Target the editor frame: CodeMirror handles mouse events on .cm-content itself,
+    // so this isolates the app's own "keep focus" mousedown handler.
+    const editorFrame = document.querySelector('.cm-editor') as HTMLElement
 
-    const startButton = screen.getByRole('button', { name: 'ยืนยันผู้เล่น' })
+    // fireEvent returns false when a handler called preventDefault()
+    expect(fireEvent.mouseDown(editorFrame)).toBe(true)
+  })
 
-    expect(startButton).toBeDisabled()
+  it('blocks confirming when two names are the same after trimming', () => {
+    render(<App />)
+    const confirmButton = screen.getByRole('button', { name: 'ยืนยันผู้เล่น' })
 
-    fillSetupNames(['มีน', ' มีน '])
+    setSetupText('ออย\nบีม\n  ออย ')
+
+    expect(confirmButton).toBeDisabled()
+    expect(screen.getByText('ชื่อซ้ำ: ออย แก้ให้ไม่ซ้ำก่อนยืนยัน')).toBeInTheDocument()
+
+    setSetupText('ออย\nบีม\nออย 2')
+
+    expect(confirmButton).toBeEnabled()
+    expect(screen.getByText('พร้อมยืนยันผู้เล่น 3 คน')).toBeInTheDocument()
+  })
+
+  it('shows the word collection notice on setup and lets the host turn it off', () => {
+    render(<App />)
 
     expect(
-      screen.getByText('ชื่อผู้เล่นห้ามซ้ำหลังตัดช่องว่างหน้า-ท้าย'),
+      screen.getByText(/คำที่ส่งเป็นคำตอบจะถูกเก็บแบบไม่ระบุตัวตน/),
     ).toBeInTheDocument()
-    expect(startButton).toBeDisabled()
 
-    fireEvent.change(screen.getByLabelText('ชื่อผู้เล่น 2'), {
-      target: { value: 'มายด์' },
-    })
-
-    expect(startButton).toBeEnabled()
-  })
-
-  it('moves with Enter and confirms players from the trailing blank row', () => {
-    render(<App />)
-
-    const firstInput = screen.getByLabelText('ชื่อผู้เล่น 1')
-
-    fireEvent.change(firstInput, {
-      target: { value: 'มีน' },
-    })
-    fireEvent.keyDown(firstInput, { key: 'Enter' })
-
-    const secondInput = screen.getByLabelText('ชื่อผู้เล่น 2')
-
-    expect(secondInput).toHaveFocus()
-
-    fireEvent.change(secondInput, {
-      target: { value: 'มายด์' },
-    })
-    fireEvent.keyDown(secondInput, { key: 'Enter' })
-
-    const thirdInput = screen.getByLabelText('ชื่อผู้เล่น 3')
-
-    expect(thirdInput).toHaveFocus()
-
-    fireEvent.keyDown(thirdInput, { key: 'Enter' })
+    fireEvent.click(screen.getByRole('button', { name: 'ปิดการเก็บคำ' }))
 
     expect(
-      screen.getByRole('heading', { name: 'ถึงตา มีน' }),
+      screen.getByText(/ปิดการเก็บคำเพื่อปรับปรุงการแยกพยางค์อยู่/),
     ).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'เริ่มรอบแรก' })).toBeInTheDocument()
-    expect(screen.getByLabelText('คำตอบของ มีน')).toBeDisabled()
-  })
-
-  it('removes a cleared blank row with Backspace and moves focus to the previous row', () => {
-    render(<App />)
-    fillSetupNames(['เอ', 'บี', 'ซี'])
-
-    const secondInput = screen.getByLabelText('ชื่อผู้เล่น 2')
-
-    fireEvent.change(secondInput, {
-      target: { value: '' },
-    })
-
-    expect(screen.getByLabelText('ชื่อผู้เล่น 2')).toHaveValue('')
-    expect(screen.getByLabelText('ชื่อผู้เล่น 3')).toHaveValue('ซี')
-
-    fireEvent.keyDown(screen.getByLabelText('ชื่อผู้เล่น 2'), {
-      key: 'Backspace',
-    })
-
-    expect(screen.getByLabelText('ชื่อผู้เล่น 1')).toHaveFocus()
-    expect(screen.getByLabelText('ชื่อผู้เล่น 2')).toHaveValue('ซี')
-    expect(screen.getByLabelText('ชื่อผู้เล่น 3')).toHaveValue('')
-    expect(screen.queryByLabelText('ชื่อผู้เล่น 4')).not.toBeInTheDocument()
-  })
-
-  it('keeps row action buttons out of the Tab order', () => {
-    render(<App />)
-    fillSetupNames(['เอ', 'บี'])
-
-    expect(screen.getByRole('button', { name: 'ลบผู้เล่น 1' }).tabIndex).toBe(-1)
-    expect(screen.getByRole('button', { name: 'ยืนยันผู้เล่น' }).tabIndex).toBe(0)
-  })
-
-  it('reorders setup rows by dragging a player to a new position', () => {
-    render(<App />)
-    fillSetupNames(['เอ', 'บี', 'ซี'])
-
-    const dataTransfer = createMockDataTransfer()
-    const draggedRow = screen.getByLabelText('ชื่อผู้เล่น 3').closest('li')
-    const firstRow = screen.getByLabelText('ชื่อผู้เล่น 1').closest('li')
-
-    expect(draggedRow).not.toBeNull()
-    expect(firstRow).not.toBeNull()
-
-    fireEvent.dragStart(draggedRow!, { dataTransfer })
-    fireEvent.dragOver(firstRow!, { dataTransfer })
-
-    expect(screen.getByLabelText('ชื่อผู้เล่น 1')).toHaveValue('ซี')
-    expect(screen.getByLabelText('ชื่อผู้เล่น 2')).toHaveValue('เอ')
-    expect(screen.getByLabelText('ชื่อผู้เล่น 3')).toHaveValue('บี')
-
-    fireEvent.drop(firstRow!, { dataTransfer })
-    fireEvent.dragEnd(draggedRow!, { dataTransfer })
-
-    expect(screen.getByLabelText('ชื่อผู้เล่น 1')).toHaveValue('ซี')
-    expect(screen.getByLabelText('ชื่อผู้เล่น 2')).toHaveValue('เอ')
-    expect(screen.getByLabelText('ชื่อผู้เล่น 3')).toHaveValue('บี')
-  })
-
-  it('supports pasting multiple lines and still flags duplicate names', () => {
-    render(<App />)
-
-    fireEvent.paste(screen.getByLabelText('ชื่อผู้เล่น 1'), {
-      clipboardData: {
-        getData: () => 'มีน\nมายด์\nมีน',
-      },
-    })
-
-    expect(screen.getByLabelText('ชื่อผู้เล่น 1')).toHaveValue('มีน')
-    expect(screen.getByLabelText('ชื่อผู้เล่น 2')).toHaveValue('มายด์')
-    expect(screen.getByLabelText('ชื่อผู้เล่น 3')).toHaveValue('มีน')
-    expect(screen.getByLabelText('ชื่อผู้เล่น 4')).toHaveValue('')
-    expect(screen.getByLabelText('ชื่อผู้เล่น 4')).toHaveFocus()
+    expect(screen.getByRole('button', { name: 'เปิดการเก็บคำ' })).toBeInTheDocument()
     expect(
-      screen.getByText('ชื่อผู้เล่นห้ามซ้ำหลังตัดช่องว่างหน้า-ท้าย'),
-    ).toBeInTheDocument()
-  })
-
-  it('moves focus to the next blank row after pasting a single name', () => {
-    render(<App />)
-
-    fireEvent.paste(screen.getByLabelText('ชื่อผู้เล่น 1'), {
-      clipboardData: {
-        getData: () => 'มีน',
-      },
-    })
-
-    expect(screen.getByLabelText('ชื่อผู้เล่น 1')).toHaveValue('มีน')
-    expect(screen.getByLabelText('ชื่อผู้เล่น 2')).toHaveValue('')
-    expect(screen.getByLabelText('ชื่อผู้เล่น 2')).toHaveFocus()
+      window.localStorage.getItem('khamtongchueam:syllable-feedback-enabled'),
+    ).toBe('false')
   })
 
   it('confirms players without starting the first timer immediately', async () => {
@@ -511,6 +474,7 @@ describe('คำต้องเชื่อม', () => {
 
     await advanceTimers(3100)
 
+    await announceWinnerIfNeeded()
     expect(screen.getByRole('button', { name: 'สรุปรอบ' })).toHaveFocus()
     await openRoundSummary()
     expect(screen.getByLabelText('ตารางคะแนนสะสม')).toBeInTheDocument()
@@ -528,7 +492,7 @@ describe('คำต้องเชื่อม', () => {
 
     expect(toggleButton).toHaveAttribute('aria-pressed', 'true')
     expect(window.localStorage.getItem(GM_OPENING_WORD_STORAGE_KEY)).toBe('true')
-    expect(screen.getByLabelText('คำตั้งต้นของพิธีกร')).toBeEnabled()
+    expect(screen.getByLabelText('คำแรกจากพิธีกร')).toBeEnabled()
 
     fireEvent.click(toggleButton)
 
@@ -555,11 +519,11 @@ describe('คำต้องเชื่อม', () => {
     fillSetupNames(['ออย', 'บีม'])
     fireEvent.click(screen.getByRole('button', { name: 'ยืนยันผู้เล่น' }))
 
-    const gmOpeningInput = screen.getByLabelText('คำตั้งต้นของพิธีกร')
+    const gmOpeningInput = screen.getByLabelText('คำแรกจากพิธีกร')
 
     expect(gmOpeningInput).toBeEnabled()
     expect(screen.getByRole('button', { name: 'เริ่มด้วยคำนี้' })).toBeInTheDocument()
-    expect(screen.getByText('รอคำตั้งต้น')).toBeInTheDocument()
+    expect(screen.getByText('รอคำแรก')).toBeInTheDocument()
 
     fireEvent.change(gmOpeningInput, { target: { value: 'กาแฟ' } })
     await flushSegmentationDebounce()
@@ -587,7 +551,7 @@ describe('คำต้องเชื่อม', () => {
     fillSetupNames(['เอ', 'บี'])
     fireEvent.click(screen.getByRole('button', { name: 'ยืนยันผู้เล่น' }))
 
-    const gmOpeningInput = screen.getByLabelText('คำตั้งต้นของพิธีกร')
+    const gmOpeningInput = screen.getByLabelText('คำแรกจากพิธีกร')
 
     fireEvent.change(gmOpeningInput, { target: { value: 'ปิดระบบ' } })
     fireEvent.submit(gmOpeningInput.closest('form')!)
@@ -595,7 +559,7 @@ describe('คำต้องเชื่อม', () => {
 
     expect(screen.getByRole('alert')).toHaveTextContent(SEGMENTATION_ERROR_TEXT)
     expect(screen.getByRole('heading', { name: 'ถึงตา เอ' })).toBeInTheDocument()
-    expect(screen.getByLabelText('คำตั้งต้นของพิธีกร')).toHaveValue('ปิดระบบ')
+    expect(screen.getByLabelText('คำแรกจากพิธีกร')).toHaveValue('ปิดระบบ')
     expect(screen.getByRole('button', { name: 'เริ่มด้วยคำนี้' })).toBeEnabled()
   })
 
@@ -606,19 +570,17 @@ describe('คำต้องเชื่อม', () => {
     fillSetupNames(['เอ', 'บี'])
     fireEvent.click(screen.getByRole('button', { name: 'ยืนยันผู้เล่น' }))
 
-    const gmOpeningInput = screen.getByLabelText('คำตั้งต้นของพิธีกร')
+    const gmOpeningInput = screen.getByLabelText('คำแรกจากพิธีกร')
 
     fireEvent.change(gmOpeningInput, { target: { value: 'กาแฟ' } })
     await flushSegmentationDebounce()
     toggleGmOpeningWord()
 
-    expect(
-      screen.getByRole('button', { name: 'พิธีกรเริ่ม' }),
-    ).toHaveAttribute('aria-pressed', 'false')
+    expect(getSettingsItem('พิธีกรเริ่ม')).toHaveAttribute('aria-pressed', 'false')
     expect(screen.getByRole('button', { name: 'เริ่มรอบแรก' })).toBeInTheDocument()
     expect(screen.getByLabelText('คำตอบของ เอ')).toHaveValue('')
     expect(screen.getByLabelText('คำตอบของ เอ')).toBeDisabled()
-    expect(screen.queryByText('รอคำตั้งต้น')).not.toBeInTheDocument()
+    expect(screen.queryByText('รอคำแรก')).not.toBeInTheDocument()
   })
 
   it('keeps the GM opening word toggle enabled across replay and asks for a fresh opening word next round', async () => {
@@ -628,7 +590,7 @@ describe('คำต้องเชื่อม', () => {
     fillSetupNames(['ออย', 'บีม'])
     fireEvent.click(screen.getByRole('button', { name: 'ยืนยันผู้เล่น' }))
 
-    const gmOpeningInput = screen.getByLabelText('คำตั้งต้นของพิธีกร')
+    const gmOpeningInput = screen.getByLabelText('คำแรกจากพิธีกร')
 
     fireEvent.change(gmOpeningInput, { target: { value: 'กาแฟ' } })
     fireEvent.submit(gmOpeningInput.closest('form')!)
@@ -644,7 +606,7 @@ describe('คำต้องเชื่อม', () => {
     expect(
       screen.getByRole('button', { name: 'พิธีกรเริ่ม' }),
     ).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.getByLabelText('คำตั้งต้นของพิธีกร')).toHaveValue('')
+    expect(screen.getByLabelText('คำแรกจากพิธีกร')).toHaveValue('')
     expect(screen.getByRole('button', { name: 'เริ่มด้วยคำนี้' })).toBeInTheDocument()
   })
 
@@ -659,11 +621,12 @@ describe('คำต้องเชื่อม', () => {
 
     expect(screen.getByRole('heading', { name: 'ถึงตา บีม' })).toBeInTheDocument()
     expect(screen.getByText('ออย ตกรอบเพราะไม่ทันเวลา')).toBeInTheDocument()
+    await announceWinnerIfNeeded()
     expect(screen.getByRole('button', { name: 'สรุปรอบ' })).toBeInTheDocument()
     await openRoundSummary()
     expect(screen.getByLabelText('ตารางคะแนนสะสม')).toBeInTheDocument()
-    expectLeaderboardRow('บีม', [3, '-', '-', '-'], 3)
-    expectLeaderboardRow('ออย', [1, '-', '-', '-'], 1)
+    expectLeaderboardRow('บีม', [3, '-', '-'], 3)
+    expectLeaderboardRow('ออย', [1, '-', '-'], 1)
   })
 
   it('focuses the summary button before showing the leaderboard and then focuses the leaderboard action', async () => {
@@ -671,6 +634,7 @@ describe('คำต้องเชื่อม', () => {
 
     await advanceTimers(3100)
 
+    await announceWinnerIfNeeded()
     expect(screen.getByRole('button', { name: 'สรุปรอบ' })).toHaveFocus()
     await openRoundSummary()
     expect(
@@ -717,7 +681,7 @@ describe('คำต้องเชื่อม', () => {
       screen.getByRole('heading', { name: 'ถึงตา ก้อย' }),
     ).toBeInTheDocument()
     expect(screen.getByText(`รอบ 1/${MATCH_ROUNDS_PER_MATCH}`)).toBeInTheDocument()
-    expect(screen.queryByLabelText('การแยกพยางค์')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('สถานะการแยกพยางค์')).not.toBeInTheDocument()
 
     fireEvent.change(answerInput, { target: { value: 'กาแฟ' } })
     await flushSegmentationDebounce()
@@ -729,7 +693,6 @@ describe('คำต้องเชื่อม', () => {
 
     expect(currentInputDebug.getByText('กา')).toBeInTheDocument()
     expect(currentInputDebug.getByText('แฟ')).toBeInTheDocument()
-    expect(currentInputDebug.getByText(/han_solo/)).toBeInTheDocument()
 
     fireEvent.submit(answerInput.closest('form')!)
     await waitForTurn('จูน')
@@ -769,26 +732,20 @@ describe('คำต้องเชื่อม', () => {
     })
 
     expect(showButton).toHaveAttribute('aria-pressed', 'false')
-    expect(screen.queryByLabelText('การแยกพยางค์')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('สถานะการแยกพยางค์')).not.toBeInTheDocument()
 
     fireEvent.click(showButton)
 
-    expect(
-      screen.getByRole('button', { name: 'ซ่อนการแยกพยางค์' }),
-    ).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.getByLabelText('การแยกพยางค์')).toBeInTheDocument()
+    expect(getSettingsItem('แสดงการแยกพยางค์')).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByLabelText('สถานะการแยกพยางค์')).toBeInTheDocument()
     expect(
       window.localStorage.getItem('khamtongchueam:show-syllable-debug'),
     ).toBe('true')
 
-    fireEvent.click(
-      screen.getByRole('button', { name: 'ซ่อนการแยกพยางค์' }),
-    )
+    fireEvent.click(getSettingsItem('แสดงการแยกพยางค์'))
 
-    expect(
-      screen.getByRole('button', { name: 'แสดงการแยกพยางค์' }),
-    ).toHaveAttribute('aria-pressed', 'false')
-    expect(screen.queryByLabelText('การแยกพยางค์')).not.toBeInTheDocument()
+    expect(getSettingsItem('แสดงการแยกพยางค์')).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.queryByLabelText('สถานะการแยกพยางค์')).not.toBeInTheDocument()
     expect(
       window.localStorage.getItem('khamtongchueam:show-syllable-debug'),
     ).toBe('false')
@@ -799,11 +756,8 @@ describe('คำต้องเชื่อม', () => {
 
     startTwoPlayerGame('ต้น', 'แพรว')
 
-    fireEvent.click(screen.getByRole('button', { name: 'ตั้งค่าเกม' }))
-    expect(
-      screen.getByRole('button', { name: 'ซ่อนการแยกพยางค์' }),
-    ).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.getByLabelText('การแยกพยางค์')).toBeInTheDocument()
+    expect(getSettingsItem('แสดงการแยกพยางค์')).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByLabelText('สถานะการแยกพยางค์')).toBeInTheDocument()
   })
 
   it('falls back to hidden when the saved syllable debug preference is false', () => {
@@ -815,7 +769,7 @@ describe('คำต้องเชื่อม', () => {
     expect(
       screen.getByRole('button', { name: 'แสดงการแยกพยางค์' }),
     ).toHaveAttribute('aria-pressed', 'false')
-    expect(screen.queryByLabelText('การแยกพยางค์')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('สถานะการแยกพยางค์')).not.toBeInTheDocument()
   })
 
   it('does not open challenge selection with F2 before there is a valid answer to challenge', () => {
@@ -844,18 +798,9 @@ describe('คำต้องเชื่อม', () => {
     const challengerInput = screen.getByRole('combobox', {
       name: 'พิมพ์ชื่อผู้ชาเลนจ์',
     })
-    const challengedAnswerSelect = screen.getByLabelText(
-      'คำที่ถูกชาเลนจ์',
-    ) as HTMLSelectElement
-    const latestOption = Array.from(challengedAnswerSelect.options).find(
-      (option) => option.value !== '',
-    )
-
     expect(screen.getByLabelText('การชาเลนจ์คำไม่เชื่อม')).toBeInTheDocument()
     expect(challengerInput).toHaveFocus()
-    expect(latestOption).toBeDefined()
-    expect(challengedAnswerSelect).toHaveValue(latestOption!.value)
-    expect(latestOption).toHaveTextContent('สับปะรด')
+    expect(getSelectedChallengeTarget()).toBe('สับปะรด')
 
     fireEvent.keyDown(window, { key: 'Escape' })
 
@@ -1010,7 +955,7 @@ describe('คำต้องเชื่อม', () => {
     expect(challengerInput.getAttribute('aria-activedescendant')).toBeNull()
     expect(
       screen.getByRole('button', {
-        name: 'เริ่มการชาเลนจ์',
+        name: 'ยืนยันการชาเลนจ์',
         hidden: true,
       }),
     ).toBeDisabled()
@@ -1020,10 +965,10 @@ describe('คำต้องเชื่อม', () => {
     expect(
       screen.getByLabelText('การชาเลนจ์คำไม่เชื่อม'),
     ).toBeInTheDocument()
-    expect(screen.getByRole('status')).not.toHaveTextContent('กำลังพูด')
+    expect(screen.queryByText(/กำลังพูด/)).not.toBeInTheDocument()
   })
 
-  it('starts a challenge with Enter from the answer field after changing the target', async () => {
+  it('starts a challenge with Enter from the challenger field after changing the target', async () => {
     render(<App />)
     fillSetupNames(['เอ', 'บี', 'ซี', 'ดี'])
     fireEvent.click(screen.getByRole('button', { name: 'ยืนยันผู้เล่น' }))
@@ -1041,11 +986,10 @@ describe('คำต้องเชื่อม', () => {
     selectChallengeTarget('bravo')
     await flushAsyncWork()
 
-    const challengedAnswerSelect = screen.getByLabelText(
-      'คำที่ถูกชาเลนจ์',
-    ) as HTMLSelectElement
+    expect(getSelectedChallengeTarget()).toBe('bravo')
 
-    fireEvent.keyDown(challengedAnswerSelect, { key: 'Enter' })
+    fireEvent.keyDown(getChallengeChallengerInput(), { key: 'Enter' })
+    await flushAsyncWork()
 
     expect(screen.getByRole('status')).toHaveTextContent('เอ กำลังพูด')
     expect(screen.getByText(/bravo/)).toBeInTheDocument()
@@ -1107,7 +1051,7 @@ describe('คำต้องเชื่อม', () => {
 
     fireEvent.click(
       screen.getByRole('button', {
-        name: 'เริ่มการชาเลนจ์',
+        name: 'ยืนยันการชาเลนจ์',
         hidden: true,
       }),
     )
@@ -1141,7 +1085,7 @@ describe('คำต้องเชื่อม', () => {
     await flushAsyncWork()
     fireEvent.click(
       screen.getByRole('button', {
-        name: 'เริ่มการชาเลนจ์',
+        name: 'ยืนยันการชาเลนจ์',
         hidden: true,
       }),
     )
@@ -1152,16 +1096,18 @@ describe('คำต้องเชื่อม', () => {
     expect(
       screen.getByText('บี ตกรอบเพราะคำ "สับปะรด" ไม่เชื่อมกับคำ "กาแฟ"'),
     ).toBeInTheDocument()
+    await acknowledgeEliminationIfNeeded()
     expect(screen.getByRole('button', { name: 'เริ่มตาถัดไป' })).toBeInTheDocument()
     expect(screen.getByLabelText('คำตอบของ ซี')).toBeDisabled()
 
+    await acknowledgeEliminationIfNeeded()
     fireEvent.click(screen.getByRole('button', { name: 'เริ่มตาถัดไป' }))
     await advanceTimers(3100)
     await openRoundSummary()
 
-    expectLeaderboardRow('เอ', ['3 +2', '-', '-', '-'], 5)
-    expectLeaderboardRow('ซี', [1, '-', '-', '-'], 1)
-    expectLeaderboardRow('บี', [1, '-', '-', '-'], 1)
+    expectLeaderboardRow('เอ', ['3 +2', '-', '-'], 5)
+    expectLeaderboardRow('ซี', [1, '-', '-'], 1)
+    expectLeaderboardRow('บี', [1, '-', '-'], 1)
   })
 
   it('shows round summary when a failed challenge leaves one winner', async () => {
@@ -1178,7 +1124,7 @@ describe('คำต้องเชื่อม', () => {
     await flushAsyncWork()
     fireEvent.click(
       screen.getByRole('button', {
-        name: 'เริ่มการชาเลนจ์',
+        name: 'ยืนยันการชาเลนจ์',
         hidden: true,
       }),
     )
@@ -1189,11 +1135,12 @@ describe('คำต้องเชื่อม', () => {
     expect(
       screen.getByText('เอ ตกรอบเพราะชาเลนจ์คำ "สับปะรด" ไม่สำเร็จ'),
     ).toBeInTheDocument()
+    await announceWinnerIfNeeded()
     expect(screen.getByRole('button', { name: 'สรุปรอบ' })).toBeInTheDocument()
 
     await openRoundSummary()
-    expectLeaderboardRow('บี', [3, '-', '-', '-'], 3)
-    expectLeaderboardRow('เอ', [1, '-', '-', '-'], 1)
+    expectLeaderboardRow('บี', [3, '-', '-'], 3)
+    expectLeaderboardRow('เอ', [1, '-', '-'], 1)
   })
 
   it('reverses active player order on even-numbered match rounds', async () => {
@@ -1207,6 +1154,7 @@ describe('คำต้องเชื่อม', () => {
 
     await advanceTimers(3100)
 
+    await acknowledgeEliminationIfNeeded()
     fireEvent.click(screen.getByRole('button', { name: 'เริ่มตาถัดไป' }))
     expect(screen.getByLabelText('คำตอบของ ซี')).toBeEnabled()
 
@@ -1214,6 +1162,7 @@ describe('คำต้องเชื่อม', () => {
     await waitForTurn('เอ')
 
     await advanceTimers(3100)
+    await announceWinnerIfNeeded()
     expect(screen.getByRole('button', { name: 'สรุปรอบ' })).toBeInTheDocument()
     await openRoundSummary()
     await waitForLeaderboard()
@@ -1223,8 +1172,9 @@ describe('คำต้องเชื่อม', () => {
     )
     fireEvent.click(screen.getByRole('button', { name: 'เริ่มรอบแรก' }))
 
-    expectPlayerListOrder('ผู้เล่นที่ยังไม่ตกรอบ', ['ซี', 'บี', 'เอ'])
-    expectCurrentTurnPlayer('ผู้เล่นที่ยังไม่ตกรอบ', 'ซี')
+    // The player list keeps roster order; only the turn order is reversed.
+    expectPlayerListOrder('ลำดับผู้เล่น', ['เอ', 'บี', 'ซี'])
+    expectCurrentTurnPlayer('ลำดับผู้เล่น', 'ซี')
   })
 
   it('pauses the timer for the next player after someone is eliminated', async () => {
@@ -1233,9 +1183,7 @@ describe('คำต้องเชื่อม', () => {
     fireEvent.click(screen.getByRole('button', { name: 'ยืนยันผู้เล่น' }))
     fireEvent.click(screen.getByRole('button', { name: 'เริ่มรอบแรก' }))
 
-    expect(
-      screen.getByRole('heading', { name: 'ผู้เล่นที่ตกรอบ' }).closest('section'),
-    ).toHaveClass('is-empty-collapsed')
+    expectEliminatedPlayers([])
 
     await submitAnswer('เอ', 'กาแฟ')
     await waitForTurn('บี')
@@ -1248,11 +1196,10 @@ describe('คำต้องเชื่อม', () => {
     expect(
       screen.getByText('บี ตกรอบเพราะไม่ทันเวลา'),
     ).toBeInTheDocument()
-    expect(
-      screen.getByRole('heading', { name: 'ผู้เล่นที่ตกรอบ' }).closest('section'),
-    ).not.toHaveClass('is-empty-collapsed')
-    expectPlayerListOrder('ผู้เล่นที่ยังไม่ตกรอบ', ['เอ', 'ซี'])
-    expectCurrentTurnPlayer('ผู้เล่นที่ยังไม่ตกรอบ', 'ซี')
+    expectEliminatedPlayers(['บี'])
+    expectPlayerListOrder('ลำดับผู้เล่น', ['เอ', 'บี', 'ซี'])
+    expectCurrentTurnPlayer('ลำดับผู้เล่น', 'ซี')
+    await acknowledgeEliminationIfNeeded()
     expect(screen.getByRole('button', { name: 'เริ่มตาถัดไป' })).toHaveFocus()
     expect(screen.getByLabelText('คำตอบของ ซี')).toBeDisabled()
 
@@ -1263,6 +1210,7 @@ describe('คำต้องเชื่อม', () => {
     ).toBeInTheDocument()
     expect(screen.getByLabelText('คำตอบของ ซี')).toBeDisabled()
 
+    await acknowledgeEliminationIfNeeded()
     fireEvent.click(screen.getByRole('button', { name: 'เริ่มตาถัดไป' }))
 
     expect(screen.getByLabelText('คำตอบของ ซี')).toBeEnabled()
@@ -1270,8 +1218,8 @@ describe('คำต้องเชื่อม', () => {
     await submitAnswer('ซี', 'สับปะรด')
     await waitForTurn('เอ')
 
-    expectPlayerListOrder('ผู้เล่นที่ยังไม่ตกรอบ', ['เอ', 'ซี'])
-    expectCurrentTurnPlayer('ผู้เล่นที่ยังไม่ตกรอบ', 'เอ')
+    expectPlayerListOrder('ลำดับผู้เล่น', ['เอ', 'บี', 'ซี'])
+    expectCurrentTurnPlayer('ลำดับผู้เล่น', 'เอ')
   })
 
   it('awards leaderboard points to only the last three players', async () => {
@@ -1284,18 +1232,21 @@ describe('คำต้องเชื่อม', () => {
     await waitForTurn('บี')
 
     await advanceTimers(3100)
+    await acknowledgeEliminationIfNeeded()
     fireEvent.click(screen.getByRole('button', { name: 'เริ่มตาถัดไป' }))
 
     await submitAnswer('ซี', 'สับปะรด')
     await waitForTurn('ดี')
 
     await advanceTimers(3100)
+    await acknowledgeEliminationIfNeeded()
     fireEvent.click(screen.getByRole('button', { name: 'เริ่มตาถัดไป' }))
 
     await submitAnswer('เอ', 'ลำไย')
     await waitForTurn('ซี')
 
     await advanceTimers(3100)
+    await announceWinnerIfNeeded()
     expect(screen.getByRole('button', { name: 'สรุปรอบ' })).toBeInTheDocument()
     await openRoundSummary()
     await waitForLeaderboard()
@@ -1329,6 +1280,7 @@ describe('คำต้องเชื่อม', () => {
     await waitForTurn('ซี')
 
     await advanceTimers(3100)
+    await acknowledgeEliminationIfNeeded()
     fireEvent.click(screen.getByRole('button', { name: 'เริ่มตาถัดไป' }))
 
     await submitAnswer('ดี', 'ลำไย')
@@ -1337,9 +1289,10 @@ describe('คำต้องเชื่อม', () => {
     await advanceTimers(3100)
     expect(screen.queryByRole('button', { name: 'สรุปรอบ' })).not.toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'ถึงตา บี' })).toBeInTheDocument()
+    await acknowledgeEliminationIfNeeded()
     expect(screen.getByRole('button', { name: 'เริ่มตาถัดไป' })).toBeInTheDocument()
 
-    expectPlayerListOrder('ผู้เล่นที่ตกรอบ', ['เอ', 'ซี'])
+    expectEliminatedPlayers(['เอ', 'ซี'])
   })
 
   it('shows a duplicate-syllable pause message and requires manually starting the next turn', async () => {
@@ -1359,6 +1312,7 @@ describe('คำต้องเชื่อม', () => {
       'บี ตกรอบเพราะคำตอบ "กากี" ซ้ำกับคำ "กาแฟ"',
     )
     expect(within(duplicateStatus).getAllByText('กา')).toHaveLength(2)
+    await acknowledgeEliminationIfNeeded()
     expect(screen.getByRole('button', { name: 'เริ่มตาถัดไป' })).toHaveFocus()
     expect(screen.getByLabelText('คำตอบของ ซี')).toBeDisabled()
   })
@@ -1386,6 +1340,7 @@ describe('คำต้องเชื่อม', () => {
       'เอ ตกรอบเพราะคำตอบ "กากี" ซ้ำกับคำ "กาแฟ"',
     )
     expect(within(duplicateStatus).getAllByText('กา')).toHaveLength(2)
+    await acknowledgeEliminationIfNeeded()
     expect(screen.getByRole('button', { name: 'เริ่มตาถัดไป' })).toBeInTheDocument()
   })
 
@@ -1411,8 +1366,8 @@ describe('คำต้องเชื่อม', () => {
     await advanceTimers(3100)
     await openRoundSummary()
 
-    expectLeaderboardRow('แพรว', [3, '-', '-', '-'], 3)
-    expectLeaderboardRow('ต้น', [1, '-', '-', '-'], 1)
+    expectLeaderboardRow('แพรว', [3, '-', '-'], 3)
+    expectLeaderboardRow('ต้น', [1, '-', '-'], 1)
 
     fireEvent.click(
       screen.getByRole('button', { name: 'เล่นรอบถัดไปด้วยรายชื่อเดิม' }),
@@ -1427,8 +1382,8 @@ describe('คำต้องเชื่อม', () => {
 
     await openRoundSummary()
     expect(screen.getByLabelText('ตารางคะแนนสะสม')).toBeInTheDocument()
-    expectLeaderboardRow('ต้น', [1, 3, '-', '-'], 4)
-    expectLeaderboardRow('แพรว', [3, 1, '-', '-'], 4)
+    expectLeaderboardRow('ต้น', [1, 3, '-'], 4)
+    expectLeaderboardRow('แพรว', [3, 1, '-'], 4)
   })
 
   it('supports replaying with the same roster and resetting everything', async () => {
@@ -1461,11 +1416,12 @@ describe('คำต้องเชื่อม', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'เริ่มใหม่' }))
 
-    expect(screen.getByLabelText('ชื่อผู้เล่น 1')).toHaveValue('')
-    expect(screen.queryByLabelText('ชื่อผู้เล่น 2')).not.toBeInTheDocument()
+    // Back on setup with the same names kept in the editor, ready to confirm again.
+    expect(getSetupEditorView().state.doc.toString()).toBe('ต้น\nแพรว')
+    expect(screen.getByRole('button', { name: 'ยืนยันผู้เล่น' })).toBeEnabled()
   })
 
-  it('starts a new match and resets leaderboard scores after four rounds', async () => {
+  it('starts a new match and resets leaderboard scores after a full match', async () => {
     startTwoPlayerGame('ต้น', 'แพรว')
 
     for (let round = 1; round <= MATCH_ROUNDS_PER_MATCH; round += 1) {
@@ -1525,8 +1481,8 @@ describe('คำต้องเชื่อม', () => {
     await advanceTimers(3100)
 
     await openRoundSummary()
-    expectLeaderboardRow('แพรว', [3, '-', '-', '-'], 3)
-    expectLeaderboardRow('ต้น', [1, '-', '-', '-'], 1)
+    expectLeaderboardRow('แพรว', [3, '-', '-'], 3)
+    expectLeaderboardRow('ต้น', [1, '-', '-'], 1)
   })
 
   it('pauses running first turn without reverting, undo disabled at round start', async () => {
@@ -1548,6 +1504,7 @@ describe('คำต้องเชื่อม', () => {
     await flushAsyncWork()
 
     expect(screen.getByRole('heading', { name: 'ถึงตา เอ' })).toBeInTheDocument()
+    await acknowledgeEliminationIfNeeded()
     expect(screen.getByRole('button', { name: 'เริ่มตาถัดไป' })).toBeInTheDocument()
     expect(getRedoButton()).toBeDisabled()
   })
@@ -1562,6 +1519,7 @@ describe('คำต้องเชื่อม', () => {
     await flushAsyncWork()
 
     expect(screen.getByRole('heading', { name: 'ถึงตา บี' })).toBeInTheDocument()
+    await acknowledgeEliminationIfNeeded()
     expect(screen.getByRole('button', { name: 'เริ่มตาถัดไป' })).toBeInTheDocument()
     expect(getRedoButton()).toBeDisabled()
 
@@ -1569,6 +1527,7 @@ describe('คำต้องเชื่อม', () => {
     await flushAsyncWork()
 
     expect(screen.getByRole('heading', { name: 'ถึงตา บี' })).toBeInTheDocument()
+    await acknowledgeEliminationIfNeeded()
     expect(screen.getByRole('button', { name: 'เริ่มตาถัดไป' })).toBeInTheDocument()
   })
 
@@ -1581,9 +1540,11 @@ describe('คำต้องเชื่อม', () => {
     fireEvent.click(getUndoButton())
     await flushAsyncWork()
 
+    await acknowledgeEliminationIfNeeded()
     expect(screen.getByRole('button', { name: 'เริ่มตาถัดไป' })).toBeInTheDocument()
     expect(screen.getByLabelText('คำตอบของ บี')).toBeDisabled()
 
+    await acknowledgeEliminationIfNeeded()
     fireEvent.click(screen.getByRole('button', { name: 'เริ่มตาถัดไป' }))
 
     expect(screen.getByLabelText('คำตอบของ บี')).toBeEnabled()
@@ -1601,7 +1562,7 @@ describe('คำต้องเชื่อม', () => {
     startTwoPlayerGame('เอ', 'บี')
 
     await advanceTimers(3100)
-    expect(screen.getByRole('button', { name: 'สรุปรอบ' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'ประกาศผู้ชนะ' })).toBeInTheDocument()
 
     fireEvent.click(getUndoButton())
     await flushAsyncWork()
@@ -1613,8 +1574,11 @@ describe('คำต้องเชื่อม', () => {
     fireEvent.click(getRedoButton())
     await flushAsyncWork()
 
+    expect(screen.getByRole('button', { name: 'ประกาศผู้ชนะ' })).toBeInTheDocument()
+    await announceWinnerIfNeeded()
     expect(screen.getByRole('button', { name: 'สรุปรอบ' })).toBeInTheDocument()
   })
+
 
   it('allows undoing a resolved challenge and redoing it back', async () => {
     render(<App />)
@@ -1636,8 +1600,9 @@ describe('คำต้องเชื่อม', () => {
     fireEvent.click(screen.getByRole('button', { name: 'ตัดสินว่าไม่เชื่อม' }))
     await flushAsyncWork()
 
+    // The challenged player is out; the game pauses on the elimination.
     expect(screen.getByRole('heading', { name: 'ถึงตา ซี' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'เริ่มตาถัดไป' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'ไปต่อ' })).toBeInTheDocument()
 
     fireEvent.click(getUndoButton())
     await flushAsyncWork()
@@ -1651,6 +1616,7 @@ describe('คำต้องเชื่อม', () => {
     await flushAsyncWork()
 
     expect(screen.getByRole('heading', { name: 'ถึงตา ซี' })).toBeInTheDocument()
+    await acknowledgeEliminationIfNeeded()
     expect(screen.getByRole('button', { name: 'เริ่มตาถัดไป' })).toBeInTheDocument()
   })
 
@@ -1661,18 +1627,27 @@ describe('คำต้องเชื่อม', () => {
     await openRoundSummary()
     await waitForLeaderboard()
 
+    // leaderboard -> winner announced (round summary button)
     fireEvent.click(getUndoButton())
     await flushAsyncWork()
 
     expect(screen.getByRole('button', { name: 'สรุปรอบ' })).toBeInTheDocument()
     expect(getRedoButton()).toBeEnabled()
 
+    // winner announced -> timeout result, before announcing
+    fireEvent.click(getUndoButton())
+    await flushAsyncWork()
+
+    expect(screen.getByRole('button', { name: 'ประกาศผู้ชนะ' })).toBeInTheDocument()
+
+    // timeout result -> the turn before the timeout
     fireEvent.click(getUndoButton())
     await flushAsyncWork()
 
     expect(screen.getByRole('heading', { name: 'ถึงตา เอ' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'เริ่มตาถัดไป' })).toBeInTheDocument()
   })
+
 
   it('triggers app undo when pressing Ctrl+Z inside a text input', async () => {
     startTwoPlayerGame('เอ', 'บี')
@@ -1686,6 +1661,7 @@ describe('คำต้องเชื่อม', () => {
     await triggerUndoShortcut(answerInput)
 
     expect(screen.getByRole('heading', { name: 'ถึงตา บี' })).toBeInTheDocument()
+    await acknowledgeEliminationIfNeeded()
     expect(screen.getByRole('button', { name: 'เริ่มตาถัดไป' })).toBeInTheDocument()
   })
 
@@ -1709,6 +1685,6 @@ describe('คำต้องเชื่อม', () => {
     fireEvent.click(screen.getByRole('button', { name: 'เริ่มใหม่' }))
 
     expect(screen.queryByRole('button', { name: 'ย้อนกลับ' })).not.toBeInTheDocument()
-    expect(screen.getByLabelText('ชื่อผู้เล่น 1')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'ยืนยันผู้เล่น' })).toBeInTheDocument()
   })
 })

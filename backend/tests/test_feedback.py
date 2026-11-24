@@ -86,3 +86,50 @@ def test_report_rejects_too_long_syllables(posted: list) -> None:
 
   assert response.status_code == 422
   assert posted == []
+
+
+GAME = {
+  'id': 'abc123xyz',
+  'data': {
+    'version': 1,
+    'mode': 'normal',
+    'playerCount': 3,
+    'startedAt': 1700000000000,
+    'events': [
+      {'type': 'word', 'playerId': 'p1', 'word': 'กาแฟ', 'syllables': ['กา', 'แฟ']},
+      {
+        'type': 'word', 'playerId': 'p2', 'word': 'ไปรษณีย์',
+        'syllables': ['ไปร', 'ษณีย์'], 'segmented': ['ไป', 'รษ', 'ณีย์'], 'manual': True,
+      },
+      {'type': 'judge', 'playerId': 'p3', 'word': '', 'reason': 'too-slow'},
+      {'type': 'challenge-lost', 'playerId': 'p1', 'word': 'ไปรษณีย์', 'targetIndex': 1, 'reason': 'not-connected'},
+    ],
+  },
+}
+
+
+def test_judge_game_is_stored_without_names(posted: list) -> None:
+  response = client.post('/api/judge/games', json=GAME)
+
+  assert response.status_code == 202
+  assert response.json() == {'recorded': True}
+  url, body, _ = posted[0]
+  assert url == 'https://example.supabase.co/rest/v1/rpc/record_judge_game'
+  assert body['p_id'] == 'abc123xyz'
+  assert body['p_data']['events'][1]['segmented'] == ['ไป', 'รษ', 'ณีย์']
+  assert 'challengerId' not in body['p_data']['events'][0]
+  assert body['p_model_version']
+
+
+def test_judge_game_refuses_extra_fields_such_as_names(posted: list) -> None:
+  with_names = {**GAME, 'data': {**GAME['data'], 'players': [{'id': 'p1', 'name': 'ออย'}]}}
+  assert client.post('/api/judge/games', json=with_names).status_code == 422
+  named_seat = {**GAME, 'data': {**GAME['data'], 'events': [{**GAME['data']['events'][0], 'playerId': 'ออย'}]}}
+  assert client.post('/api/judge/games', json=named_seat).status_code == 422
+  assert posted == []
+
+
+def test_judge_game_is_not_stored_without_configuration(monkeypatch: pytest.MonkeyPatch) -> None:
+  monkeypatch.delenv('SUPABASE_URL', raising=False)
+  response = client.post('/api/judge/games', json=GAME)
+  assert response.json() == {'recorded': False}

@@ -119,7 +119,7 @@ describe('advanceTurn', () => {
     expect(resumedState.isHistoryRestorePause).toBe(false)
   })
 
-  it('pauses a running challenge debate for history restore and resumes the same segment time', () => {
+  it('pauses a running challenge debate for history restore and restarts the segment with a full 15 seconds', () => {
     const initialState = createGameState(
       [
         { id: 'a', name: 'A' },
@@ -143,11 +143,13 @@ describe('advanceTurn', () => {
     expect(restoredState.challenge.segmentStartedAt).toBeNull()
     expect(restoredState.challenge.segmentDeadlineAt).toBeNull()
     expect(restoredState.challenge.segmentAwaitingContinue).toBe(true)
-    expect(restoredState.challenge.timeLeftMs).toBe(11800)
+    // Since 8419951 ("force 15s timer reset on history restoration") an undo
+    // restarts the debate segment with the full time instead of the remainder.
+    expect(restoredState.challenge.timeLeftMs).toBe(15000)
     expect(resumedState.challenge.segmentStartedAt).toBe(5000)
-    expect(resumedState.challenge.segmentDeadlineAt).toBe(16800)
+    expect(resumedState.challenge.segmentDeadlineAt).toBe(20000)
     expect(resumedState.challenge.segmentAwaitingContinue).toBe(false)
-    expect(resumedState.challenge.timeLeftMs).toBe(11800)
+    expect(resumedState.challenge.timeLeftMs).toBe(15000)
   })
 
   it('can start a confirmed round with a GM opening word without advancing the active player', () => {
