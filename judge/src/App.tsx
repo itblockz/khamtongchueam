@@ -100,7 +100,7 @@ function Setup({
           rows={6}
           value={namesText}
           onChange={(event) => onNamesChange(event.target.value)}
-          placeholder={'ออย\nบีม\nเจ'}
+          placeholder="ใส่ชื่อผู้เล่นบรรทัดละคน"
         />
         <p className={duplicates.length > 0 ? 'note error' : 'note'} role="status">
           {duplicates.length > 0
