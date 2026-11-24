@@ -211,12 +211,19 @@ describe('judge app', () => {
     expect(screen.queryByText('กาแฟ')).not.toBeInTheDocument()
   })
 
-  it('has a not-connected decision', () => {
+  it('offers not-connected only once there is a word to connect to', async () => {
     startWith('ออย\nบีม\nเจ')
+    expect(screen.queryByRole('button', { name: 'ไม่เชื่อม' })).not.toBeInTheDocument()
+    await submit('กาแฟ')
+    fireEvent.click(screen.getByRole('button', { name: 'ตัดสิน กาแฟ' }))
+    const ruling = screen.getByRole('group', { name: 'ตัดสิน “กาแฟ”' })
+    expect(within(ruling).queryByRole('button', { name: 'ไม่เชื่อม' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'ยกเลิก' }))
+
     fireEvent.change(screen.getByLabelText(/^คำของ/), { target: { value: 'ดาวอังคาร' } })
     fireEvent.click(screen.getByRole('button', { name: 'ไม่เชื่อม' }))
 
     expect(screen.getByText('“ดาวอังคาร” ไม่เชื่อม')).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'ออย ตกรอบ' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'บีม ตกรอบ' })).toBeInTheDocument()
   })
 })

@@ -3,7 +3,7 @@ import { SegmentError, segment } from './api'
 import {
   addWord,
   JUDGE_REASON_LABEL,
-  JUDGE_REASONS,
+  judgeReasonsAt,
   judgeOut,
   type JudgeReason,
   applyEdit,
@@ -254,7 +254,7 @@ function Play({
         </div>
       )}
       <div className="row judge-actions">
-        {JUDGE_REASONS.map((reason) => (
+        {judgeReasonsAt(game).map((reason) => (
           <button
             key={reason}
             type="button"
@@ -401,7 +401,7 @@ function WordList({
                 aria-label={`ตัดสิน ${result.word}`}
                 onClick={() => {
                   setOpen({ index: result.index, kind: 'judge' })
-                  setReason('not-connected')
+                  setReason(judgeReasonsAt(game, result.index)[0])
                 }}
               >
                 ตัดสิน
@@ -427,7 +427,7 @@ function WordList({
                   </>
                 ) : (
                   <div className="row" role="group" aria-label={`ตัดสิน “${result.word}”`}>
-                    {JUDGE_REASONS.map((option) => (
+                    {judgeReasonsAt(game, result.index).map((option) => (
                       <button
                         key={option}
                         type="button"

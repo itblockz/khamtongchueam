@@ -408,3 +408,13 @@ export function applyJudge(
     removed: round.events.slice(index + 1),
   }
 }
+
+/**
+ * Decisions available for the word at `index` (default: the word being typed now).
+ * "ไม่เชื่อม" needs an earlier counted word to connect to, so it is not offered for
+ * the first word of a round.
+ */
+export function judgeReasonsAt(state: GameState, index = state.results.length): JudgeReason[] {
+  const hasEarlier = state.results.some((r) => r.index < index && r.status === 'counted')
+  return hasEarlier ? JUDGE_REASONS : JUDGE_REASONS.filter((r) => r !== 'not-connected')
+}
