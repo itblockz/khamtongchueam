@@ -210,4 +210,13 @@ describe('judge app', () => {
     expect(screen.getByText('มม', { selector: 'strong' })).toBeInTheDocument()
     expect(screen.queryByText('กาแฟ')).not.toBeInTheDocument()
   })
+
+  it('has a not-connected decision', () => {
+    startWith('ออย\nบีม\nเจ')
+    fireEvent.change(screen.getByLabelText(/^คำของ/), { target: { value: 'ดาวอังคาร' } })
+    fireEvent.click(screen.getByRole('button', { name: 'ไม่เชื่อม' }))
+
+    expect(screen.getByText('“ดาวอังคาร” ไม่เชื่อม')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'ออย ตกรอบ' })).toBeInTheDocument()
+  })
 })

@@ -36,7 +36,7 @@ export interface WordEvent {
   manual?: boolean
 }
 
-export type JudgeReason = 'not-noun' | 'forbidden'
+export type JudgeReason = 'not-connected' | 'not-noun' | 'forbidden'
 
 /** The judge put the current player out for the word they said. */
 export interface JudgeEvent {
@@ -49,9 +49,13 @@ export interface JudgeEvent {
 export type RoundEvent = WordEvent | JudgeEvent
 
 export const JUDGE_REASON_LABEL: Record<JudgeReason, string> = {
+  'not-connected': 'ไม่เชื่อม',
   'not-noun': 'ไม่ใช่คำนาม',
   forbidden: 'คำต้องห้าม',
 }
+
+/** Judge reasons in the order the buttons show them. */
+export const JUDGE_REASONS: JudgeReason[] = ['not-connected', 'not-noun', 'forbidden']
 
 export interface Round {
   players: { id: string; name: string }[]

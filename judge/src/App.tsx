@@ -3,6 +3,7 @@ import { SegmentError, segment } from './api'
 import {
   addWord,
   JUDGE_REASON_LABEL,
+  JUDGE_REASONS,
   judgeOut,
   type JudgeReason,
   applyEdit,
@@ -253,7 +254,7 @@ function Play({
         </div>
       )}
       <div className="row judge-actions">
-        {(['not-noun', 'forbidden'] as JudgeReason[]).map((reason) => (
+        {JUDGE_REASONS.map((reason) => (
           <button
             key={reason}
             type="button"
@@ -347,7 +348,7 @@ function WordList({
 }) {
   const [open, setOpen] = useState<{ index: number; kind: 'split' | 'judge' } | null>(null)
   const [draft, setDraft] = useState('')
-  const [reason, setReason] = useState<JudgeReason>('not-noun')
+  const [reason, setReason] = useState<JudgeReason>('not-connected')
 
   if (game.results.length === 0) {
     return <p className="note">ยังไม่มีคำในรอบนี้</p>
@@ -400,7 +401,7 @@ function WordList({
                 aria-label={`ตัดสิน ${result.word}`}
                 onClick={() => {
                   setOpen({ index: result.index, kind: 'judge' })
-                  setReason('not-noun')
+                  setReason('not-connected')
                 }}
               >
                 ตัดสิน
@@ -426,7 +427,7 @@ function WordList({
                   </>
                 ) : (
                   <div className="row" role="group" aria-label={`ตัดสิน “${result.word}”`}>
-                    {(['not-noun', 'forbidden'] as JudgeReason[]).map((option) => (
+                    {JUDGE_REASONS.map((option) => (
                       <button
                         key={option}
                         type="button"
