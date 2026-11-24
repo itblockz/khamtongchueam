@@ -237,6 +237,7 @@ describe('judge app', () => {
       startWith('ออย\nบีม\nเจ')
       fireEvent.click(screen.getByRole('button', { name: /เริ่มจับเวลา/ }))
       expect(screen.getByRole('button', { name: 'จับเวลาใหม่' })).toBeInTheDocument()
+      expect(screen.getByLabelText(/^คำของ/)).toHaveFocus()
 
       act(() => vi.advanceTimersByTime(3100))
       expect(screen.getByText('หมดเวลา')).toBeInTheDocument()

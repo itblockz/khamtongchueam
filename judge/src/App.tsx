@@ -25,6 +25,12 @@ import {
 
 const PREVIEW_DELAY_MS = 250
 
+/** Pressing a timer button must not take focus from the word input, or the phone
+ * keyboard closes and the judge loses a beat reopening it. */
+function keepFocus(event: { preventDefault: () => void }) {
+  event.preventDefault()
+}
+
 interface TimerSettings {
   /** Time allowed from the start of a turn to the player's first sound. */
   seconds: number
@@ -195,6 +201,12 @@ function Play({
     return () => window.clearInterval(id)
   }, [timer, settings.seconds])
 
+  function startTimer() {
+    setNow(Date.now())
+    setTimer({ phase: 'counting', startedAt: Date.now() })
+    inputRef.current?.focus() // keep the keyboard up so the judge can type straight away
+  }
+
   const remaining =
     timer.phase === 'counting' ? Math.max(0, settings.seconds - (now - timer.startedAt) / 1000) : 0
 
@@ -272,10 +284,8 @@ function Play({
           <button
             type="button"
             className="big"
-            onClick={() => {
-              setNow(Date.now())
-              setTimer({ phase: 'counting', startedAt: Date.now() })
-            }}
+            onPointerDown={keepFocus}
+            onClick={startTimer}
           >
             เริ่มจับเวลา ({settings.seconds} วิ)
           </button>
@@ -288,10 +298,8 @@ function Play({
           <button
             type="button"
             className="secondary"
-            onClick={() => {
-              setNow(Date.now())
-              setTimer({ phase: 'counting', startedAt: Date.now() })
-            }}
+            onPointerDown={keepFocus}
+            onClick={startTimer}
           >
             จับเวลาใหม่
           </button>
@@ -299,6 +307,7 @@ function Play({
         <button
           type="button"
           className={timer.phase === 'late' ? 'outline-danger selected' : 'outline-danger'}
+          onPointerDown={keepFocus}
           onClick={() => {
             turnEnded.current = true
             onChange(judgeOut(round, 'too-slow', word))
@@ -306,6 +315,7 @@ function Play({
             setPreview([])
             setManualSplit(null)
             setError(null)
+            inputRef.current?.focus()
           }}
         >
           ไม่ทันเวลา
