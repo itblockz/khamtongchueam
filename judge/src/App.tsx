@@ -304,22 +304,6 @@ function Play({
             จับเวลาใหม่
           </button>
         )}
-        <button
-          type="button"
-          className={timer.phase === 'late' ? 'outline-danger selected' : 'outline-danger'}
-          onPointerDown={keepFocus}
-          onClick={() => {
-            turnEnded.current = true
-            onChange(judgeOut(round, 'too-slow', word))
-            setWord('')
-            setPreview([])
-            setManualSplit(null)
-            setError(null)
-            inputRef.current?.focus()
-          }}
-        >
-          ไม่ทันเวลา
-        </button>
       </div>
 
       <form className="row" onSubmit={handleSubmit}>
@@ -380,12 +364,15 @@ function Play({
         </div>
       )}
       <div className="row judge-actions">
-        {judgeReasonsAt(game).filter(needsWord).map((reason) => (
+        {judgeReasonsAt(game).map((reason) => (
           <button
             key={reason}
             type="button"
-            className="outline-danger"
-            disabled={!word.trim()}
+            className={
+              reason === 'too-slow' && timer.phase === 'late' ? 'outline-danger selected' : 'outline-danger'
+            }
+            disabled={needsWord(reason) && !word.trim()}
+            onPointerDown={keepFocus}
             onClick={() => {
               turnEnded.current = true
               onChange(judgeOut(round, reason, word))
