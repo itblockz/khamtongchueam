@@ -35,6 +35,16 @@ python -m venv .venv
 
 backend ใช้ `PyThaiNLP syllable_tokenize()` และ default engine คือ `han_solo`
 
+- `backend/requirements.txt`: dependency ตอนเล่นจริง (เล็ก ใช้ deploy)
+- `backend/requirements-dev.txt`: เพิ่ม test และเครื่องมือวิจัย (`ssg`, `tltk`, `pandas`) ต้องติดตั้งก่อนรัน `npm run benchmark:syllables`
+
+## Deploy บน Vercel
+
+- หน้าเกม: `npm run build` → `dist` บน CDN
+- backend: `api/index.py` (FastAPI ตัวเดียวกับ `backend/app/main.py`) ติดตั้งจาก `requirements.txt` ที่ root (ต้องตรงกับ `backend/requirements.txt`)
+- `vercel.json` ส่ง `/api/*` ไปที่ฟังก์ชัน Python
+- environment variables: `SUPABASE_URL`, `SUPABASE_SECRET_KEY` (ถ้าไม่ใส่ ระบบเก็บคำจะปิด)
+
 ## Useful scripts
 
 ```bash

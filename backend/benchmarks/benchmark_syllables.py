@@ -10,11 +10,28 @@ ROOT_DIR = Path(__file__).resolve().parents[2]
 if str(ROOT_DIR) not in sys.path:
   sys.path.insert(0, str(ROOT_DIR))
 
-from backend.app.syllables import DEFAULT_ENGINE, get_supported_engines, segment_syllables
+from backend.app.syllables import (
+  DEFAULT_ENGINE,
+  SYLLABLE_EXCEPTIONS,
+  get_supported_engines,
+  segment_syllables,
+)
 
 
-def load_gold_entries() -> list[dict[str, object]]:
-  gold_path = Path(__file__).with_name('gold_written_syllables.json')
+# gold_verified_syllables.json: every entry was confirmed by the project owner
+#   in a manual review. Change it only from the owner's own review.
+# gold_unverified_syllables.json (optional): proposed entries nobody has
+#   confirmed yet. Reported separately and never mixed into the verified score.
+VERIFIED_GOLD = 'gold_verified_syllables.json'
+UNVERIFIED_GOLD = 'gold_unverified_syllables.json'
+
+
+def load_gold_entries(filename: str = VERIFIED_GOLD) -> list[dict[str, object]]:
+  gold_path = Path(__file__).with_name(filename)
+
+  if not gold_path.exists():
+    return []
+
   return json.loads(gold_path.read_text(encoding='utf-8'))
 
 
@@ -29,17 +46,41 @@ def to_boundaries(syllables: list[str]) -> set[int]:
   return boundaries
 
 
+def best_reference(actual: list[str], references: list[list[str]]) -> list[str]:
+  actual_boundaries = to_boundaries(actual)
+  return max(
+    references,
+    key=lambda reference: (
+      reference == actual,
+      len(to_boundaries(reference) & actual_boundaries)
+      - len(to_boundaries(reference) ^ actual_boundaries),
+    ),
+  )
+
+
 def benchmark_engine(engine: str, entries: list[dict[str, object]]) -> dict[str, object]:
   exact_matches = 0
+  rule_entries = 0
+  rule_exact_matches = 0
   true_positives = 0
   false_positives = 0
   false_negatives = 0
+  spoken_total = 0
+  spoken_matches = 0
   total_duration_ms = 0.0
   failures: list[tuple[str, str]] = []
+  mismatches: list[tuple[str, list[str], list[str]]] = []
+  per_category: dict[str, list[int]] = {}
 
   for entry in entries:
     text = str(entry['text'])
-    expected = [str(syllable) for syllable in entry['syllables']]
+    references = [[str(syllable) for syllable in entry['syllables']]]
+    references.extend(
+      [str(syllable) for syllable in alternative]
+      for alternative in entry.get('accept', [])  # type: ignore[union-attr]
+    )
+    category = str(entry.get('category', 'uncategorized'))
+    spoken_syllables = entry.get('spoken_syllables')
 
     started_at = perf_counter()
 
@@ -51,8 +92,23 @@ def benchmark_engine(engine: str, entries: list[dict[str, object]]) -> dict[str,
 
     total_duration_ms += (perf_counter() - started_at) * 1000
 
+    expected = best_reference(actual, references)
+    category_counts = per_category.setdefault(category, [0, 0])
+    category_counts[1] += 1
+
+    uses_exception = any(word in text for word in SYLLABLE_EXCEPTIONS)
+    rule_entries += int(not uses_exception)
+
     if actual == expected:
       exact_matches += 1
+      rule_exact_matches += int(not uses_exception)
+      category_counts[0] += 1
+    else:
+      mismatches.append((text, expected, actual))
+
+    if isinstance(spoken_syllables, int):
+      spoken_total += 1
+      spoken_matches += int(len(actual) == spoken_syllables)
 
     expected_boundaries = to_boundaries(expected)
     actual_boundaries = to_boundaries(actual)
@@ -81,7 +137,12 @@ def benchmark_engine(engine: str, entries: list[dict[str, object]]) -> dict[str,
   return {
     'engine': engine,
     'exact_match_accuracy': exact_matches / len(entries),
+    'rule_exact_match_accuracy': rule_exact_matches / rule_entries if rule_entries > 0 else None,
+    'rule_entries': rule_entries,
     'boundary_f1': boundary_f1,
+    'spoken_count_accuracy': spoken_matches / spoken_total if spoken_total > 0 else None,
+    'per_category': per_category,
+    'mismatches': mismatches,
     'avg_latency_ms': total_duration_ms / completed_runs if completed_runs > 0 else None,
     'failures': failures,
   }
@@ -123,7 +184,7 @@ def main() -> None:
   results: list[dict[str, object]] = []
 
   print('Thai syllable segmentation benchmark')
-  print(f'Gold entries: {len(entries)}')
+  print(f'Verified gold entries (confirmed by the project owner): {len(entries)}')
   print()
 
   for engine in engines:
@@ -136,6 +197,26 @@ def main() -> None:
       f"avg_latency_ms={result['avg_latency_ms']:.2f}" if result['avg_latency_ms'] is not None else
       f"{result['engine']}: failed",
     )
+
+    if result['rule_exact_match_accuracy'] is not None:
+      print(
+        f"  exact_match_without_exception_words={result['rule_exact_match_accuracy']:.4f} "
+        f"({result['rule_entries']} words)",
+      )
+
+    if result['spoken_count_accuracy'] is not None:
+      print(f"  spoken_syllable_count_match={result['spoken_count_accuracy']:.4f}")
+
+    category_summary = ', '.join(
+      f'{category}={correct}/{total}'
+      for category, (correct, total) in result['per_category'].items()  # type: ignore[union-attr]
+    )
+    print(f'  per_category: {category_summary}')
+
+    if result['mismatches']:
+      print('  mismatches (expected -> actual):')
+      for text, expected, actual in result['mismatches']:  # type: ignore[union-attr]
+        print(f"    - {text}: {'|'.join(expected)} -> {'|'.join(actual)}")
 
     if result['failures']:
       print('  failures:')
@@ -159,6 +240,19 @@ def main() -> None:
     if recommended_result['avg_latency_ms'] is not None
     else f"Recommended engine: {recommended_result['engine']}"
   )
+
+  unverified_entries = load_gold_entries(UNVERIFIED_GOLD)
+
+  if unverified_entries:
+    result = benchmark_engine(DEFAULT_ENGINE, unverified_entries)
+    print()
+    print(f'Unverified entries (not confirmed yet, not part of the score above): {len(unverified_entries)}')
+    print(
+      f"{DEFAULT_ENGINE}: exact_match={result['exact_match_accuracy']:.4f}, "
+      f"boundary_f1={result['boundary_f1']:.4f}",
+    )
+    for text, expected, actual in result['mismatches']:  # type: ignore[union-attr]
+      print(f"    - {text}: {'|'.join(expected)} -> {'|'.join(actual)}")
 
 
 if __name__ == '__main__':

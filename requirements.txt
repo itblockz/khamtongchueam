@@ -1,0 +1,6 @@
+# Installed by Vercel for the Python function in api/index.py.
+# Same runtime dependencies as backend/requirements.txt (keep the two in sync).
+fastapi==0.135.3
+pythainlp==5.3.4
+python-crfsuite==0.9.12
+requests==2.33.1
