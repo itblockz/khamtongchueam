@@ -36,14 +36,29 @@ export interface WordEvent {
   manual?: boolean
 }
 
-export type RoundEvent = WordEvent
+export type JudgeReason = 'not-noun' | 'forbidden'
+
+/** The judge put the current player out (the word may be left empty). */
+export interface JudgeEvent {
+  type: 'judge'
+  playerId: string
+  word: string
+  reason: JudgeReason
+}
+
+export type RoundEvent = WordEvent | JudgeEvent
+
+export const JUDGE_REASON_LABEL: Record<JudgeReason, string> = {
+  'not-noun': 'ไม่ใช่คำนาม',
+  forbidden: 'คำต้องห้าม',
+}
 
 export interface Round {
   players: { id: string; name: string }[]
   events: RoundEvent[]
 }
 
-export type WordStatus = 'counted' | 'duplicate' | 'speaker-out' | 'after-end'
+export type WordStatus = 'counted' | 'duplicate' | 'judged' | 'speaker-out' | 'after-end'
 
 export interface WordResult {
   /** Position of this entry in `round.events`. */
@@ -54,6 +69,8 @@ export interface WordResult {
   manual: boolean
   status: WordStatus
   clashes: Clash[]
+  /** Set for judge decisions. */
+  reason?: JudgeReason
 }
 
 export interface WordEntry {
@@ -69,6 +86,8 @@ export interface Elimination {
   syllables: string[]
   clashes: Clash[]
   manual?: boolean
+  /** Set when the judge put the player out; otherwise it was a repeated syllable. */
+  reason?: JudgeReason
 }
 
 export interface GameState {
@@ -153,12 +172,14 @@ export function replay(round: Round): GameState {
   let winnerId: string | null = null
 
   round.events.forEach((event, index) => {
+    const isJudge = event.type === 'judge'
     const base = {
       index,
       word: event.word,
-      syllables: event.syllables,
+      syllables: isJudge ? [] : event.syllables,
       playerId: event.playerId,
-      manual: Boolean(event.manual),
+      manual: !isJudge && Boolean(event.manual),
+      ...(isJudge ? { reason: event.reason } : {}),
     }
 
     if (winnerId) {
@@ -175,6 +196,24 @@ export function replay(round: Round): GameState {
       if (speakerIndex >= 0) {
         turn = nextActiveIndex(players, speakerIndex)
       }
+      return
+    }
+
+    if (event.type === 'judge') {
+      speaker.out = true
+      results.push({ ...base, status: 'judged', clashes: [] })
+      lastElimination = {
+        playerId: speaker.id,
+        word: event.word,
+        syllables: [],
+        clashes: [],
+        reason: event.reason,
+      }
+      const remaining = players.filter((player) => !player.out)
+      if (remaining.length === 1) {
+        winnerId = remaining[0].id
+      }
+      turn = nextActiveIndex(players, speakerIndex)
       return
     }
 
@@ -252,7 +291,7 @@ export function undo(round: Round): Round {
 /** Replace the split of an earlier word (the judge corrected it). */
 export function editWord(round: Round, index: number, syllables: string[]): Round {
   const event = round.events[index]
-  if (!event || syllables.length === 0) {
+  if (!event || event.type !== 'word' || syllables.length === 0) {
     return round
   }
   const events = round.events.slice()
@@ -301,6 +340,7 @@ export function describeChanges(before: GameState, after: GameState): string[] {
 export const STATUS_LABEL: Record<WordStatus, string> = {
   counted: '',
   duplicate: 'พยางค์ซ้ำ',
+  judged: 'กรรมการให้ตก',
   'speaker-out': 'ไม่นับ (ตกรอบไปแล้ว)',
   'after-end': 'ไม่นับ (หลังจบรอบ)',
 }
@@ -333,4 +373,14 @@ export function applyEdit(
     round: { ...edited, events: edited.events.slice(0, firstChanged + 1) },
     removed: edited.events.slice(firstChanged + 1),
   }
+}
+
+/** The judge puts the current player out, e.g. the word is not a noun. */
+export function judgeOut(round: Round, reason: JudgeReason, word = ''): Round {
+  const state = replay(round)
+  if (state.winnerId) {
+    return round
+  }
+  const event: JudgeEvent = { type: 'judge', playerId: currentPlayer(state).id, word: word.trim(), reason }
+  return { ...round, events: [...round.events, event] }
 }

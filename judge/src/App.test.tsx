@@ -164,4 +164,29 @@ describe('judge app', () => {
     expect(screen.getByText('พยางค์ซ้ำ')).toBeInTheDocument()
     expect(screen.queryByText('บิกินี')).not.toBeInTheDocument()
   })
+
+  it('lets the judge put the current player out as not a noun, and undo it', async () => {
+    startWith('ออย\nบีม\nเจ')
+    await submit('กาแฟ')
+    fireEvent.change(screen.getByLabelText(/^คำของ/), { target: { value: 'วิ่ง' } })
+
+    fireEvent.click(screen.getByRole('button', { name: 'ไม่ใช่คำนาม' }))
+
+    expect(screen.getByRole('heading', { name: 'บีม ตกรอบ' })).toBeInTheDocument()
+    expect(screen.getByText('“วิ่ง” ไม่ใช่คำนาม')).toBeInTheDocument()
+    expect(screen.getByText('เจ', { selector: 'strong' })).toBeInTheDocument()
+    expect(screen.getByLabelText(/^คำของ/)).toHaveValue('')
+    expect(screen.queryByRole('button', { name: 'แก้การแยก วิ่ง' })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'ย้อนกลับ' }))
+    expect(screen.getByText('บีม', { selector: 'strong' })).toBeInTheDocument()
+  })
+
+  it('accepts a judge decision without a typed word', () => {
+    startWith('ออย\nบีม')
+    fireEvent.click(screen.getByRole('button', { name: 'คำต้องห้าม' }))
+
+    expect(screen.getByRole('heading', { name: 'บีม ชนะ' })).toBeInTheDocument()
+    expect(screen.getByText('กรรมการตัดสิน: คำต้องห้าม')).toBeInTheDocument()
+  })
 })

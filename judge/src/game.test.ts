@@ -6,6 +6,7 @@ import {
   currentPlayer,
   editWord,
   findClashes,
+  judgeOut,
   nextPlayer,
   parseNames,
   parseSyllables,
@@ -287,7 +288,7 @@ describe('applyEdit', () => {
     const { round: fixed, removed } = applyEdit(round, 0, ['อาห', 'าร'])
     expect(removed).toEqual([])
     expect(fixed.events).toHaveLength(4)
-    expect(fixed.events[0].manual).toBe(true)
+    expect(fixed.events[0]).toMatchObject({ manual: true })
   })
 
   it('cuts after a later word whose outcome changed', () => {
@@ -296,5 +297,37 @@ describe('applyEdit', () => {
     const { round: fixed, removed } = applyEdit(longer, 2, ['บิ', 'กิ', 'นิ'])
     expect(fixed.events.map((e) => e.word)).toEqual(['อาหาร', 'อารบิก', 'บิกินี', 'นีออน'])
     expect(removed.map((e) => e.word)).toEqual(['ออนไลน์'])
+  })
+})
+
+describe('judgeOut', () => {
+  it('puts the current player out with the reason, and their word does not count', () => {
+    let round = play(['ออย', 'บีม', 'เจ'], [['กาแฟ', ['กา', 'แฟ']]])
+    round = judgeOut(round, 'not-noun', ' วิ่ง ')
+    const game = replay(round)
+
+    expect(game.players.filter((p) => p.out).map((p) => p.name)).toEqual(['บีม'])
+    expect(game.lastElimination).toEqual({
+      playerId: 'p2',
+      word: 'วิ่ง',
+      syllables: [],
+      clashes: [],
+      reason: 'not-noun',
+    })
+    expect(game.results[1]).toMatchObject({ status: 'judged', reason: 'not-noun', syllables: [] })
+    expect(game.words.map((w) => w.word)).toEqual(['กาแฟ'])
+    expect(currentPlayer(game).name).toBe('เจ')
+  })
+
+  it('can end the round and be undone', () => {
+    const round = judgeOut(startRound(['ออย', 'บีม']), 'forbidden')
+    expect(nameOf(round, replay(round).winnerId)).toBe('บีม')
+    expect(judgeOut(round, 'forbidden')).toBe(round)
+    expect(replay(undo(round)).winnerId).toBeNull()
+  })
+
+  it('cannot be edited like a word', () => {
+    const round = judgeOut(startRound(['ออย', 'บีม']), 'not-noun', 'วิ่ง')
+    expect(editWord(round, 0, ['วิ่ง'])).toBe(round)
   })
 })

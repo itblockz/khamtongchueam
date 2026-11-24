@@ -165,6 +165,7 @@ button:disabled {
 .word-player {
   color: var(--muted);
   font-size: 0.85rem;
+  margin-right: 8px;
 }
 
 .winner {
@@ -232,4 +233,19 @@ button.link {
   margin: 0;
   padding-left: 1.2em;
   color: var(--danger);
+}
+
+.judge-actions {
+  margin-top: -4px;
+}
+
+.judge-actions > button {
+  flex: 1 1 0;
+  min-height: 44px;
+}
+
+button.outline-danger {
+  background: #fff;
+  color: var(--danger);
+  border: 1px solid var(--danger);
 }

@@ -2,6 +2,9 @@ import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } 
 import { SegmentError, segment } from './api'
 import {
   addWord,
+  JUDGE_REASON_LABEL,
+  judgeOut,
+  type JudgeReason,
   applyEdit,
   currentPlayer,
   describeChanges,
@@ -248,6 +251,25 @@ function Play({
           <p className="syllables">{parseSyllables(manualSplit).join(' | ') || ' '}</p>
         </div>
       )}
+      <div className="row judge-actions">
+        {(['not-noun', 'forbidden'] as JudgeReason[]).map((reason) => (
+          <button
+            key={reason}
+            type="button"
+            className="outline-danger"
+            onClick={() => {
+              onChange(judgeOut(round, reason, word))
+              setWord('')
+              setPreview([])
+              setManualSplit(null)
+              setError(null)
+              inputRef.current?.focus()
+            }}
+          >
+            {JUDGE_REASON_LABEL[reason]}
+          </button>
+        ))}
+      </div>
       {error && (
         <p className="note error" role="alert">
           {error}
@@ -276,9 +298,16 @@ function EliminationNotice({ game }: { game: GameState }) {
   return (
     <section className="elimination" role="status">
       <h2>{name} ตกรอบ</h2>
-      <p>
-        “{elimination.word}” ({elimination.syllables.join(' | ')})
-      </p>
+      {elimination.reason ? (
+        <p>
+          {elimination.word ? `“${elimination.word}” ` : 'กรรมการตัดสิน: '}
+          {JUDGE_REASON_LABEL[elimination.reason]}
+        </p>
+      ) : (
+        <p>
+          “{elimination.word}” ({elimination.syllables.join(' | ')})
+        </p>
+      )}
       <ul>
         {elimination.clashes.map((clash) => (
           <li key={clash.syllable}>
@@ -326,12 +355,15 @@ function WordList({
       <ol className="words" reversed>
         {[...game.results].reverse().map((result) => (
           <li key={result.index} className={result.status === 'counted' ? '' : 'not-counted'}>
-            <span className="word">{result.word}</span>
+            <span className="word">{result.word || '(ไม่ได้พิมพ์คำ)'}</span>
             <span className="word-syllables">{result.syllables.join(' | ')}</span>
             {result.manual && <span className="tag">แยกเอง</span>}
             <span className="word-player">{nameOf(result.playerId)}</span>
-            {STATUS_LABEL[result.status] && <span className="tag status">{STATUS_LABEL[result.status]}</span>}
-            {editing !== result.index && (
+            {result.status !== 'judged' && STATUS_LABEL[result.status] && <span className="tag status">{STATUS_LABEL[result.status]}</span>}
+            {result.status === 'judged' && result.reason && (
+              <span className="tag status">{JUDGE_REASON_LABEL[result.reason]}</span>
+            )}
+            {editing !== result.index && result.status !== 'judged' && (
               <button
                 type="button"
                 className="link"
