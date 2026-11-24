@@ -202,3 +202,35 @@ export function anonymize(game: SavedGame) {
     }),
   }
 }
+
+const SENT_KEY = 'khamtongchueam.judge.sent.v1'
+
+/** Short fingerprint of what was last sent for a game, to tell when it changed. */
+export function fingerprint(text: string): string {
+  let hash = 0x811c9dc5
+  for (let i = 0; i < text.length; i += 1) {
+    hash ^= text.charCodeAt(i)
+    hash = Math.imul(hash, 0x01000193)
+  }
+  return `${(hash >>> 0).toString(36)}.${text.length.toString(36)}`
+}
+
+/** Which version of each game the server already has (game id → fingerprint). */
+export function loadSent(): Map<string, string> {
+  try {
+    const data = JSON.parse(localStorage.getItem(SENT_KEY) ?? '{}') as Record<string, unknown>
+    return new Map(Object.entries(data).filter((e): e is [string, string] => typeof e[1] === 'string'))
+  } catch {
+    return new Map()
+  }
+}
+
+/** Remember what the server has, only for games still kept here. */
+export function saveSent(sent: Map<string, string>, games: SavedGame[]) {
+  try {
+    const kept = new Set(games.map((g) => g.id))
+    localStorage.setItem(SENT_KEY, JSON.stringify(Object.fromEntries([...sent].filter(([id]) => kept.has(id)))))
+  } catch {
+    /* blocked or full: games are just sent again next time */
+  }
+}

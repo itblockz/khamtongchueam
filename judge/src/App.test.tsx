@@ -452,6 +452,31 @@ describe('judge app', () => {
     expect(await screen.findByText('นำเข้า 1 เกมใหม่')).toBeInTheDocument()
     expect(screen.getByText('กำลังเล่น · ตาของ บีม')).toBeInTheDocument()
   })
+
+  it('retries a failed send on the next open, and does not resend what arrived', async () => {
+    const fetchMock = vi.mocked(fetch)
+    let serverUp = false
+    const uploads = () => fetchMock.mock.calls.filter(([url]) => url === '/api/judge/games').length
+    fetchMock.mockImplementation(async (url, init) => {
+      if (url === '/api/judge/games') return { ok: serverUp, json: async () => ({}) } as Response
+      const { text } = JSON.parse(String(init?.body)) as { text: string }
+      return { ok: true, json: async () => ({ syllables: SYLLABLES[text] ?? [text] }) } as Response
+    })
+
+    startWith('ออย\nบีม')
+    await submit('กาแฟ')
+    await waitFor(() => expect(uploads()).toBe(1), { timeout: 3000 })
+    cleanup()
+
+    serverUp = true
+    render(<App />)
+    await waitFor(() => expect(uploads()).toBe(2), { timeout: 3000 })
+    cleanup()
+
+    render(<App />)
+    await new Promise((resolve) => setTimeout(resolve, 2000))
+    expect(uploads()).toBe(2)
+  }, 10000)
 })
 
 function cleanupAndRender() {

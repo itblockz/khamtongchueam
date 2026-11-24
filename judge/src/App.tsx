@@ -3,11 +3,14 @@ import { SegmentError, segment, uploadGame } from './api'
 import {
   anonymize,
   exportGames,
+  fingerprint,
+  loadSent,
   load,
   mergeGames,
   newId,
   parseExport,
   save,
+  saveSent,
   type SavedGame,
 } from './storage'
 import {
@@ -79,20 +82,28 @@ export default function App() {
   }, [namesText, timer.seconds, games, currentId])
 
   // Send changed games for collection, anonymously, a moment after they settle.
-  // Games loaded at start count as already sent.
+  // What the server already has is remembered across visits, so a send that failed
+  // or was cut off by closing the tab is retried on the next change or next open.
   const sent = useRef<Map<string, string> | null>(null)
-  if (sent.current === null) {
-    sent.current = new Map((saved.games ?? []).map((g) => [g.id, JSON.stringify(anonymize(g))]))
-  }
+  const sending = useRef(new Set<string>())
+  if (sent.current === null) sent.current = loadSent()
+  const gamesRef = useRef(games)
   useEffect(() => {
+    gamesRef.current = games
     const timer = window.setTimeout(() => {
       for (const g of games) {
         if (g.round.events.length === 0) continue
         const data = anonymize(g)
-        const json = JSON.stringify(data)
-        if (sent.current?.get(g.id) === json) continue
-        sent.current?.set(g.id, json)
-        void uploadGame(g.id, data)
+        const print = fingerprint(JSON.stringify(data))
+        const key = `${g.id}:${print}`
+        if (sent.current?.get(g.id) === print || sending.current.has(key)) continue
+        sending.current.add(key)
+        void uploadGame(g.id, data).then((ok) => {
+          sending.current.delete(key)
+          if (!ok || !sent.current) return
+          sent.current.set(g.id, print)
+          saveSent(sent.current, gamesRef.current)
+        })
       }
     }, UPLOAD_DELAY_MS)
     return () => window.clearTimeout(timer)

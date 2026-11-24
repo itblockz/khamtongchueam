@@ -23,18 +23,21 @@ export async function segment(text: string, signal?: AbortSignal): Promise<strin
 
 /**
  * Send a game's log for collection (see backend feedback.py). The server only stores
- * it in production; elsewhere it answers without storing. Failures are ignored: the
- * game never depends on this.
+ * it in production; elsewhere it answers without storing. Returns whether the server
+ * took it, so a failed send can be retried later. The game never depends on this.
  */
-export async function uploadGame(id: string, data: unknown): Promise<void> {
+export async function uploadGame(id: string, data: unknown): Promise<boolean> {
+  const body = JSON.stringify({ id, data })
   try {
-    await fetch('/api/judge/games', {
+    const response = await fetch('/api/judge/games', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, data }),
-      keepalive: true,
+      body,
+      // lets a send finish while the tab closes; browsers cap such bodies at 64 KB
+      keepalive: body.length < 60_000,
     })
+    return response.ok
   } catch {
-    /* offline or blocked: skip */
+    return false // offline or blocked: retried on the next change or next open
   }
 }
