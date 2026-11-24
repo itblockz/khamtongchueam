@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   addWord,
+  applyEdit,
   describeChanges,
   currentPlayer,
   editWord,
@@ -260,5 +261,40 @@ describe('describeChanges', () => {
   it('reports nothing when the outcome is the same', () => {
     const round = play(['ออย', 'บีม'], [['กาแฟ', ['กา', 'แฟ']]])
     expect(describeChanges(replay(round), replay(editWord(round, 0, ['กาแ', 'ฟ'])))).toEqual([])
+  })
+})
+
+describe('applyEdit', () => {
+  const round = play(['ชช', 'ลล', 'มม'], [
+    ['อาหาร', ['อา', 'หาร']],
+    ['อารบิก', ['อาร', 'บิก']],
+    ['บิกินี', ['บิ', 'กิ', 'นี']],
+    ['นีออน', ['นี', 'ออน']],
+  ])
+
+  it('goes back to the first changed word and removes everything after it', () => {
+    const { round: fixed, removed } = applyEdit(round, 1, ['อา', 'ร', 'บิก'])
+    const game = replay(fixed)
+
+    expect(removed.map((e) => e.word)).toEqual(['บิกินี', 'นีออน'])
+    expect(fixed.events.map((e) => e.word)).toEqual(['อาหาร', 'อารบิก'])
+    expect(game.players.filter((p) => p.out).map((p) => p.name)).toEqual(['ลล'])
+    expect(currentPlayer(game).name).toBe('มม')
+    expect(game.results.every((r) => r.status === 'counted' || r.status === 'duplicate')).toBe(true)
+  })
+
+  it('keeps every word when the outcome does not change', () => {
+    const { round: fixed, removed } = applyEdit(round, 0, ['อาห', 'าร'])
+    expect(removed).toEqual([])
+    expect(fixed.events).toHaveLength(4)
+    expect(fixed.events[0].manual).toBe(true)
+  })
+
+  it('cuts after a later word whose outcome changed', () => {
+    // freeing นี (บิกินี -> บิ|กิ|นิ) makes นีออน count; words after it go
+    const longer = addWord(round, 'ออนไลน์', ['ออน', 'ไลน์'])
+    const { round: fixed, removed } = applyEdit(longer, 2, ['บิ', 'กิ', 'นิ'])
+    expect(fixed.events.map((e) => e.word)).toEqual(['อาหาร', 'อารบิก', 'บิกินี', 'นีออน'])
+    expect(removed.map((e) => e.word)).toEqual(['ออนไลน์'])
   })
 })

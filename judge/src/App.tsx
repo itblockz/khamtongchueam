@@ -2,9 +2,9 @@ import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } 
 import { SegmentError, segment } from './api'
 import {
   addWord,
+  applyEdit,
   currentPlayer,
   describeChanges,
-  editWord,
   nextPlayer,
   parseNames,
   parseSyllables,
@@ -307,8 +307,18 @@ function WordList({
   }
   const nameOf = (id: string) => game.players.find((player) => player.id === id)?.name ?? ''
   const draftSyllables = parseSyllables(draft)
-  const edited = editing !== null && draftSyllables.length > 0 ? editWord(round, editing, draftSyllables) : null
-  const changes = edited ? describeChanges(game, replay(edited)) : []
+  const result = editing !== null && draftSyllables.length > 0 ? applyEdit(round, editing, draftSyllables) : null
+  const edited = result && result.round !== round ? result.round : null
+  const changes: string[] = []
+  if (result && edited) {
+    const after = replay(edited)
+    if (result.removed.length > 0) {
+      changes.push(
+        `ย้อนกลับไป${after.winnerId ? 'ตอนจบรอบ' : `ตาของ ${currentPlayer(after).name}`} · ลบ ${result.removed.length} คำหลังจากนั้น: ${result.removed.map((e) => e.word).join(', ')}`,
+      )
+    }
+    changes.push(...describeChanges(game, after).filter((c) => !c.startsWith('คำ “') && !c.startsWith('ตาต่อไป')))
+  }
 
   return (
     <section>

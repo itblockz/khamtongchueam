@@ -5,6 +5,7 @@ import App from './App'
 const SYLLABLES: Record<string, string[]> = {
   อาหาร: ['อา', 'หาร'],
   อารบิก: ['อาร', 'บิก'],
+  บิกินี: ['บิ', 'กิ', 'นี'],
   ไปรษณีย์: ['ไป', 'รษ', 'ณีย์'],
   มหา: ['ม', 'หา'],
   หาดทราย: ['หาด', 'ทราย'],
@@ -146,6 +147,7 @@ describe('judge app', () => {
     startWith('ชช\nลล\nมม')
     await submit('อาหาร')
     await submit('อารบิก')
+    await submit('บิกินี')
 
     fireEvent.click(screen.getByRole('button', { name: 'แก้การแยก อารบิก' }))
     const field = screen.getByLabelText(/แก้การแยก “อารบิก”/)
@@ -153,11 +155,13 @@ describe('judge app', () => {
 
     fireEvent.change(field, { target: { value: 'อา ร บิก' } })
     expect(screen.getByText('ลล ตกรอบที่คำ “อารบิก” (“อา” ซ้ำกับ “อาหาร”)')).toBeInTheDocument()
+    expect(screen.getByText('ย้อนกลับไปตาของ มม · ลบ 1 คำหลังจากนั้น: บิกินี')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'บันทึก' }))
 
     expect(screen.getByRole('heading', { name: 'ลล ตกรอบ' })).toBeInTheDocument()
     expect(screen.getByText('มม', { selector: 'strong' })).toBeInTheDocument()
     expect(screen.getByText('พยางค์ซ้ำ')).toBeInTheDocument()
+    expect(screen.queryByText('บิกินี')).not.toBeInTheDocument()
   })
 })

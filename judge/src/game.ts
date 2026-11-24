@@ -304,3 +304,33 @@ export const STATUS_LABEL: Record<WordStatus, string> = {
   'speaker-out': 'ไม่นับ (ตกรอบไปแล้ว)',
   'after-end': 'ไม่นับ (หลังจบรอบ)',
 }
+
+/**
+ * Correct the split of an earlier word. If that changes the outcome of any word,
+ * the round goes back to the first word whose outcome changed: that word stays and
+ * every word after it is removed, as if the judge had caught it at the time.
+ */
+export function applyEdit(
+  round: Round,
+  index: number,
+  syllables: string[],
+): { round: Round; removed: RoundEvent[] } {
+  const edited = editWord(round, index, syllables)
+  if (edited === round) {
+    return { round, removed: [] }
+  }
+
+  const before = replay(round).results
+  const after = replay(edited).results
+  const firstChanged = after.findIndex(
+    (result, i) => i >= index && result.status !== before[i]?.status,
+  )
+  if (firstChanged === -1) {
+    return { round: edited, removed: [] }
+  }
+
+  return {
+    round: { ...edited, events: edited.events.slice(0, firstChanged + 1) },
+    removed: edited.events.slice(firstChanged + 1),
+  }
+}
