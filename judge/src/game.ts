@@ -38,7 +38,7 @@ export interface WordEvent {
 
 export type JudgeReason = 'not-noun' | 'forbidden'
 
-/** The judge put the current player out (the word may be left empty). */
+/** The judge put the current player out for the word they said. */
 export interface JudgeEvent {
   type: 'judge'
   playerId: string
@@ -376,9 +376,9 @@ export function applyEdit(
 }
 
 /** The judge puts the current player out, e.g. the word is not a noun. */
-export function judgeOut(round: Round, reason: JudgeReason, word = ''): Round {
+export function judgeOut(round: Round, reason: JudgeReason, word: string): Round {
   const state = replay(round)
-  if (state.winnerId) {
+  if (state.winnerId || !word.trim()) {
     return round
   }
   const event: JudgeEvent = { type: 'judge', playerId: currentPlayer(state).id, word: word.trim(), reason }

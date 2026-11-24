@@ -257,6 +257,7 @@ function Play({
             key={reason}
             type="button"
             className="outline-danger"
+            disabled={!word.trim()}
             onClick={() => {
               onChange(judgeOut(round, reason, word))
               setWord('')
@@ -300,8 +301,7 @@ function EliminationNotice({ game }: { game: GameState }) {
       <h2>{name} ตกรอบ</h2>
       {elimination.reason ? (
         <p>
-          {elimination.word ? `“${elimination.word}” ` : 'กรรมการตัดสิน: '}
-          {JUDGE_REASON_LABEL[elimination.reason]}
+          “{elimination.word}” {JUDGE_REASON_LABEL[elimination.reason]}
         </p>
       ) : (
         <p>
@@ -351,11 +351,14 @@ function WordList({
 
   return (
     <section>
-      <h2 className="small-heading">คำที่ใช้แล้ว ({game.words.length})</h2>
+      <h2 className="small-heading">คำในรอบนี้ (นับ {game.words.length})</h2>
       <ol className="words" reversed>
         {[...game.results].reverse().map((result) => (
-          <li key={result.index} className={result.status === 'counted' ? '' : 'not-counted'}>
-            <span className="word">{result.word || '(ไม่ได้พิมพ์คำ)'}</span>
+          <li
+            key={result.index}
+            className={result.status === 'counted' || result.status === 'judged' ? '' : 'not-counted'}
+          >
+            <span className="word">{result.word}</span>
             <span className="word-syllables">{result.syllables.join(' | ')}</span>
             {result.manual && <span className="tag">แยกเอง</span>}
             <span className="word-player">{nameOf(result.playerId)}</span>

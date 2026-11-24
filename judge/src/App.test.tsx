@@ -66,7 +66,7 @@ describe('judge app', () => {
     expect(within(notice).getByRole('heading', { name: 'บีม ตกรอบ' })).toBeInTheDocument()
     expect(within(notice).getByText('“ทราย” ซ้ำกับคำ “หาดทราย”')).toBeInTheDocument()
     expect(screen.getByText('เจ', { selector: 'strong' })).toBeInTheDocument()
-    expect(screen.getByText('คำที่ใช้แล้ว (1)')).toBeInTheDocument()
+    expect(screen.getByText('คำในรอบนี้ (นับ 1)')).toBeInTheDocument()
 
     await submit('กาแฟ')
     expect(screen.queryByRole('heading', { name: 'บีม ตกรอบ' })).not.toBeInTheDocument()
@@ -182,11 +182,15 @@ describe('judge app', () => {
     expect(screen.getByText('บีม', { selector: 'strong' })).toBeInTheDocument()
   })
 
-  it('accepts a judge decision without a typed word', () => {
+  it('needs a typed word before the judge can decide', () => {
     startWith('ออย\nบีม')
+    expect(screen.getByRole('button', { name: 'คำต้องห้าม' })).toBeDisabled()
+
+    fireEvent.change(screen.getByLabelText(/^คำของ/), { target: { value: 'คำหยาบ' } })
     fireEvent.click(screen.getByRole('button', { name: 'คำต้องห้าม' }))
 
     expect(screen.getByRole('heading', { name: 'บีม ชนะ' })).toBeInTheDocument()
-    expect(screen.getByText('กรรมการตัดสิน: คำต้องห้าม')).toBeInTheDocument()
+    expect(screen.getByText('“คำหยาบ” คำต้องห้าม')).toBeInTheDocument()
   })
+
 })

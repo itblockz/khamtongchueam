@@ -320,9 +320,11 @@ describe('judgeOut', () => {
   })
 
   it('can end the round and be undone', () => {
-    const round = judgeOut(startRound(['ออย', 'บีม']), 'forbidden')
+    const empty = startRound(['ออย', 'บีม'])
+    expect(judgeOut(empty, 'forbidden', '  ')).toBe(empty)
+    const round = judgeOut(empty, 'forbidden', 'คำหยาบ')
     expect(nameOf(round, replay(round).winnerId)).toBe('บีม')
-    expect(judgeOut(round, 'forbidden')).toBe(round)
+    expect(judgeOut(round, 'forbidden', 'อีก')).toBe(round)
     expect(replay(undo(round)).winnerId).toBeNull()
   })
 
