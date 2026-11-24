@@ -12,7 +12,7 @@ import {
   applyEdit,
   applyJudge,
   applyChallenge,
-  CHALLENGE_REASONS,
+  canChallenge,
   describeChallenge,
   currentPlayer,
   describeChanges,
@@ -529,8 +529,8 @@ function EliminationNotice({ game }: { game: GameState }) {
   return (
     <section className="elimination" role="status">
       <h2>{name} ตกรอบ</h2>
-      {elimination.lostChallengeAt !== undefined && elimination.reason ? (
-        <p>{describeChallenge(elimination.word, elimination.lostChallengeAt, elimination.reason)} ไม่สำเร็จ</p>
+      {elimination.lostChallengeAt !== undefined ? (
+        <p>{describeChallenge(elimination.word, elimination.lostChallengeAt)} ไม่สำเร็จ</p>
       ) : elimination.reason ? (
         <p>
           {judgedText(elimination.word, elimination.reason)}
@@ -593,7 +593,7 @@ function WordList({
   if (open?.kind === 'split' && draftSyllables.length > 0) pending = applyEdit(round, open.index, draftSyllables)
   if (open?.kind === 'judge') pending = applyJudge(round, open.index, reason)
   if (open?.kind === 'challenge' && challengerId && succeeded !== null) {
-    pending = applyChallenge(round, open.index, challengerId, reason, succeeded)
+    pending = applyChallenge(round, open.index, challengerId, succeeded)
   }
   const canSave = Boolean(pending && pending.round !== round)
   const changes = summarize(round, game, pending)
@@ -609,9 +609,9 @@ function WordList({
               ['counted', 'judged', 'challenge-lost'].includes(result.status) ? '' : 'not-counted'
             }
           >
-            {result.status === 'challenge-lost' && result.reason && result.targetIndex !== undefined ? (
+            {result.status === 'challenge-lost' && result.targetIndex !== undefined ? (
               <div className="challenge-line">
-                {describeChallenge(result.word, result.targetIndex, result.reason)}
+                {describeChallenge(result.word, result.targetIndex)}
               </div>
             ) : (
               <div>
@@ -662,14 +662,13 @@ function WordList({
                   ตัดสิน
                 </button>
               )}
-              {open?.index !== result.index && result.status === 'counted' && (
+              {open?.index !== result.index && canChallenge(game, result.index) && (
                 <button
                   type="button"
                   className="link"
                   aria-label={`ชาเลนจ์ ${result.word}`}
                   onClick={() => {
                     setOpen({ index: result.index, kind: 'challenge' })
-                    setReason(judgeReasonsAt(game, result.index)[0])
                     setChallengerId(null)
                     setSucceeded(null)
                   }}
@@ -698,7 +697,7 @@ function WordList({
                   </>
                 ) : open.kind === 'challenge' ? (
                   <>
-                    <p className="note">ใครชาเลนจ์</p>
+                    <p className="note">ชาเลนจ์ว่า “{result.word}” ไม่เชื่อม · ใครชาเลนจ์</p>
                     <div className="row" role="group" aria-label="คนชาเลนจ์">
                       {game.players
                         .filter((p) => !p.out && p.id !== result.playerId)
@@ -711,22 +710,6 @@ function WordList({
                             onClick={() => setChallengerId(p.id)}
                           >
                             {p.name}
-                          </button>
-                        ))}
-                    </div>
-                    <p className="note">ชาเลนจ์ว่า</p>
-                    <div className="row" role="group" aria-label="ชาเลนจ์ว่า">
-                      {judgeReasonsAt(game, result.index)
-                        .filter((r) => CHALLENGE_REASONS.includes(r))
-                        .map((option) => (
-                          <button
-                            key={option}
-                            type="button"
-                            className={reason === option ? 'selected-choice' : 'secondary'}
-                            aria-pressed={reason === option}
-                            onClick={() => setReason(option)}
-                          >
-                            {JUDGE_REASON_LABEL[option]}
                           </button>
                         ))}
                     </div>

@@ -68,8 +68,13 @@ export interface ChallengeLostEvent {
 
 export type RoundEvent = WordEvent | JudgeEvent | ChallengeLostEvent
 
-/** Reasons a player can challenge a word for. */
-export const CHALLENGE_REASONS: JudgeReason[] = ['not-connected', 'not-noun', 'forbidden']
+/** Players can only challenge a word for not connecting to the word before it. */
+export const CHALLENGE_REASON: JudgeReason = 'not-connected'
+
+/** Whether the word at `index` can be challenged: it counts and has a word before it. */
+export function canChallenge(state: GameState, index: number): boolean {
+  return state.results[index]?.status === 'counted' && judgeReasonsAt(state, index).includes(CHALLENGE_REASON)
+}
 
 export const JUDGE_REASON_LABEL: Record<JudgeReason, string> = {
   'not-connected': 'ไม่เชื่อม',
@@ -526,16 +531,16 @@ export function applyChallenge(
   round: Round,
   index: number,
   challengerId: string,
-  reason: JudgeReason,
   succeeded: boolean,
 ): { round: Round; removed: RoundEvent[] } {
+  const reason = CHALLENGE_REASON
   const event = round.events[index]
   const state = replay(round)
   const challenger = state.players.find((player) => player.id === challengerId)
   if (
     !event ||
     event.type !== 'word' ||
-    state.results[index]?.status !== 'counted' ||
+    !canChallenge(state, index) ||
     !challenger ||
     challenger.out ||
     challengerId === event.playerId
@@ -560,6 +565,6 @@ export function applyChallenge(
 }
 
 /** e.g. ชาเลนจ์ คำที่ 12 “ดาวอังคาร” ว่าไม่เชื่อม (numbered as in the word list). */
-export function describeChallenge(word: string, targetIndex: number, reason: JudgeReason): string {
-  return `ชาเลนจ์ คำที่ ${targetIndex + 1} “${word}” ว่า${JUDGE_REASON_LABEL[reason]}`
+export function describeChallenge(word: string, targetIndex: number): string {
+  return `ชาเลนจ์ คำที่ ${targetIndex + 1} “${word}” ว่า${JUDGE_REASON_LABEL[CHALLENGE_REASON]}`
 }
