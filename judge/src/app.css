@@ -254,7 +254,7 @@ button.link {
 }
 
 .judge-actions > button {
-  flex: 1 1 40%; /* two per row on phones, one row when there is room */
+  flex: 1 1 0;
   min-height: 44px;
   padding: 0 6px;
   font-size: 15px;
@@ -312,12 +312,6 @@ button.outline-danger.selected {
   font-size: 1.6rem;
   font-weight: 700;
   color: var(--danger);
-}
-
-@media (min-width: 520px) {
-  .judge-actions > button {
-    flex-basis: 0;
-  }
 }
 
 .games {

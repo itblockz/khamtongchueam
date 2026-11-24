@@ -4,7 +4,7 @@ import { load, MAX_GAMES, newId, save, type SavedGame } from './storage'
 import {
   addWord,
   JUDGE_REASON_LABEL,
-  judgeReasonsAt,
+  JUDGE_REASONS,
   judgeOut,
   judgedText,
   needsWord,
@@ -420,7 +420,7 @@ function Play({
         </div>
       )}
       <div className="row judge-actions">
-        {judgeReasonsAt(game).map((reason) => (
+        {JUDGE_REASONS.map((reason) => (
           <button
             key={reason}
             type="button"
@@ -580,7 +580,7 @@ function WordList({
 }) {
   const [open, setOpen] = useState<{ index: number; kind: 'split' | 'judge' | 'challenge' } | null>(null)
   const [draft, setDraft] = useState('')
-  const [reason, setReason] = useState<JudgeReason>('not-connected')
+  const [reason, setReason] = useState<JudgeReason>(JUDGE_REASONS[0])
   const [challengerId, setChallengerId] = useState<string | null>(null)
   const [succeeded, setSucceeded] = useState<boolean | null>(null)
 
@@ -657,7 +657,7 @@ function WordList({
                   aria-label={`ตัดสิน ${result.word}`}
                   onClick={() => {
                     setOpen({ index: result.index, kind: 'judge' })
-                    setReason(judgeReasonsAt(game, result.index)[0])
+                    setReason(JUDGE_REASONS[0])
                   }}
                 >
                   ตัดสิน
@@ -736,7 +736,7 @@ function WordList({
                   </>
                 ) : (
                   <div className="row" role="group" aria-label={`ตัดสิน “${result.word}”`}>
-                    {judgeReasonsAt(game, result.index).map((option) => (
+                    {JUDGE_REASONS.map((option) => (
                       <button
                         key={option}
                         type="button"

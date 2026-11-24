@@ -93,8 +93,9 @@ export const JUDGE_REASON_LABEL: Record<JudgeReason, string> = {
   'too-slow': 'ไม่ทันเวลา',
 }
 
-/** Judge reasons in the order the buttons show them. */
-export const JUDGE_REASONS: JudgeReason[] = ['not-connected', 'not-noun', 'forbidden', 'too-slow']
+/** Judge reasons in the order the buttons show them. "ไม่เชื่อม" is not one: only a
+ * player's challenge can rule a word out for not connecting. */
+export const JUDGE_REASONS: JudgeReason[] = ['not-noun', 'forbidden', 'too-slow']
 
 /** Reasons that need the word typed first. "ไม่ทันเวลา" (no first sound in time, or
  * stretching a sound to think) can happen before any word is spoken. */
@@ -537,13 +538,6 @@ export function mustConnect(state: GameState, index: number): boolean {
   return false
 }
 
-/**
- * Decisions available for the word at `index` (default: the word being typed now).
- * "ไม่เชื่อม" only applies to a word that had to connect.
- */
-export function judgeReasonsAt(state: GameState, index = state.results.length): JudgeReason[] {
-  return mustConnect(state, index) ? JUDGE_REASONS : JUDGE_REASONS.filter((r) => r !== 'not-connected')
-}
 
 /**
  * A player challenges the counted word at `index`. If the challenge succeeds the word

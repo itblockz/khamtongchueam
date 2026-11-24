@@ -453,11 +453,8 @@ describe('challenge', () => {
   it('the first word after someone goes out starts free', async () => {
     const { game, round } = await setup()
     let after = game.judgeOut(round, 'too-slow', '') // ง out
-    expect(game.judgeReasonsAt(game.replay(after))).not.toContain('not-connected')
     after = game.addWord(after, 'ลูกบอล', ['ลูก', 'บอล']) // ก starts free
-    const state = game.replay(after)
-    expect(game.canChallenge(state, 4)).toBe(false)
-    expect(game.judgeReasonsAt(state)).toContain('not-connected')
+    expect(game.canChallenge(game.replay(after), 4)).toBe(false)
     after = game.addWord(after, 'ชิงช้า', ['ชิง', 'ช้า']) // ข must connect to ลูกบอล
     expect(game.canChallenge(game.replay(after), 5)).toBe(true)
   })
