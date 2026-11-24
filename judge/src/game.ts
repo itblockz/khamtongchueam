@@ -259,3 +259,48 @@ export function editWord(round: Round, index: number, syllables: string[]): Roun
   events[index] = { ...event, syllables, manual: true }
   return { ...round, events }
 }
+
+/** Human-readable list of what changes in the game between two states (for confirming an edit). */
+export function describeChanges(before: GameState, after: GameState): string[] {
+  const changes: string[] = []
+  const name = (state: GameState, id: string) =>
+    state.players.find((player) => player.id === id)?.name ?? ''
+  const newlyOutAtWord = new Set<string>()
+
+  after.results.forEach((result, index) => {
+    const was = before.results[index]
+    if (!was || was.status === result.status) return
+    const speaker = name(after, result.playerId)
+    const label = `คำ “${result.word}” ของ ${speaker}`
+    if (result.status === 'duplicate') {
+      const reason = result.clashes.map((c) => `“${c.syllable}” ซ้ำกับ “${c.word}”`).join(', ')
+      changes.push(`${speaker} ตกรอบที่คำ “${result.word}” (${reason})`)
+      newlyOutAtWord.add(result.playerId)
+    } else if (result.status === 'counted') changes.push(`${label} จะนับ`)
+    else if (result.status === 'speaker-out') changes.push(`${label} จะไม่นับ (ตกรอบไปแล้ว)`)
+    else changes.push(`${label} จะไม่นับ (หลังจบรอบ)`)
+  })
+
+  after.players.forEach((player, index) => {
+    const was = before.players[index]
+    if (!was.out && player.out && !newlyOutAtWord.has(player.id)) changes.unshift(`${player.name} ตกรอบ`)
+    if (was.out && !player.out) changes.unshift(`${player.name} กลับมาเล่น`)
+  })
+
+  if (before.winnerId !== after.winnerId) {
+    changes.push(after.winnerId ? `${name(after, after.winnerId)} ชนะ` : 'รอบยังไม่จบ เล่นต่อ')
+  } else if (!after.winnerId && before.turn !== after.turn) {
+    changes.push(
+      `ตาต่อไปเปลี่ยนจาก ${before.players[before.turn].name} เป็น ${after.players[after.turn].name}`,
+    )
+  }
+
+  return changes
+}
+
+export const STATUS_LABEL: Record<WordStatus, string> = {
+  counted: '',
+  duplicate: 'พยางค์ซ้ำ',
+  'speaker-out': 'ไม่นับ (ตกรอบไปแล้ว)',
+  'after-end': 'ไม่นับ (หลังจบรอบ)',
+}

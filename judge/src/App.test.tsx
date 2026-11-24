@@ -3,6 +3,8 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import App from './App'
 
 const SYLLABLES: Record<string, string[]> = {
+  อาหาร: ['อา', 'หาร'],
+  อารบิก: ['อาร', 'บิก'],
   ไปรษณีย์: ['ไป', 'รษ', 'ณีย์'],
   มหา: ['ม', 'หา'],
   หาดทราย: ['หาด', 'ทราย'],
@@ -138,5 +140,24 @@ describe('judge app', () => {
 
     expect(screen.queryByRole('heading', { name: 'ออย ชนะ' })).not.toBeInTheDocument()
     expect(screen.getByText('บีม', { selector: 'strong' })).toBeInTheDocument()
+  })
+
+  it('corrects an earlier word, shows what changes, then applies it', async () => {
+    startWith('ชช\nลล\nมม')
+    await submit('อาหาร')
+    await submit('อารบิก')
+
+    fireEvent.click(screen.getByRole('button', { name: 'แก้การแยก อารบิก' }))
+    const field = screen.getByLabelText(/แก้การแยก “อารบิก”/)
+    expect(field).toHaveValue('อาร บิก')
+
+    fireEvent.change(field, { target: { value: 'อา ร บิก' } })
+    expect(screen.getByText('ลล ตกรอบที่คำ “อารบิก” (“อา” ซ้ำกับ “อาหาร”)')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'บันทึก' }))
+
+    expect(screen.getByRole('heading', { name: 'ลล ตกรอบ' })).toBeInTheDocument()
+    expect(screen.getByText('มม', { selector: 'strong' })).toBeInTheDocument()
+    expect(screen.getByText('พยางค์ซ้ำ')).toBeInTheDocument()
   })
 })

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   addWord,
+  describeChanges,
   currentPlayer,
   editWord,
   findClashes,
@@ -235,5 +236,29 @@ describe('correcting an earlier split (replay)', () => {
     // play goes on from the current turn: after ออย comes บีม, and เจ is back in the rotation
     expect(currentPlayer(fixed).name).toBe('บีม')
     expect(nextPlayer(fixed).name).toBe('เจ')
+  })
+})
+
+describe('describeChanges', () => {
+  it('summarises a retroactive correction', () => {
+    const round = play(['ชช', 'ลล', 'มม'], [
+      ['อาหาร', ['อา', 'หาร']],
+      ['อารบิก', ['อาร', 'บิก']],
+      ['กาแฟ', ['กา', 'แฟ']],
+      ['แฟนคลับ', ['แฟน', 'คลับ']],
+      ['คลับเฮาส์', ['คลับ', 'เฮาส์']],
+    ])
+    const before = replay(round)
+    const after = replay(editWord(round, 1, ['อา', 'ร', 'บิก']))
+
+    expect(describeChanges(before, after)).toEqual([
+      'ลล ตกรอบที่คำ “อารบิก” (“อา” ซ้ำกับ “อาหาร”)',
+      'คำ “คลับเฮาส์” ของ ลล จะไม่นับ (ตกรอบไปแล้ว)',
+    ])
+  })
+
+  it('reports nothing when the outcome is the same', () => {
+    const round = play(['ออย', 'บีม'], [['กาแฟ', ['กา', 'แฟ']]])
+    expect(describeChanges(replay(round), replay(editWord(round, 0, ['กาแ', 'ฟ'])))).toEqual([])
   })
 })

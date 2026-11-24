@@ -3,10 +3,13 @@ import { SegmentError, segment } from './api'
 import {
   addWord,
   currentPlayer,
+  describeChanges,
+  editWord,
   nextPlayer,
   parseNames,
   parseSyllables,
   replay,
+  STATUS_LABEL,
   startRound,
   undo,
   type GameState,
@@ -47,7 +50,7 @@ export default function App() {
       <main className="page">
         <EliminationNotice game={game} />
         <h1 className="winner">{winner?.name} ชนะ</h1>
-        <WordList game={game} />
+        <WordList round={round} game={game} onChange={setRound} />
         <div className="row">
           <button type="button" onClick={() => setRound(startRound(round.players.map((p) => p.name)))}>
             เล่นอีกรอบ
@@ -253,7 +256,7 @@ function Play({
 
       <EliminationNotice game={game} />
 
-      <WordList game={game} />
+      <WordList round={round} game={game} onChange={onChange} />
 
       <p className="note">
         ยังเล่นอยู่: {game.players.filter((p) => !p.out).map((p) => p.name).join(', ')}
@@ -287,21 +290,92 @@ function EliminationNotice({ game }: { game: GameState }) {
   )
 }
 
-function WordList({ game }: { game: GameState }) {
-  if (game.words.length === 0) {
+function WordList({
+  round,
+  game,
+  onChange,
+}: {
+  round: Round
+  game: GameState
+  onChange: (round: Round) => void
+}) {
+  const [editing, setEditing] = useState<number | null>(null)
+  const [draft, setDraft] = useState('')
+
+  if (game.results.length === 0) {
     return <p className="note">ยังไม่มีคำในรอบนี้</p>
   }
   const nameOf = (id: string) => game.players.find((player) => player.id === id)?.name ?? ''
+  const draftSyllables = parseSyllables(draft)
+  const edited = editing !== null && draftSyllables.length > 0 ? editWord(round, editing, draftSyllables) : null
+  const changes = edited ? describeChanges(game, replay(edited)) : []
+
   return (
     <section>
       <h2 className="small-heading">คำที่ใช้แล้ว ({game.words.length})</h2>
       <ol className="words" reversed>
-        {[...game.words].reverse().map((entry, index) => (
-          <li key={`${entry.word}-${index}`}>
-            <span className="word">{entry.word}</span>
-            <span className="word-syllables">{entry.syllables.join(' | ')}</span>
-            {entry.manual && <span className="tag">แยกเอง</span>}
-            <span className="word-player">{nameOf(entry.playerId)}</span>
+        {[...game.results].reverse().map((result) => (
+          <li key={result.index} className={result.status === 'counted' ? '' : 'not-counted'}>
+            <span className="word">{result.word}</span>
+            <span className="word-syllables">{result.syllables.join(' | ')}</span>
+            {result.manual && <span className="tag">แยกเอง</span>}
+            <span className="word-player">{nameOf(result.playerId)}</span>
+            {STATUS_LABEL[result.status] && <span className="tag status">{STATUS_LABEL[result.status]}</span>}
+            {editing !== result.index && (
+              <button
+                type="button"
+                className="link"
+                aria-label={`แก้การแยก ${result.word}`}
+                onClick={() => {
+                  setEditing(result.index)
+                  setDraft(result.syllables.join(' '))
+                }}
+              >
+                แก้
+              </button>
+            )}
+            {editing === result.index && (
+              <div className="stack edit-box">
+                <label htmlFor={`edit-${result.index}`}>แก้การแยก “{result.word}” (เว้นวรรคระหว่างพยางค์)</label>
+                <input
+                  id={`edit-${result.index}`}
+                  value={draft}
+                  onChange={(event) => setDraft(event.target.value)}
+                  autoComplete="off"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  autoFocus
+                />
+                <p className="syllables">{draftSyllables.join(' | ') || ' '}</p>
+                <div role="status">
+                  {edited &&
+                    (changes.length > 0 ? (
+                      <ul className="changes">
+                        {changes.map((change) => (
+                          <li key={change}>{change}</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="note">ไม่มีผลต่อเกม</p>
+                    ))}
+                </div>
+                <div className="row">
+                  <button
+                    type="button"
+                    disabled={!edited}
+                    onClick={() => {
+                      if (edited) onChange(edited)
+                      setEditing(null)
+                    }}
+                  >
+                    บันทึก
+                  </button>
+                  <button type="button" className="secondary" onClick={() => setEditing(null)}>
+                    ยกเลิก
+                  </button>
+                </div>
+              </div>
+            )}
           </li>
         ))}
       </ol>

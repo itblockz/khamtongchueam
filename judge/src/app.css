@@ -209,3 +209,27 @@ button.link {
   margin-right: 8px;
   color: var(--muted);
 }
+
+.not-counted .word,
+.not-counted .word-syllables {
+  text-decoration: line-through;
+  color: var(--muted);
+}
+
+.tag.status {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.edit-box {
+  margin-top: 6px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.changes {
+  margin: 0;
+  padding-left: 1.2em;
+  color: var(--danger);
+}
