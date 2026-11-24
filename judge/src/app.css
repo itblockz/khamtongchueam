@@ -249,3 +249,8 @@ button.outline-danger {
   color: var(--danger);
   border: 1px solid var(--danger);
 }
+
+button.outline-danger.selected {
+  background: var(--danger);
+  color: #fff;
+}

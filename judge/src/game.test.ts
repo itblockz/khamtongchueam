@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   addWord,
   applyEdit,
+  applyJudge,
   describeChanges,
   currentPlayer,
   editWord,
@@ -331,5 +332,30 @@ describe('judgeOut', () => {
   it('cannot be edited like a word', () => {
     const round = judgeOut(startRound(['ออย', 'บีม']), 'not-noun', 'วิ่ง')
     expect(editWord(round, 0, ['วิ่ง'])).toBe(round)
+  })
+})
+
+describe('applyJudge', () => {
+  const round = play(['ชช', 'ลล', 'มม'], [
+    ['อาหาร', ['อา', 'หาร']],
+    ['บิกินี', ['บิ', 'กิ', 'นี']],
+    ['นีออน', ['นี', 'ออน']],
+    ['กาแฟ', ['กา', 'แฟ']],
+  ])
+
+  it('rules an earlier word out and rewinds to it', () => {
+    const { round: ruled, removed } = applyJudge(round, 1, 'forbidden')
+    const game = replay(ruled)
+
+    expect(removed.map((e) => e.word)).toEqual(['นีออน', 'กาแฟ'])
+    expect(game.results[1]).toMatchObject({ word: 'บิกินี', status: 'judged', reason: 'forbidden', playerId: 'p2' })
+    expect(game.players.filter((p) => p.out).map((p) => p.name)).toEqual(['ลล'])
+    expect(game.words.map((w) => w.word)).toEqual(['อาหาร'])
+    expect(currentPlayer(game).name).toBe('มม')
+  })
+
+  it('ignores entries that are not words', () => {
+    const judged = judgeOut(round, 'not-noun', 'วิ่ง')
+    expect(applyJudge(judged, 4, 'forbidden').round).toBe(judged)
   })
 })

@@ -193,4 +193,21 @@ describe('judge app', () => {
     expect(screen.getByText('“คำหยาบ” คำต้องห้าม')).toBeInTheDocument()
   })
 
+  it('rules an earlier word out and rewinds to it after confirming', async () => {
+    startWith('ชช\nลล\nมม')
+    await submit('อาหาร')
+    await submit('บิกินี')
+    await submit('กาแฟ')
+
+    fireEvent.click(screen.getByRole('button', { name: 'ตัดสิน บิกินี' }))
+    fireEvent.click(screen.getByRole('button', { name: 'คำต้องห้าม' , pressed: false }))
+    expect(screen.getByText('ย้อนกลับไปตาของ มม · ลบ 1 คำหลังจากนั้น: กาแฟ')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'ยืนยัน' }))
+
+    expect(screen.getByRole('heading', { name: 'ลล ตกรอบ' })).toBeInTheDocument()
+    expect(screen.getByText('“บิกินี” คำต้องห้าม')).toBeInTheDocument()
+    expect(screen.getByText('มม', { selector: 'strong' })).toBeInTheDocument()
+    expect(screen.queryByText('กาแฟ')).not.toBeInTheDocument()
+  })
 })

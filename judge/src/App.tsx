@@ -6,6 +6,7 @@ import {
   judgeOut,
   type JudgeReason,
   applyEdit,
+  applyJudge,
   currentPlayer,
   describeChanges,
   nextPlayer,
@@ -319,6 +320,22 @@ function EliminationNotice({ game }: { game: GameState }) {
   )
 }
 
+type Pending = { round: Round; removed: Round['events'] }
+
+/** What applying `pending` would change, in words, for the judge to confirm. */
+function summarize(round: Round, game: GameState, pending: Pending | null): string[] {
+  if (!pending || pending.round === round) return []
+  const after = replay(pending.round)
+  const lines: string[] = []
+  if (pending.removed.length > 0) {
+    lines.push(
+      `ย้อนกลับไป${after.winnerId ? 'ตอนจบรอบ' : `ตาของ ${currentPlayer(after).name}`} · ลบ ${pending.removed.length} คำหลังจากนั้น: ${pending.removed.map((e) => e.word).join(', ')}`,
+    )
+  }
+  lines.push(...describeChanges(game, after).filter((c) => !c.startsWith('คำ “') && !c.startsWith('ตาต่อไป')))
+  return lines
+}
+
 function WordList({
   round,
   game,
@@ -328,26 +345,21 @@ function WordList({
   game: GameState
   onChange: (round: Round) => void
 }) {
-  const [editing, setEditing] = useState<number | null>(null)
+  const [open, setOpen] = useState<{ index: number; kind: 'split' | 'judge' } | null>(null)
   const [draft, setDraft] = useState('')
+  const [reason, setReason] = useState<JudgeReason>('not-noun')
 
   if (game.results.length === 0) {
     return <p className="note">ยังไม่มีคำในรอบนี้</p>
   }
   const nameOf = (id: string) => game.players.find((player) => player.id === id)?.name ?? ''
   const draftSyllables = parseSyllables(draft)
-  const result = editing !== null && draftSyllables.length > 0 ? applyEdit(round, editing, draftSyllables) : null
-  const edited = result && result.round !== round ? result.round : null
-  const changes: string[] = []
-  if (result && edited) {
-    const after = replay(edited)
-    if (result.removed.length > 0) {
-      changes.push(
-        `ย้อนกลับไป${after.winnerId ? 'ตอนจบรอบ' : `ตาของ ${currentPlayer(after).name}`} · ลบ ${result.removed.length} คำหลังจากนั้น: ${result.removed.map((e) => e.word).join(', ')}`,
-      )
-    }
-    changes.push(...describeChanges(game, after).filter((c) => !c.startsWith('คำ “') && !c.startsWith('ตาต่อไป')))
-  }
+
+  let pending: Pending | null = null
+  if (open?.kind === 'split' && draftSyllables.length > 0) pending = applyEdit(round, open.index, draftSyllables)
+  if (open?.kind === 'judge') pending = applyJudge(round, open.index, reason)
+  const canSave = Boolean(pending && pending.round !== round)
+  const changes = summarize(round, game, pending)
 
   return (
     <section>
@@ -362,38 +374,73 @@ function WordList({
             <span className="word-syllables">{result.syllables.join(' | ')}</span>
             {result.manual && <span className="tag">แยกเอง</span>}
             <span className="word-player">{nameOf(result.playerId)}</span>
-            {result.status !== 'judged' && STATUS_LABEL[result.status] && <span className="tag status">{STATUS_LABEL[result.status]}</span>}
+            {result.status !== 'judged' && STATUS_LABEL[result.status] && (
+              <span className="tag status">{STATUS_LABEL[result.status]}</span>
+            )}
             {result.status === 'judged' && result.reason && (
               <span className="tag status">{JUDGE_REASON_LABEL[result.reason]}</span>
             )}
-            {editing !== result.index && result.status !== 'judged' && (
+            {open?.index !== result.index && result.status !== 'judged' && (
               <button
                 type="button"
                 className="link"
                 aria-label={`แก้การแยก ${result.word}`}
                 onClick={() => {
-                  setEditing(result.index)
+                  setOpen({ index: result.index, kind: 'split' })
                   setDraft(result.syllables.join(' '))
                 }}
               >
                 แก้
               </button>
             )}
-            {editing === result.index && (
+            {open?.index !== result.index && result.status === 'counted' && (
+              <button
+                type="button"
+                className="link"
+                aria-label={`ตัดสิน ${result.word}`}
+                onClick={() => {
+                  setOpen({ index: result.index, kind: 'judge' })
+                  setReason('not-noun')
+                }}
+              >
+                ตัดสิน
+              </button>
+            )}
+            {open?.index === result.index && (
               <div className="stack edit-box">
-                <label htmlFor={`edit-${result.index}`}>แก้การแยก “{result.word}” (เว้นวรรคระหว่างพยางค์)</label>
-                <input
-                  id={`edit-${result.index}`}
-                  value={draft}
-                  onChange={(event) => setDraft(event.target.value)}
-                  autoComplete="off"
-                  autoCorrect="off"
-                  spellCheck={false}
-                  autoFocus
-                />
-                <p className="syllables">{draftSyllables.join(' | ') || ' '}</p>
+                {open.kind === 'split' ? (
+                  <>
+                    <label htmlFor={`edit-${result.index}`}>
+                      แก้การแยก “{result.word}” (เว้นวรรคระหว่างพยางค์)
+                    </label>
+                    <input
+                      id={`edit-${result.index}`}
+                      value={draft}
+                      onChange={(event) => setDraft(event.target.value)}
+                      autoComplete="off"
+                      autoCorrect="off"
+                      spellCheck={false}
+                      autoFocus
+                    />
+                    <p className="syllables">{draftSyllables.join(' | ') || ' '}</p>
+                  </>
+                ) : (
+                  <div className="row" role="group" aria-label={`ตัดสิน “${result.word}”`}>
+                    {(['not-noun', 'forbidden'] as JudgeReason[]).map((option) => (
+                      <button
+                        key={option}
+                        type="button"
+                        className={reason === option ? 'outline-danger selected' : 'secondary'}
+                        aria-pressed={reason === option}
+                        onClick={() => setReason(option)}
+                      >
+                        {JUDGE_REASON_LABEL[option]}
+                      </button>
+                    ))}
+                  </div>
+                )}
                 <div role="status">
-                  {edited &&
+                  {pending &&
                     (changes.length > 0 ? (
                       <ul className="changes">
                         {changes.map((change) => (
@@ -407,15 +454,15 @@ function WordList({
                 <div className="row">
                   <button
                     type="button"
-                    disabled={!edited}
+                    disabled={!canSave}
                     onClick={() => {
-                      if (edited) onChange(edited)
-                      setEditing(null)
+                      if (pending && canSave) onChange(pending.round)
+                      setOpen(null)
                     }}
                   >
-                    บันทึก
+                    {open.kind === 'judge' ? 'ยืนยัน' : 'บันทึก'}
                   </button>
-                  <button type="button" className="secondary" onClick={() => setEditing(null)}>
+                  <button type="button" className="secondary" onClick={() => setOpen(null)}>
                     ยกเลิก
                   </button>
                 </div>

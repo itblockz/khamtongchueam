@@ -384,3 +384,23 @@ export function judgeOut(round: Round, reason: JudgeReason, word: string): Round
   const event: JudgeEvent = { type: 'judge', playerId: currentPlayer(state).id, word: word.trim(), reason }
   return { ...round, events: [...round.events, event] }
 }
+
+/**
+ * The judge rules an earlier word out (not a noun, forbidden). Its speaker goes out at
+ * that word and every word after it is removed, like correcting a split.
+ */
+export function applyJudge(
+  round: Round,
+  index: number,
+  reason: JudgeReason,
+): { round: Round; removed: RoundEvent[] } {
+  const event = round.events[index]
+  if (!event || event.type !== 'word') {
+    return { round, removed: [] }
+  }
+  const judged: JudgeEvent = { type: 'judge', playerId: event.playerId, word: event.word, reason }
+  return {
+    round: { ...round, events: [...round.events.slice(0, index), judged] },
+    removed: round.events.slice(index + 1),
+  }
+}
