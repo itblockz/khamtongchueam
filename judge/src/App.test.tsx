@@ -275,7 +275,7 @@ describe('judge app', () => {
       fireEvent.click(screen.getByRole('button', { name: 'เริ่มเกม' }))
 
       await submit('หาดทราย')
-      fireEvent.click(await screen.findByRole('button', { name: 'หยุดตรวจสอบ' }))
+      fireEvent.click(await screen.findByRole('button', { name: 'พักเวลา' }))
       expect(screen.getByRole('button', { name: 'เริ่มจับเวลา (5 วิ)' })).toBeInTheDocument()
 
       await submit('ทรายทอง')

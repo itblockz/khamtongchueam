@@ -289,7 +289,7 @@ function Play({
               พูดแล้ว <span className="countdown">{remaining.toFixed(1)}</span>
             </button>
             <button type="button" className="secondary" onClick={() => setTimer({ phase: 'idle' })}>
-              หยุดตรวจสอบ
+              พักเวลา
             </button>
           </>
         )}
