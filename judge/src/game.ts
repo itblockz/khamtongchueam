@@ -153,6 +153,12 @@ export function startRound(names: string[]): Round {
 }
 
 /** Syllables of the new word that were already used, each with the word that used it first. */
+/** A syllable that is one consonant on its own (the ส in ส|แปร์, the ม in ม|หา) is too
+ * short to count as reusing a syllable, so it never clashes. */
+export function countsForClash(syllable: string): boolean {
+  return !/^[ก-ฮ]$/.test(syllable)
+}
+
 export function findClashes(words: WordEntry[], syllables: string[]): Clash[] {
   const firstUse = new Map<string, string>()
   for (const entry of words) {
@@ -164,7 +170,7 @@ export function findClashes(words: WordEntry[], syllables: string[]): Clash[] {
   }
 
   return Array.from(new Set(syllables))
-    .filter((syllable) => firstUse.has(syllable))
+    .filter((syllable) => countsForClash(syllable) && firstUse.has(syllable))
     .map((syllable) => ({ syllable, word: firstUse.get(syllable)! }))
 }
 

@@ -374,3 +374,12 @@ describe('too slow', () => {
     expect(judgeOut(round, 'not-noun', ' ')).toBe(round)
   })
 })
+
+describe('single-consonant syllables', () => {
+  it('never clash', async () => {
+    const { findClashes } = await import('./game')
+    const words = [{ word: 'สแปร์', syllables: ['ส', 'แปร์'], playerId: 'p1' }]
+    expect(findClashes(words, ['ส', 'ปีก', 'เกอร์'])).toEqual([])
+    expect(findClashes(words, ['แปร์', 'ปลา'])).toEqual([{ syllable: 'แปร์', word: 'สแปร์' }])
+  })
+})

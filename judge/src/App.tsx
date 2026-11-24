@@ -511,42 +511,46 @@ function WordList({
             key={result.index}
             className={result.status === 'counted' || result.status === 'judged' ? '' : 'not-counted'}
           >
-            <span className="word">{result.word}</span>
-            <span className="word-syllables">{result.syllables.join(' | ')}</span>
-            {result.manual && <span className="tag">แยกเอง</span>}
-            <span className="word-player">{nameOf(result.playerId)}</span>
-            {result.status !== 'judged' && STATUS_LABEL[result.status] && (
-              <span className="tag status">{STATUS_LABEL[result.status]}</span>
-            )}
-            {result.status === 'judged' && result.reason && (
-              <span className="tag status">{JUDGE_REASON_LABEL[result.reason]}</span>
-            )}
-            {open?.index !== result.index && result.status !== 'judged' && (
-              <button
-                type="button"
-                className="link"
-                aria-label={`แก้การแยก ${result.word}`}
-                onClick={() => {
-                  setOpen({ index: result.index, kind: 'split' })
-                  setDraft(result.syllables.join(' '))
-                }}
-              >
-                แก้
-              </button>
-            )}
-            {open?.index !== result.index && result.status === 'counted' && (
-              <button
-                type="button"
-                className="link"
-                aria-label={`ตัดสิน ${result.word}`}
-                onClick={() => {
-                  setOpen({ index: result.index, kind: 'judge' })
-                  setReason(judgeReasonsAt(game, result.index)[0])
-                }}
-              >
-                ตัดสิน
-              </button>
-            )}
+            <div>
+              <span className="word">{result.word}</span>
+              <span className="word-syllables">{result.syllables.join(' | ')}</span>
+            </div>
+            <div className="word-meta">
+              <span className="word-player">{nameOf(result.playerId)}</span>
+              {result.manual && <span className="tag">แยกเอง</span>}
+              {result.status !== 'judged' && STATUS_LABEL[result.status] && (
+                <span className="tag status">{STATUS_LABEL[result.status]}</span>
+              )}
+              {result.status === 'judged' && result.reason && (
+                <span className="tag status">{JUDGE_REASON_LABEL[result.reason]}</span>
+              )}
+              {open?.index !== result.index && result.status !== 'judged' && (
+                <button
+                  type="button"
+                  className="link"
+                  aria-label={`แก้การแยก ${result.word}`}
+                  onClick={() => {
+                    setOpen({ index: result.index, kind: 'split' })
+                    setDraft(result.syllables.join(' '))
+                  }}
+                >
+                  แก้
+                </button>
+              )}
+              {open?.index !== result.index && result.status === 'counted' && (
+                <button
+                  type="button"
+                  className="link"
+                  aria-label={`ตัดสิน ${result.word}`}
+                  onClick={() => {
+                    setOpen({ index: result.index, kind: 'judge' })
+                    setReason(judgeReasonsAt(game, result.index)[0])
+                  }}
+                >
+                  ตัดสิน
+                </button>
+              )}
+            </div>
             {open?.index === result.index && (
               <div className="stack edit-box">
                 {open.kind === 'split' ? (

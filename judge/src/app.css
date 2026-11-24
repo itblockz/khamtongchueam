@@ -162,10 +162,24 @@ button:disabled {
   margin-right: 8px;
 }
 
+.word-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 8px;
+  font-size: 0.85rem;
+}
+
+.word-meta button.link {
+  min-height: 32px;
+}
+
 .word-player {
   color: var(--muted);
-  font-size: 0.85rem;
-  margin-right: 8px;
+}
+
+.word-player::before {
+  content: '— ';
 }
 
 .winner {
