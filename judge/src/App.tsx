@@ -131,7 +131,7 @@ function Setup({
               ? 'ต้องมีผู้เล่นอย่างน้อย 2 คน'
               : `ผู้เล่น ${names.length} คน`}
         </p>
-        <label htmlFor="seconds">เวลาเปล่งเสียงแรก (วินาที)</label>
+        <label htmlFor="seconds">เวลาต่อตา (วินาที)</label>
         <input
           id="seconds"
           type="number"
@@ -289,11 +289,11 @@ function Play({
               พูดแล้ว <span className="countdown">{remaining.toFixed(1)}</span>
             </button>
             <button type="button" className="secondary" onClick={() => setTimer({ phase: 'idle' })}>
-              หยุด
+              หยุดตรวจสอบ
             </button>
           </>
         )}
-        {timer.phase === 'spoke' && <p className="note">เปล่งเสียงทันเวลา</p>}
+        {timer.phase === 'spoke' && <p className="note">พูดทันเวลา</p>}
         {timer.phase === 'late' && (
           <>
             <p className="late">หมดเวลา</p>
@@ -301,6 +301,18 @@ function Play({
               ทัน
             </button>
           </>
+        )}
+        {(timer.phase === 'spoke' || timer.phase === 'late') && (
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => {
+              setNow(Date.now())
+              setTimer({ phase: 'counting', startedAt: Date.now() })
+            }}
+          >
+            จับเวลาใหม่
+          </button>
         )}
         <button
           type="button"

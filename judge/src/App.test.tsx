@@ -255,7 +255,11 @@ describe('judge app', () => {
       act(() => vi.advanceTimersByTime(5000))
 
       expect(screen.queryByText('หมดเวลา')).not.toBeInTheDocument()
-      expect(screen.getByText('เปล่งเสียงทันเวลา')).toBeInTheDocument()
+      expect(screen.getByText('พูดทันเวลา')).toBeInTheDocument()
+
+      fireEvent.click(screen.getByRole('button', { name: 'จับเวลาใหม่' }))
+      act(() => vi.advanceTimersByTime(3100))
+      expect(screen.getByText('หมดเวลา')).toBeInTheDocument()
     })
 
     it('starts counting on its own after a word is sent', async () => {
@@ -267,11 +271,11 @@ describe('judge app', () => {
     it('waits for the signal after someone goes out, or when the judge stops it', async () => {
       render(<App />)
       fireEvent.change(screen.getByLabelText(/รายชื่อผู้เล่น/), { target: { value: 'ออย\nบีม\nเจ' } })
-      fireEvent.change(screen.getByLabelText(/เวลาเปล่งเสียงแรก/), { target: { value: '5' } })
+      fireEvent.change(screen.getByLabelText(/เวลาต่อตา/), { target: { value: '5' } })
       fireEvent.click(screen.getByRole('button', { name: 'เริ่มเกม' }))
 
       await submit('หาดทราย')
-      fireEvent.click(await screen.findByRole('button', { name: 'หยุด' }))
+      fireEvent.click(await screen.findByRole('button', { name: 'หยุดตรวจสอบ' }))
       expect(screen.getByRole('button', { name: 'เริ่มจับเวลา (5 วิ)' })).toBeInTheDocument()
 
       await submit('ทรายทอง')
