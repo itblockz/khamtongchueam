@@ -2650,3 +2650,158 @@ button:disabled {
 .syllable-report-status.is-failed {
   color: var(--danger);
 }
+
+.validation-note.is-error {
+  color: var(--danger);
+}
+
+/* ------------------------------------------------------------------
+   Mobile judge layout (phones, portrait). The judge is the only one
+   looking at the screen: status on top, controls pinned to the bottom
+   so the input and buttons stay reachable above the keyboard.
+   Desktop layout is unchanged.
+------------------------------------------------------------------- */
+@media (max-width: 760px) {
+  .app-shell {
+    padding: 10px 12px 0;
+    min-height: 100dvh;
+  }
+
+  /* Player list: an overlay drawer instead of a column that pushes the page. */
+  .play-screen,
+  .sidebar-collapsed .play-screen {
+    padding-left: 0;
+    min-height: calc(100dvh - 10px);
+    gap: 8px;
+  }
+
+  .focus-sidebar {
+    width: min(300px, 86vw);
+    box-shadow: 0 0 0 100vmax rgba(47, 36, 29, 0.28), var(--shadow);
+  }
+
+  .sidebar-collapsed .focus-sidebar {
+    box-shadow: none;
+  }
+
+  .sidebar-toggle-floating {
+    left: 10px;
+    top: 10px;
+    width: 40px;
+    height: 40px;
+  }
+
+  /* Status area */
+  .focus-main-grid {
+    margin-bottom: 0;
+    gap: 8px;
+  }
+
+  .focus-stage {
+    padding: 52px 4px 12px;
+    justify-content: flex-start;
+  }
+
+  .stage-player-sequence {
+    margin-bottom: 14px;
+    gap: 8px;
+  }
+
+  .stage-player-sequence .player-name {
+    font-size: 1.3rem;
+  }
+
+  .stage-word {
+    font-size: clamp(1.9rem, 10vw, 2.7rem);
+    overflow-wrap: anywhere;
+  }
+
+  .stage-instruction {
+    font-size: 1rem;
+    margin-top: 6px;
+  }
+
+  /* Judge controls pinned to the bottom of the screen */
+  .play-main-card {
+    position: sticky;
+    bottom: 0;
+    z-index: 40;
+    margin: 0 -12px;
+    padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+    border-radius: 22px 22px 0 0;
+    box-shadow: 0 -10px 30px rgba(92, 66, 43, 0.12);
+  }
+
+  .answer-panel {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .answer-panel .form-copy {
+    max-width: none;
+  }
+
+  .answer-panel .answer-meta {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    gap: 6px;
+    scrollbar-width: none;
+  }
+
+  .answer-controls {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .answer-controls .answer-input {
+    flex: 1 1 100%;
+    order: 0;
+    min-height: 52px;
+    font-size: 1.25rem; /* 16px+ keeps iOS from zooming into the field */
+  }
+
+  .answer-controls .turn-timer-pill {
+    width: auto;
+    flex: 0 0 auto;
+    order: 1;
+    min-width: 76px;
+  }
+
+  /* Row 2: timer + the main action filling the rest of the row */
+  .answer-controls > button {
+    width: auto;
+    flex: 1 1 calc(100% - 92px);
+    order: 1;
+    min-height: 52px;
+  }
+
+  /* Row 3: the three judge decisions, side by side */
+  .answer-controls > .host-eliminate-reason-button {
+    flex: 1 1 28%;
+    order: 2;
+    min-height: 44px;
+    padding-inline: 6px;
+  }
+
+  .host-eliminate-label {
+    font-size: 0.85rem;
+  }
+
+  /* Debug syllable bar flows inside the page instead of covering the controls */
+  .syllable-status-bar {
+    position: static;
+    margin: 8px -12px 0;
+    border-radius: 0;
+  }
+
+  .syllable-report-panel {
+    max-width: none;
+  }
+
+  /* Leave room for the floating player-list button */
+  .challenge-standalone-card {
+    margin-top: 52px;
+  }
+}

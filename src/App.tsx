@@ -350,6 +350,11 @@ function getInitialFocusSidebarOpen() {
     return true;
   }
 
+  // On phones the player list is an overlay drawer; start with it closed.
+  if (window.matchMedia?.("(max-width: 760px)").matches) {
+    return false;
+  }
+
   try {
     return window.localStorage.getItem(FOCUS_SIDEBAR_OPEN_KEY) !== "false";
   } catch {
@@ -543,6 +548,23 @@ function getDuplicateSyllableDetails(
     sourceAnswer: player.duplicateSourceAnswer,
     submittedAnswer: player.duplicateSubmittedAnswer,
   };
+}
+
+/** Names that appear more than once, compared after trimming, collapsing spaces and ignoring case. */
+function getDuplicatePlayerNames(names: string[]): string[] {
+  const seen = new Map<string, string>();
+  const duplicates = new Map<string, string>();
+
+  for (const name of names) {
+    const key = name.trim().replace(/\s+/g, " ").toLocaleLowerCase();
+    if (seen.has(key)) {
+      duplicates.set(key, seen.get(key) ?? name);
+    } else {
+      seen.set(key, name);
+    }
+  }
+
+  return Array.from(duplicates.values());
 }
 
 /** Players the game itself eliminated for a duplicate syllable (not the host's button). */
@@ -1050,10 +1072,12 @@ function App() {
     .map((line) => line.trim())
     .filter((line) => line.length > 0);
 
+  const duplicatePlayerNames = getDuplicatePlayerNames(playerNamesFromTextarea);
   const validation = {
-    canStart: playerNamesFromTextarea.length >= 2,
+    canStart:
+      playerNamesFromTextarea.length >= 2 && duplicatePlayerNames.length === 0,
     playerCount: playerNamesFromTextarea.length,
-    hasDuplicates: false,
+    hasDuplicates: duplicatePlayerNames.length > 0,
   };
   const playerById = new Map(
     gameState.players.map((player) => [player.id, player]),
@@ -2821,12 +2845,14 @@ function App() {
 
               <div className="setup-footer">
                 <p
-                  className={`validation-note ${validation.canStart ? "is-ready" : ""
+                  className={`validation-note ${validation.canStart ? "is-ready" : ""} ${validation.hasDuplicates ? "is-error" : ""
                     }`}
                 >
-                  {validation.playerCount < 2
-                    ? "ต้องมีผู้เล่นอย่างน้อย 2 คน"
-                    : `พร้อมยืนยันผู้เล่น ${validation.playerCount} คน`}
+                  {validation.hasDuplicates
+                    ? `ชื่อซ้ำ: ${duplicatePlayerNames.join(", ")} แก้ให้ไม่ซ้ำก่อนยืนยัน`
+                    : validation.playerCount < 2
+                      ? "ต้องมีผู้เล่นอย่างน้อย 2 คน"
+                      : `พร้อมยืนยันผู้เล่น ${validation.playerCount} คน`}
                 </p>
 
                 <button
@@ -2865,7 +2891,7 @@ function App() {
                 {isChallengeActive ? (
                   <section
                     className="surface-card board-card challenge-standalone-card"
-                    aria-label="ชาเลนจ์"
+                    aria-label="การชาเลนจ์คำไม่เชื่อม"
                   >
                     <div className="panel-header compact challenge-header-unified">
                       <h2 className="challenge-title">ชาเลนจ์คำไม่เชื่อม</h2>
@@ -2907,7 +2933,11 @@ function App() {
                             <label id="challenged-answer-label">
                               คำที่ถูกชาเลนจ์
                             </label>
-                            <div className="challenge-answer-pills">
+                            <div
+                              className="challenge-answer-pills"
+                              role="group"
+                              aria-labelledby="challenged-answer-label"
+                            >
                               {[...challengeableAnswers]
                                 .reverse()
                                 .map((answerRecord: AnswerRecord) => (
@@ -2919,6 +2949,10 @@ function App() {
                                       ? "is-selected"
                                       : ""
                                       }`}
+                                    aria-pressed={
+                                      challengeState?.challengedAnswerId ===
+                                      answerRecord.id
+                                    }
                                     onClick={() => {
                                       applyEphemeralGameUpdate((current) =>
                                         updateChallengeSelection(current, {
@@ -3000,13 +3034,14 @@ function App() {
                           </span>
                         </div>
                         <div className="challenge-debate-controls">
-                          <div className="challenge-debate-status">
+                          <div className="challenge-debate-status" role="status">
                             <p className="round-indicator">
                               ช่วง {challengeSegmentIndex + 1}/
                               {CHALLENGE_DEBATE_SEGMENT_COUNT}
                             </p>
                             <span className="challenge-debate-speaker">
                               <strong>{challengeSpeakerName}</strong>
+                              <span className="sr-only"> กำลังพูด </span>
                               <span className="challenge-debate-speaker-role">
                                 {challengeState?.currentSpeaker === "challenger"
                                   ? "(ผู้ชาเลนจ์)"
@@ -3131,7 +3166,8 @@ function App() {
                     )}
 
                     {isPausedTurn && gameState.isEliminationPause && latestEliminatedPlayer ? (
-                      <div className="stage-content is-elimination">
+                      <div className="stage-content is-elimination" role="status">
+                        <p className="sr-only">{eliminatedPlayerSummary}</p>
                         <div className="stage-word-wrapper">
                           <h1 className="stage-word">{latestEliminatedPlayer.name} ตกรอบ</h1>
                         </div>
@@ -3489,7 +3525,11 @@ function App() {
                   <div className="syllable-status-bar" role="status" aria-label="สถานะการแยกพยางค์">
                     <div className="status-section">
                       <span className="status-label">กำลังพิมพ์</span>
-                      <div className="status-content">
+                      <div
+                        className="status-content"
+                        role="group"
+                        aria-label="พยางค์ของคำปัจจุบัน"
+                      >
                         {isSegmentingCurrentInput ? (
                           <span className="status-placeholder">รอกราดรหัส...</span>
                         ) : currentInputSyllables.length > 0 ? (
@@ -3508,6 +3548,8 @@ function App() {
                       <span className="status-label">พยางค์ที่บันทึก</span>
                       <div
                         className="status-content"
+                        role="group"
+                        aria-label="พยางค์ที่บันทึกในรอบนี้"
                         ref={syllableStatusBarHistoryRef}
                         style={{ scrollBehavior: 'smooth' }}
                       >
