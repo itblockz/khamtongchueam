@@ -285,8 +285,11 @@ button.outline-danger.selected {
 }
 
 .countdown {
+  flex: 1 1 auto;
+  margin: 0;
+  font-size: 2rem;
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
-  margin-left: 8px;
 }
 
 .late {

@@ -236,7 +236,7 @@ describe('judge app', () => {
       vi.useFakeTimers()
       startWith('ออย\nบีม\nเจ')
       fireEvent.click(screen.getByRole('button', { name: /เริ่มจับเวลา/ }))
-      expect(screen.getByRole('button', { name: /พูดแล้ว/ })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'จับเวลาใหม่' })).toBeInTheDocument()
 
       act(() => vi.advanceTimersByTime(3100))
       expect(screen.getByText('หมดเวลา')).toBeInTheDocument()
@@ -246,26 +246,23 @@ describe('judge app', () => {
       expect(screen.getByText('บีม', { selector: 'strong' })).toBeInTheDocument()
     })
 
-    it('stops counting at the first sound', () => {
+    it('can restart the count at any time', () => {
       vi.useFakeTimers()
       startWith('ออย\nบีม')
       fireEvent.click(screen.getByRole('button', { name: /เริ่มจับเวลา/ }))
-      act(() => vi.advanceTimersByTime(1000))
-      fireEvent.click(screen.getByRole('button', { name: /พูดแล้ว/ }))
-      act(() => vi.advanceTimersByTime(5000))
-
-      expect(screen.queryByText('หมดเวลา')).not.toBeInTheDocument()
-      expect(screen.getByText('พูดทันเวลา')).toBeInTheDocument()
-
+      act(() => vi.advanceTimersByTime(2000))
       fireEvent.click(screen.getByRole('button', { name: 'จับเวลาใหม่' }))
-      act(() => vi.advanceTimersByTime(3100))
+      act(() => vi.advanceTimersByTime(2000))
+      expect(screen.queryByText('หมดเวลา')).not.toBeInTheDocument()
+
+      act(() => vi.advanceTimersByTime(1100))
       expect(screen.getByText('หมดเวลา')).toBeInTheDocument()
     })
 
     it('starts counting on its own after a word is sent', async () => {
       startWith('ออย\nบีม\nเจ')
       await submit('กาแฟ')
-      expect(await screen.findByRole('button', { name: /พูดแล้ว/ })).toBeInTheDocument()
+      expect(await screen.findByRole('button', { name: 'จับเวลาใหม่' })).toBeInTheDocument()
     })
 
     it('counts on its own after a word, but waits for the judge after someone goes out', async () => {
@@ -275,7 +272,7 @@ describe('judge app', () => {
       fireEvent.click(screen.getByRole('button', { name: 'เริ่มเกม' }))
 
       await submit('หาดทราย')
-      expect(await screen.findByRole('button', { name: /พูดแล้ว/ })).toBeInTheDocument()
+      expect(await screen.findByRole('button', { name: 'จับเวลาใหม่' })).toBeInTheDocument()
 
       await submit('ทรายทอง')
       expect(screen.getByRole('heading', { name: 'บีม ตกรอบ' })).toBeInTheDocument()

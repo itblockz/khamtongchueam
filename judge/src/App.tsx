@@ -31,12 +31,9 @@ interface TimerSettings {
 }
 const DEFAULT_TIMER: TimerSettings = { seconds: 3 }
 
-/** idle: not counting yet · counting: since startedAt · spoke: first sound in time · late: time ran out */
-type TimerState =
-  | { phase: 'idle' }
-  | { phase: 'counting'; startedAt: number }
-  | { phase: 'spoke' }
-  | { phase: 'late' }
+/** idle: not counting yet · counting: since startedAt · late: time ran out.
+ * The timer only guides the judge; it never puts anyone out by itself. */
+type TimerState = { phase: 'idle' } | { phase: 'counting'; startedAt: number } | { phase: 'late' }
 
 export default function App() {
   const [namesText, setNamesText] = useState('')
@@ -284,11 +281,8 @@ function Play({
           </button>
         )}
         {timer.phase === 'counting' && (
-          <button type="button" className="big" onClick={() => setTimer({ phase: 'spoke' })}>
-            พูดแล้ว <span className="countdown">{remaining.toFixed(1)}</span>
-          </button>
+          <p className="countdown">{remaining.toFixed(1)}</p>
         )}
-        {timer.phase === 'spoke' && <p className="note">พูดทันเวลา</p>}
         {timer.phase === 'late' && <p className="late">หมดเวลา</p>}
         {timer.phase !== 'idle' && (
           <button
