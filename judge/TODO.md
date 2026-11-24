@@ -35,4 +35,12 @@ Ideas agreed but not built yet, roughly in the order planned.
    - can syllables used in one round be used again in the next, or not all match
    - who starts each new round (same player, or rotate)
    - the match winner: total points, or rounds won
-7. **Landscape / iPad layout.**
+7. **Player stats across games**, worked out on the judge's device from its saved
+   games (names never leave the device): games played and won, how players go out,
+   successful challenges, words per game. Games from other devices can be merged
+   in with import first.
+   - Names must match across games ("ใบปอ" vs "ปอ" would be two people). Suggest
+     names from earlier games in the setup box; worth doing before the stats page
+     so names match from the start.
+   - On the stats page, allow merging two names that are the same person.
+8. **Landscape / iPad layout.**
