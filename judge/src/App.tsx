@@ -97,7 +97,21 @@ export default function App() {
     )
   }
 
-  return <Play round={round} game={game} onChange={setRound} undoButton={undoButton} timer={timer} />
+  return (
+    <Play
+      round={round}
+      game={game}
+      onChange={setRound}
+      undoButton={undoButton}
+      timer={timer}
+      onExit={() => {
+        // Leaving throws the round away, so ask first once it has words in it
+        if (round.events.length === 0 || window.confirm('ออกไปแก้รายชื่อ? คำในรอบนี้จะหายทั้งหมด')) {
+          setRound(null)
+        }
+      }}
+    />
+  )
 }
 
 function Setup({
@@ -169,12 +183,14 @@ function Play({
   onChange,
   undoButton,
   timer: settings,
+  onExit,
 }: {
   round: Round
   game: GameState
   onChange: (round: Round) => void
   undoButton: ReactNode
   timer: TimerSettings
+  onExit: () => void
 }) {
   const [timer, setTimer] = useState<TimerState>({ phase: 'idle' })
   const [now, setNow] = useState(() => Date.now())
@@ -409,6 +425,11 @@ function Play({
         {game.players.some((p) => p.out) &&
           ` · ตกรอบ: ${game.players.filter((p) => p.out).map((p) => p.name).join(', ')}`}
       </p>
+      <div className="row">
+        <button type="button" className="secondary" onClick={onExit}>
+          แก้รายชื่อ
+        </button>
+      </div>
     </main>
   )
 }

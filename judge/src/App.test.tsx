@@ -312,6 +312,21 @@ describe('judge app', () => {
       expect(screen.getByLabelText(/รายชื่อผู้เล่น/)).toHaveValue('')
     })
   })
+
+  it('goes back to the names from a game in progress, asking first', async () => {
+    startWith('ออย\nบีม')
+    fireEvent.click(screen.getByRole('button', { name: 'แก้รายชื่อ' }))
+    expect(screen.getByLabelText(/รายชื่อผู้เล่น/)).toHaveValue('ออย\nบีม')
+
+    fireEvent.click(screen.getByRole('button', { name: 'เริ่มเกม' }))
+    await submit('กาแฟ')
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true)
+    fireEvent.click(screen.getByRole('button', { name: 'แก้รายชื่อ' }))
+    expect(screen.getByText('กา | แฟ')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'แก้รายชื่อ' }))
+    expect(screen.getByLabelText(/รายชื่อผู้เล่น/)).toBeInTheDocument()
+    expect(confirm).toHaveBeenCalledTimes(2)
+  })
 })
 
 function cleanupAndRender() {
