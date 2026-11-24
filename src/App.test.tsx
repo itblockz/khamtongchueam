@@ -392,6 +392,16 @@ describe('คำต้องเชื่อม', () => {
     expect(screen.getByRole('heading', { name: 'ถึงตา ออย' })).toBeInTheDocument()
   })
 
+  it('lets taps reach the player list editor so mobile keyboards can open', () => {
+    render(<App />)
+    // Target the editor frame: CodeMirror handles mouse events on .cm-content itself,
+    // so this isolates the app's own "keep focus" mousedown handler.
+    const editorFrame = document.querySelector('.cm-editor') as HTMLElement
+
+    // fireEvent returns false when a handler called preventDefault()
+    expect(fireEvent.mouseDown(editorFrame)).toBe(true)
+  })
+
   it('blocks confirming when two names are the same after trimming', () => {
     render(<App />)
     const confirmButton = screen.getByRole('button', { name: 'ยืนยันผู้เล่น' })

@@ -2658,7 +2658,11 @@ function App() {
         }`}
       onMouseDown={(e) => {
         const target = e.target as HTMLElement;
-        const isInteractive = !!target.closest('button, input, select, textarea, a, [role="button"], label');
+        // Taps on editable areas must reach the browser, or mobile keyboards never open
+        // (the player list editor is a CodeMirror contenteditable, not a textarea).
+        const isInteractive = !!target.closest(
+          'button, input, select, textarea, a, [role="button"], label, [contenteditable="true"], .cm-editor',
+        );
 
         if (!isInteractive) {
           e.preventDefault();
