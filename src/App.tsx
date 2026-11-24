@@ -2274,6 +2274,10 @@ function App() {
       try {
         const segmentation = await getSyllableSegmentation(openingWord);
 
+        if (isSyllableFeedbackEnabled) {
+          sendWordFeedback(openingWord, "submit");
+        }
+
         commitGameAction(
           (current) =>
             startRoundWithOpeningWord(
