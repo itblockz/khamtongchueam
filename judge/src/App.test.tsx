@@ -155,7 +155,7 @@ describe('judge app', () => {
     expect(field).toHaveValue('อาร บิก')
 
     fireEvent.change(field, { target: { value: 'อา ร บิก' } })
-    expect(screen.getByText('ลล ตกรอบที่คำ “อารบิก” (“อา” ซ้ำกับ “อาหาร”)')).toBeInTheDocument()
+    expect(screen.getByText('ลล ตกรอบที่คำ “อารบิก” (“อา” ซ้ำกับ คำที่ 1 “อาหาร” ของ ชช)')).toBeInTheDocument()
     expect(screen.getByText('ย้อนกลับไปตาของ มม · ลบ 1 คำหลังจากนั้น: บิกินี')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'บันทึก' }))

@@ -256,7 +256,7 @@ describe('describeChanges', () => {
     const after = replay(editWord(round, 1, ['อา', 'ร', 'บิก']))
 
     expect(describeChanges(before, after)).toEqual([
-      'ลล ตกรอบที่คำ “อารบิก” (“อา” ซ้ำกับ “อาหาร”)',
+      'ลล ตกรอบที่คำ “อารบิก” (“อา” ซ้ำกับ คำที่ 1 “อาหาร” ของ ชช)',
       'คำ “คลับเฮาส์” ของ ลล จะไม่นับ (ตกรอบไปแล้ว)',
     ])
   })

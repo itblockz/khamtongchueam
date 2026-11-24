@@ -13,6 +13,7 @@ import {
   applyJudge,
   currentPlayer,
   describeChanges,
+  describeClash,
   nextPlayer,
   parseNames,
   parseSyllables,
@@ -535,8 +536,7 @@ function EliminationNotice({ game }: { game: GameState }) {
       <ul>
         {elimination.clashes.map((clash) => (
           <li key={clash.syllable}>
-            “{clash.syllable}” ซ้ำกับ{clash.index !== undefined && ` คำที่ ${clash.index + 1}`} “{clash.word}” ของ{' '}
-            {game.players.find((p) => p.id === clash.playerId)?.name}
+            {describeClash(clash, game.players)}
           </li>
         ))}
       </ul>

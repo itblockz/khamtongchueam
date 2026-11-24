@@ -335,6 +335,13 @@ export function editWord(round: Round, index: number, syllables: string[]): Roun
   return { ...round, events }
 }
 
+/** e.g. “ทราย” ซ้ำกับ คำที่ 1 “หาดทราย” ของ ออย (numbered as in the word list). */
+export function describeClash(clash: Clash, players: { id: string; name: string }[]): string {
+  const at = clash.index !== undefined ? ` คำที่ ${clash.index + 1}` : ''
+  const speaker = players.find((player) => player.id === clash.playerId)?.name ?? ''
+  return `“${clash.syllable}” ซ้ำกับ${at} “${clash.word}” ของ ${speaker}`
+}
+
 /** Human-readable list of what changes in the game between two states (for confirming an edit). */
 export function describeChanges(before: GameState, after: GameState): string[] {
   const changes: string[] = []
@@ -348,7 +355,7 @@ export function describeChanges(before: GameState, after: GameState): string[] {
     const speaker = name(after, result.playerId)
     const label = `คำ “${result.word}” ของ ${speaker}`
     if (result.status === 'duplicate') {
-      const reason = result.clashes.map((c) => `“${c.syllable}” ซ้ำกับ “${c.word}”`).join(', ')
+      const reason = result.clashes.map((c) => describeClash(c, after.players)).join(', ')
       changes.push(`${speaker} ตกรอบที่คำ “${result.word}” (${reason})`)
       newlyOutAtWord.add(result.playerId)
     } else if (result.status === 'counted') changes.push(`${label} จะนับ`)
