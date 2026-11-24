@@ -17,6 +17,7 @@ Ideas agreed but not built yet, roughly in the order planned.
    Needs the in-game notice like the old app, and production only so test data
    does not mix with real data.
 5. **Switch production to the judge app** (merge to master). Render keeps the old app.
-6. **Scores across rounds** (who won how many).
-7. **Challenge** (a player disputes a decision). Agree the rules first.
-8. **Landscape / iPad layout.**
+6. **Scores across rounds** (who won how many). A successful challenge also earns
+   the challenger points; the log already records who challenged
+   (`challengerId` on the judge event).
+7. **Landscape / iPad layout.**
