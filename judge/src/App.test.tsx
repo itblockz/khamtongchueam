@@ -445,7 +445,7 @@ describe('judge app', () => {
     fireEvent.click(screen.getByRole('button', { name: 'ตัวเลือก อาหาร' }))
     pick('ชาเลนจ์', 'กาแฟ')
     fireEvent.click(within(screen.getByRole('group', { name: 'คนชาเลนจ์' })).getByRole('button', { name: 'เจ' }))
-    fireEvent.click(screen.getByRole('button', { name: 'ไม่สำเร็จ (เจ ตก)' }))
+    fireEvent.click(screen.getByRole('button', { name: 'เชื่อม (เจ ตก)' }))
     expect(screen.getByText('เจ ตกรอบ')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'ยืนยัน' }))
 
@@ -467,7 +467,7 @@ describe('judge app', () => {
       'aria-pressed',
       'true',
     )
-    fireEvent.click(screen.getByRole('button', { name: 'สำเร็จ (บีม ตก)' }))
+    fireEvent.click(screen.getByRole('button', { name: 'ไม่เชื่อม (บีม ตก)' }))
     fireEvent.click(screen.getByRole('button', { name: 'ยืนยัน' }))
 
     expect(screen.getByRole('heading', { name: 'บีม ตกรอบ' })).toBeInTheDocument()

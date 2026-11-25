@@ -1811,15 +1811,15 @@ function WordList({
                           </button>
                         ))}
                     </div>
-                    <p className="note">ผล</p>
-                    <div className="row" role="group" aria-label="ผลชาเลนจ์">
+                    <p className="note">ผลตัดสิน</p>
+                    <div className="row" role="group" aria-label="ผลตัดสิน">
                       <button
                         type="button"
                         className={succeeded === true ? 'selected-choice' : 'secondary'}
                         aria-pressed={succeeded === true}
                         onClick={() => setSucceeded(true)}
                       >
-                        สำเร็จ ({nameOf(result.playerId)} ตก)
+                        ไม่เชื่อม ({nameOf(result.playerId)} ตก)
                       </button>
                       <button
                         type="button"
@@ -1827,7 +1827,7 @@ function WordList({
                         aria-pressed={succeeded === false}
                         onClick={() => setSucceeded(false)}
                       >
-                        ไม่สำเร็จ{challengerId ? ` (${nameOf(challengerId)} ตก)` : ''}
+                        เชื่อม{challengerId ? ` (${nameOf(challengerId)} ตก)` : ''}
                       </button>
                     </div>
                   </>
