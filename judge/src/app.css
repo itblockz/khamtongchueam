@@ -655,3 +655,45 @@ button.more {
 .no-word {
   color: var(--muted);
 }
+
+/* ---- Wide screens (tablet, phone on its side): two columns ----
+   On a phone the column wrappers vanish, so the page is one column as before
+   (the word list last, under the home button). */
+.cols,
+.col {
+  display: contents;
+}
+
+@media (min-width: 760px) {
+  .page {
+    max-width: 1100px;
+  }
+
+  .cols {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 16px;
+    align-items: start;
+  }
+
+  .col {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 0;
+  }
+
+  /* the word list stays in view and scrolls on its own */
+  .side {
+    position: sticky;
+    top: 16px;
+    max-height: calc(100vh - 32px);
+    max-height: calc(100dvh - 32px);
+    overflow-y: auto;
+  }
+}
+
+/* the home button comes last: under the word list on a phone, under the left column when wide */
+.home-row {
+  order: 1;
+}

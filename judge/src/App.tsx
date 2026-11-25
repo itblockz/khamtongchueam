@@ -562,6 +562,8 @@ export default function App() {
           </span>
           {undoButton}
         </div>
+        <div className="cols">
+        <div className="col">
         <section className="card result">
           <p className="note">{match.rounds > 1 ? 'ผู้ชนะรอบนี้' : 'ผู้ชนะ'}</p>
           <h1 className="winner">{winner?.name} ชนะ</h1>
@@ -609,10 +611,12 @@ export default function App() {
           <MatchTable view={view} currentId={currentId} onOpenRound={setCurrentId} />
         </section>
         <EliminationNotice game={game} />
-        <section className="card">
+        <div className="row home-row">{home}</div>
+        </div>
+        <section className="card side">
           <WordList round={round} game={game} onChange={setRound} />
         </section>
-        <div className="row">{home}</div>
+        </div>
       </main>
     )
   }
@@ -704,6 +708,8 @@ function Setup({
           </div>
         </section>
       )}
+      <div className="cols">
+      <div className="col">
       <SavedGames games={games} onOpen={onOpen} onDelete={onDelete} part="continue" />
 
       <form className="card" onSubmit={handleSubmit}>
@@ -783,6 +789,8 @@ function Setup({
         </button>
       </form>
 
+      </div>
+      <div className="col">
       <SavedGames games={games} onOpen={onOpen} onDelete={onDelete} part="history" />
 
       <section className="card">
@@ -808,6 +816,8 @@ function Setup({
           แอปเก็บคำ การแยกพยางค์ และผลการตัดสินแบบไม่ระบุตัวตน (ไม่เก็บชื่อผู้เล่น) เพื่อใช้พัฒนาระบบ
         </p>
       </section>
+      </div>
+      </div>
     </main>
   )
 }
@@ -973,6 +983,8 @@ function Play({
         </div>
         {undoButton}
       </div>
+      <div className="cols">
+      <div className="col">
       {showScores && (
         <section className="card">
           <MatchTable view={matchView} currentId={currentId} onOpenRound={onOpenRound} />
@@ -1131,11 +1143,12 @@ function Play({
 
       <EliminationNotice game={game} />
 
-      <section className="card">
+      <div className="row home-row">{homeButton}</div>
+      </div>
+      <section className="card side">
         <WordList round={round} game={game} onChange={onChange} />
       </section>
-
-      <div className="row">{homeButton}</div>
+      </div>
     </main>
   )
 }
