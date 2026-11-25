@@ -350,11 +350,3 @@ button.selected-choice {
 .challenge-line {
   font-weight: 600;
 }
-
-.qr {
-  width: 100%;
-  max-width: 360px;
-  align-self: center;
-  image-rendering: pixelated;
-  background: #fff;
-}

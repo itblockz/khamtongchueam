@@ -2,11 +2,12 @@
 
 Ideas agreed but not built yet, roughly in the order planned.
 
-1. ~~Hand a game to another device (link / QR)~~ done: "ส่งต่อ" on a saved game
-   gives a link with the game compressed in its #fragment (never sent to the
-   server), shown as a QR code when short enough (an 82-word game is ~1,400
-   characters). Live sync across devices via Supabase only if it turns out to be
-   needed (it would store names on the server: needs a new notice and deletion).
+1. **Hand a game to another device (link / QR).** "ส่งต่อเกม" builds a link that
+   carries the whole game in the URL, also shown as a QR code. Opening it adds the
+   game to that device's list. A copy, not a sync. Nothing is stored on a server,
+   so player names stay on the devices. Move to Supabase only if live sync across
+   devices turns out to be needed (that would store names on the server: needs a
+   new notice and a way to delete).
 2. **Try it for real on a phone and an iPad.** Check the keyboard stays up when
    pressing timer and judge buttons.
 3. **Two game modes**, chosen at setup. The app plays normal mode today.
