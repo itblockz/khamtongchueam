@@ -8,6 +8,15 @@ export interface SavedGame {
   round: Round
   /** The signed-in account it belongs to (user id); absent for games played signed out. */
   owner?: string
+  /** The match this round is part of. Absent for games from before matches existed. */
+  match?: MatchInfo
+}
+
+export interface MatchInfo {
+  id: string
+  /** 1-based. */
+  round: number
+  rounds: number
 }
 
 /** Small settings kept in localStorage (read synchronously at start). */
@@ -16,6 +25,8 @@ export interface Settings {
   seconds: number
   /** The mode new games start in. */
   mode?: GameMode
+  /** Rounds in a new match. */
+  rounds?: number
   /** The game on screen, or null on the first page. */
   currentId: string | null
 }
@@ -74,6 +85,7 @@ export function loadSettings(): Partial<Settings> {
   if (typeof data.namesText === 'string') settings.namesText = data.namesText
   if (typeof data.seconds === 'number' && data.seconds > 0) settings.seconds = data.seconds
   if (data.mode === 'normal' || data.mode === 'competition') settings.mode = data.mode
+  if (typeof data.rounds === 'number' && data.rounds >= 1) settings.rounds = data.rounds
   if (typeof data.currentId === 'string') settings.currentId = data.currentId
   return settings
 }

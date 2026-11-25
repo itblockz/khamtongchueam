@@ -514,3 +514,47 @@ describe('competition mode', () => {
     expect(game.addOpening(normal, 'ทะเล', ['ทะ', 'เล'])).toBe(normal)
   })
 })
+
+describe('matches', () => {
+  it('scores a round: winner 3, second and third 1 each, a successful challenge 2', async () => {
+    const game = await import('./game')
+    let round = game.startRound(['ก', 'ข', 'ค', 'ง'])
+    round = game.addWord(round, 'กาแฟ', ['กา', 'แฟ']) // ก
+    round = game.addWord(round, 'แฟนคลับ', ['แฟน', 'คลับ']) // ข
+    round = game.applyChallenge(round, 1, 'p1', true).round // ก challenges ข: ข out, ก +2
+    round = game.judgeOut(round, 'too-slow', '') // ค out
+    round = game.judgeOut(round, 'too-slow', '') // ง out → ก wins
+    const points = game.roundPoints(game.replay(round))
+    expect(points.get('ก')).toMatchObject({ points: 5, why: ['ชาเลนจ์สำเร็จ', 'ชนะ'] })
+    expect(points.get('ง')).toMatchObject({ points: 1, why: ['ที่ 2'] })
+    expect(points.get('ค')).toMatchObject({ points: 1, why: ['ที่ 3'] })
+    expect(points.get('ข')).toBeUndefined()
+  })
+
+  it('gives no placing points before the round ends', async () => {
+    const game = await import('./game')
+    const round = game.judgeOut(game.startRound(['ก', 'ข', 'ค']), 'too-slow', '')
+    expect(game.roundPoints(game.replay(round)).size).toBe(0)
+  })
+
+  it('starts the next round with the winner, going the other way', async () => {
+    const { nextRoundOrder } = await import('./game')
+    expect(nextRoundOrder(['ออย', 'บีม', 'เจ', 'ต้น'], 'บีม')).toEqual(['บีม', 'ออย', 'ต้น', 'เจ'])
+    expect(nextRoundOrder(['บีม', 'ออย', 'ต้น', 'เจ'], 'ต้น')).toEqual(['ต้น', 'ออย', 'บีม', 'เจ'])
+  })
+
+  it('totals the rounds and calls equal totals a tie', async () => {
+    const game = await import('./game')
+    const won = (names: string[]) => {
+      let round = game.startRound(names)
+      for (let i = 1; i < names.length; i += 1) round = game.judgeOut(round, 'too-slow', '')
+      return game.replay(round) // the last name wins
+    }
+    const table = game.standings(['ก', 'ข'], [won(['ก', 'ข']), won(['ข', 'ก']), null])
+    expect(table.map((r) => [r.name, r.total, r.rounds])).toEqual([
+      ['ก', 4, [1, 3, null]],
+      ['ข', 4, [3, 1, null]],
+    ])
+    expect(game.matchWinners(table)).toEqual(['ก', 'ข'])
+  })
+})
