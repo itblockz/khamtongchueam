@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from starlette.staticfiles import StaticFiles
 
-from . import feedback
+from . import feedback, hints
 from .syllables import (
   DEFAULT_ENGINE,
   SEGMENTATION_MODE,
@@ -25,6 +25,16 @@ from .syllables import (
 class SyllableRequest(BaseModel):
   text: str = Field(min_length=1)
   engine: SyllableEngine = DEFAULT_ENGINE
+  # the word said before, to point out a translation of it (judge app)
+  previous: str | None = Field(default=None, max_length=feedback.MAX_TEXT_LENGTH)
+
+
+class WordHint(BaseModel):
+  """Something the judge may want to check. Never a ruling."""
+
+  kind: Literal['not-noun', 'translation']
+  of: str | None = None
+  english: str | None = None
 
 
 class SyllableResponse(BaseModel):
@@ -32,6 +42,7 @@ class SyllableResponse(BaseModel):
   engine: SyllableEngine
   mode: Literal['written']
   modelVersion: str
+  hints: list[WordHint] = []
 
 
 app = FastAPI(
@@ -69,11 +80,17 @@ def tokenize_syllables(payload: SyllableRequest) -> SyllableResponse:
   except SegmentationEngineError as error:
     raise HTTPException(status_code=503, detail=str(error)) from error
 
+  try:
+    word_hints = [WordHint(**hint) for hint in hints.hints_for(payload.text, payload.previous)]
+  except Exception:  # noqa: BLE001 - hints are extra; segmentation must not fail on them
+    word_hints = []
+
   return SyllableResponse(
     syllables=syllables,
     engine=payload.engine,
     mode=SEGMENTATION_MODE,
     modelVersion=get_model_version(payload.engine),
+    hints=word_hints,
   )
 
 
@@ -144,6 +161,7 @@ class JudgeGameEvent(BaseModel):
   syllables: list[Annotated[str, Field(max_length=20)]] | None = Field(default=None, max_length=30)
   segmented: list[Annotated[str, Field(max_length=20)]] | None = Field(default=None, max_length=30)
   manual: bool | None = None
+  hints: list[Literal['not-noun', 'translation']] | None = Field(default=None, max_length=4)
   reason: Literal['not-connected', 'not-noun', 'forbidden', 'too-slow'] | None = None
   challengerId: str | None = Field(default=None, pattern=r'^p[0-9]{1,3}$')
   targetIndex: int | None = Field(default=None, ge=0)

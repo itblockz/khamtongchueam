@@ -898,6 +898,62 @@ describe('judge app', () => {
     expect(box.value).toBe('ออย\nบีม')
   })
 
+  it('shows hints under the typed word and keeps them with the word', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        const { text, previous } = JSON.parse(String(init?.body)) as { text: string; previous?: string }
+        const hints =
+          text === 'หมา' && previous === 'ด็อก'
+            ? [{ kind: 'translation', of: 'ด็อก', english: 'dog' }]
+            : text === 'กิน'
+              ? [{ kind: 'not-noun', of: null, english: null }]
+              : []
+        return { ok: true, json: async () => ({ syllables: [text], hints }) }
+      }),
+    )
+    await startWith('ออย\nบีม\nเจ')
+    const box = screen.getByLabelText(/^คำของ/)
+    fireEvent.change(box, { target: { value: 'กิน' } })
+    expect(await screen.findByText(/อาจไม่ใช่คำนาม/)).toBeInTheDocument()
+    fireEvent.change(box, { target: { value: 'ด็อก' } })
+    await waitFor(() => expect(screen.queryByText(/อาจไม่ใช่คำนาม/)).not.toBeInTheDocument())
+    await submit('ด็อก')
+
+    // the word before is sent along, so a translation of it is pointed out
+    fireEvent.change(screen.getByLabelText(/^คำของ/), { target: { value: 'หมา' } })
+    expect(await screen.findByText('⚠ อาจเป็นคำแปลของ “ด็อก” (dog)')).toBeInTheDocument()
+    // a hint never stops the word: the judge decides
+    await submit('หมา')
+    expect(screen.getByText('หมา', { selector: '.word' })).toBeInTheDocument()
+    expect(screen.getByText('⚠ อาจเป็นคำแปล', { selector: '.tag' })).toBeInTheDocument()
+
+    // sent at once: the hint shows under the turn, with a button to rule it out
+    const banner = screen.getByRole('region', { name: 'ข้อสังเกตของคำล่าสุด' })
+    expect(within(banner).getByText('⚠ “หมา” อาจเป็นคำแปลของ “ด็อก” (dog)')).toBeInTheDocument()
+    fireEvent.click(within(banner).getByRole('button', { name: 'คำต้องห้าม' }))
+    expect(screen.getByRole('heading', { name: 'บีม ตกรอบ' })).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'ข้อสังเกตของคำล่าสุด' })).not.toBeInTheDocument()
+  })
+
+  it('keeps hints when the word is sent before they show', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        const { text } = JSON.parse(String(init?.body)) as { text: string }
+        const hints = text === 'กิน' ? [{ kind: 'not-noun' }] : []
+        return { ok: true, json: async () => ({ syllables: [text], hints }) }
+      }),
+    )
+    await startWith('ออย\nบีม')
+    await submit('กิน') // sent straight away, before any preview
+    const banner = screen.getByRole('region', { name: 'ข้อสังเกตของคำล่าสุด' })
+    expect(within(banner).getByText('⚠ “กิน” อาจไม่ใช่คำนาม')).toBeInTheDocument()
+    await submit('บ้าน') // the next word: the banner goes, the tag stays
+    expect(screen.queryByRole('region', { name: 'ข้อสังเกตของคำล่าสุด' })).not.toBeInTheDocument()
+    expect(screen.getByText('⚠ อาจไม่ใช่คำนาม', { selector: '.tag' })).toBeInTheDocument()
+  })
+
   it('turns the time-up sound off and remembers it', async () => {
     await startWith('ออย\nบีม')
     const toggle = () => screen.getByRole('button', { name: 'เสียงหมดเวลา' })
