@@ -45,6 +45,7 @@ import {
   MODE_LABEL,
   type GameMode,
   type RoundCell,
+  type RoundEvent,
   JUDGE_REASON_LABEL,
   JUDGE_REASONS,
   judgeOut,
@@ -363,8 +364,16 @@ export default function App() {
   const round = mine.find((g) => g.id === currentId)?.round ?? null
   const game = useMemo(() => (round ? replay(round) : null), [round])
 
-  function setRound(next: Round) {
+  function storeRound(next: Round) {
     setGames((all) => all.map((g) => (g.id === currentId ? { ...g, round: next, updatedAt: Date.now() } : g)))
+  }
+
+  // Entries taken back with 'ย้อนกลับ', per game, newest last, so 'ทำซ้ำ' can put
+  // them back. Any other change to the round makes them stale, so it clears them.
+  const [redo, setRedo] = useState<Record<string, RoundEvent[]>>({})
+  function setRound(next: Round) {
+    if (currentId && redo[currentId]?.length) setRedo((all) => ({ ...all, [currentId]: [] }))
+    storeRound(next)
   }
 
   /** Start a round: round 1 of a new match, or the next round of `match`. */
@@ -457,15 +466,39 @@ export default function App() {
     )
   }
 
+  const lastEvent = round.events.at(-1)
+  const redoStack = (currentId && redo[currentId]) || []
+  const toRedo = redoStack.at(-1)
   const undoButton = (
-    <button
-      type="button"
-      className="secondary"
-      onClick={() => setRound(undo(round))}
-      disabled={round.events.length === 0}
-    >
-      ย้อนกลับ
-    </button>
+    <span className="undo-redo">
+      <button
+        type="button"
+        className="secondary"
+        aria-label={lastEvent ? `ย้อนกลับ: ${describeEntry(lastEvent)}` : 'ย้อนกลับ'}
+        onClick={() => {
+          if (!lastEvent || !currentId) return
+          setRedo((all) => ({ ...all, [currentId]: [...(all[currentId] ?? []), lastEvent] }))
+          storeRound(undo(round))
+        }}
+        disabled={!lastEvent}
+      >
+        ย้อนกลับ{lastEvent && <span className="undo-what">: {describeEntry(lastEvent)}</span>}
+      </button>
+      {toRedo && (
+        <button
+          type="button"
+          className="secondary"
+          aria-label={`ทำซ้ำ: ${describeEntry(toRedo)}`}
+          onClick={() => {
+            if (!currentId) return
+            setRedo((all) => ({ ...all, [currentId]: redoStack.slice(0, -1) }))
+            storeRound({ ...round, events: [...round.events, toRedo] })
+          }}
+        >
+          ทำซ้ำ<span className="undo-what">: {describeEntry(toRedo)}</span>
+        </button>
+      )}
+    </span>
   )
 
   if (game.winnerId) {
@@ -1380,6 +1413,13 @@ function MatchTable({
       </p>
     </section>
   )
+}
+
+/** A short name for a log entry, for the undo and redo buttons. */
+function describeEntry(event: RoundEvent): string {
+  if (event.type === 'challenge-lost') return `ชาเลนจ์ “${event.word}”`
+  if (event.type === 'judge') return event.word ? `“${event.word}” ${JUDGE_REASON_LABEL[event.reason]}` : JUDGE_REASON_LABEL[event.reason]
+  return event.word
 }
 
 function EliminationNotice({ game }: { game: GameState }) {
