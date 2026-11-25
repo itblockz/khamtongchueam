@@ -3,6 +3,27 @@ import { IDBFactory } from 'fake-indexeddb'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import App from './App'
+import type { RemoteGame } from './cloud'
+
+// Stand-in for Google sign-in and the account backup (no network in tests)
+const cloud = vi.hoisted(() => ({
+  account: null as { id: string; email: string | null } | null,
+  remote: [] as RemoteGame[],
+  pushed: [] as RemoteGame[][],
+}))
+vi.mock('./cloud', () => ({
+  watchAccount: (listener: (a: typeof cloud.account) => void) => {
+    listener(cloud.account)
+    return () => {}
+  },
+  signInWithGoogle: vi.fn(async () => {}),
+  signOut: vi.fn(async () => {}),
+  deleteAccount: vi.fn(async () => {}),
+  pullGames: vi.fn(async () => cloud.remote),
+  pushGames: vi.fn(async (games: RemoteGame[]) => {
+    cloud.pushed.push(games)
+  }),
+}))
 import { resetDbForTests } from './storage'
 
 const SYLLABLES: Record<string, string[]> = {
@@ -18,6 +39,9 @@ const SYLLABLES: Record<string, string[]> = {
 
 beforeEach(async () => {
   localStorage.clear()
+  cloud.account = null
+  cloud.remote = []
+  cloud.pushed = []
   resetDbForTests()
   globalThis.indexedDB = new IDBFactory()
   vi.stubGlobal(
@@ -489,6 +513,59 @@ describe('judge app', () => {
     await new Promise((resolve) => setTimeout(resolve, 2000))
     expect(uploads()).toBe(2)
   }, 10000)
+
+  describe('account backup', () => {
+    it('offers Google sign-in but plays without it', async () => {
+      await startWith('ออย\nบีม')
+      fireEvent.click(screen.getByRole('button', { name: 'หน้าแรก' }))
+      expect(screen.getByRole('button', { name: 'เข้าสู่ระบบด้วย Google' })).toBeInTheDocument()
+    })
+
+    it('brings in games from the account and backs up this device\'s games', async () => {
+      cloud.account = { id: 'u1', email: 'judge@example.com' }
+      cloud.remote = [
+        {
+          id: 'fromcloud1',
+          updatedAt: 5,
+          deleted: false,
+          game: {
+            id: 'fromcloud1',
+            createdAt: 1,
+            updatedAt: 5,
+            round: {
+              players: [
+                { id: 'p1', name: 'เจ' },
+                { id: 'p2', name: 'บีม' },
+              ],
+              events: [{ type: 'word', playerId: 'p1', word: 'กาแฟ', syllables: ['กา', 'แฟ'] }],
+            },
+          },
+        },
+      ]
+      await startWith('ออย\nบีม')
+      await submit('มหา')
+      fireEvent.click(screen.getByRole('button', { name: 'หน้าแรก' }))
+
+      expect(screen.getByText(/เข้าสู่ระบบเป็น judge@example.com/)).toBeInTheDocument()
+      expect(await screen.findByText('กำลังเล่น · ตาของ บีม', {}, { timeout: 4000 })).toBeInTheDocument()
+      await waitFor(() => expect(screen.getByText(/สำรองล่าสุด/)).toBeInTheDocument(), { timeout: 4000 })
+      const pushedIds = cloud.pushed.flat().map((g) => g.id)
+      expect(pushedIds).not.toContain('fromcloud1')
+      expect(pushedIds.length).toBeGreaterThan(0)
+    }, 10000)
+
+    it('sends a deletion to the account', async () => {
+      cloud.account = { id: 'u1', email: null }
+      await startWith('ออย\nบีม')
+      fireEvent.click(screen.getByRole('button', { name: 'หน้าแรก' }))
+      vi.spyOn(window, 'confirm').mockReturnValue(true)
+      fireEvent.click(screen.getByRole('button', { name: 'ลบเกม ออย, บีม' }))
+      await waitFor(
+        () => expect(cloud.pushed.flat().some((g) => g.deleted)).toBe(true),
+        { timeout: 4000 },
+      )
+    }, 10000)
+  })
 })
 
 async function cleanupAndRender() {

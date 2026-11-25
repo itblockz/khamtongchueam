@@ -287,3 +287,19 @@ export function saveSent(sent: Map<string, string>, games: SavedGame[]) {
     /* blocked or full: games are just sent again next time */
   }
 }
+
+const TOMBSTONES_KEY = 'khamtongchueam.judge.deleted.v1'
+
+/** Games deleted on this device (id → when), so a signed-in backup drops them too. */
+export function loadTombstones(): Record<string, number> {
+  const data = readLocal(TOMBSTONES_KEY) ?? {}
+  return Object.fromEntries(Object.entries(data).filter((e): e is [string, number] => typeof e[1] === 'number'))
+}
+
+export function saveTombstones(tombstones: Record<string, number>) {
+  try {
+    localStorage.setItem(TOMBSTONES_KEY, JSON.stringify(tombstones))
+  } catch {
+    /* blocked: a deleted game may come back from the backup once */
+  }
+}
