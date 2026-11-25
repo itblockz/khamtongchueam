@@ -564,7 +564,12 @@ export default function App() {
               ไปรอบ {match.round + 1}
             </button>
           ) : matchOver ? (
-            <button type="button" className="big" onClick={() => startGame(names, mode)}>
+            <button
+              type="button"
+              className="big"
+              // a new match starts over in round 1's order, as the judge typed it
+              onClick={() => startGame(view.rounds[0].round.players.map((p) => p.name), mode)}
+            >
               เริ่มแมตช์ใหม่
             </button>
           ) : (
