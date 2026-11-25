@@ -66,6 +66,8 @@ const PREVIEW_DELAY_MS = 250
 const UPLOAD_DELAY_MS = 1500
 const BACKUP_DELAY_MS = 2000
 
+type SignOutResult = { done: true } | { done: false; notBackedUp: number }
+
 type BackupState = { status: 'idle' | 'syncing' | 'error' } | { status: 'done'; at: number }
 
 /** Pressing a timer button must not take focus from the word input, or the phone
@@ -228,6 +230,8 @@ export default function App() {
   }, [loaded, accountKnown, currentId, mine, games])
 
   const syncing = useRef(false)
+  /** Game id → the version (updatedAt) the account is known to have. */
+  const backedUp = useRef(new Map<string, number>())
   const syncNow = useCallback(async (): Promise<boolean> => {
     if (!account || syncing.current) return false
     syncing.current = true
@@ -247,7 +251,12 @@ export default function App() {
           ),
         ])
       }
+      const sentNow = mineRef.current
       await pushGames(result.push)
+      // the account now has these versions: remember them to tell what is not backed up
+      for (const g of [...sentNow, ...result.take]) {
+        if ((backedUp.current.get(g.id) ?? -1) < g.updatedAt) backedUp.current.set(g.id, g.updatedAt)
+      }
       tombstones.current = result.tombstones
       saveTombstones(tombstones.current)
       setBackup({ status: 'done', at: Date.now() })
@@ -309,17 +318,22 @@ export default function App() {
 
   /**
    * Sign out and remove the account's games from this device, after making sure the
-   * account has them all. If that backup fails, nothing happens unless the judge
-   * chooses to sign out keeping the games here (hidden) until they sign in again.
+   * account has them all ('backup-first'). If that backup fails, nothing happens and
+   * the number of games not backed up is returned, so the judge can wait and retry,
+   * or sign out anyway and give those up ('discard').
    */
-  async function leave(removeFromDevice: boolean): Promise<'done' | 'not-backed-up'> {
-    if (!account) return 'done'
+  async function leave(how: 'backup-first' | 'discard'): Promise<SignOutResult> {
+    if (!account) return { done: true }
     const owner = account.id
-    if (removeFromDevice && !(await syncNow())) return 'not-backed-up'
+    if (how === 'backup-first' && !(await syncNow())) {
+      const notBackedUp = mineRef.current.filter((g) => backedUp.current.get(g.id) !== g.updatedAt).length
+      return { done: false, notBackedUp }
+    }
     await signOut()
-    if (removeFromDevice) setGames((all) => all.filter((g) => g.owner !== owner))
+    setGames((all) => all.filter((g) => g.owner !== owner))
+    backedUp.current = new Map()
     setMergeAnswered(false)
-    return 'done'
+    return { done: true }
   }
 
   async function removeAccount() {
@@ -472,7 +486,7 @@ function Setup({
   onBackupNow: () => void
   askMerge: number
   onAnswerMerge: (yes: boolean) => void
-  onSignOut: (removeFromDevice: boolean) => Promise<'done' | 'not-backed-up'>
+  onSignOut: (how: 'backup-first' | 'discard') => Promise<SignOutResult>
   onDeleteAccount: () => Promise<void>
 }) {
   const { names, duplicates, canStart } = parseNames(namesText)
@@ -890,22 +904,24 @@ function BackupPanel({
   account: Account | null
   backup: BackupState
   onBackupNow: () => void
-  onSignOut: (removeFromDevice: boolean) => Promise<'done' | 'not-backed-up'>
+  onSignOut: (how: 'backup-first' | 'discard') => Promise<SignOutResult>
   onDeleteAccount: () => Promise<void>
 }) {
   const [error, setError] = useState<string | null>(null)
   const [leaving, setLeaving] = useState(false)
-  const [notBackedUp, setNotBackedUp] = useState(false)
+  /** Set when the backup before signing out failed: how many games it would lose. */
+  const [notBackedUp, setNotBackedUp] = useState<number | null>(null)
   const [busy, setBusy] = useState(false)
 
-  function leave(removeFromDevice: boolean) {
+  function leave(how: 'backup-first' | 'discard') {
     setBusy(true)
     setError(null)
-    void onSignOut(removeFromDevice)
-      .then((result) => setNotBackedUp(result === 'not-backed-up'))
+    void onSignOut(how)
+      .then((result) => setNotBackedUp(result.done ? null : result.notBackedUp))
       .catch(() => setError('ออกจากระบบไม่สำเร็จ ลองใหม่อีกครั้ง'))
       .finally(() => setBusy(false))
   }
+
 
   if (!account) {
     return (
@@ -953,7 +969,7 @@ function BackupPanel({
               : 'รอสำรอง'}
       </p>
       <div className="row">
-        {backup.status === 'error' && (
+        {backup.status === 'error' && !leaving && (
           <button type="button" className="secondary" onClick={onBackupNow}>
             ลองอีกครั้ง
           </button>
@@ -964,7 +980,7 @@ function BackupPanel({
           aria-expanded={leaving}
           onClick={() => {
             setLeaving(!leaving)
-            setNotBackedUp(false)
+            setNotBackedUp(null)
             setError(null)
           }}
         >
@@ -991,19 +1007,30 @@ function BackupPanel({
           <p className="note">
             เกมของบัญชีนี้จะถูกสำรองให้ครบ แล้วลบออกจากเครื่องนี้ เข้าสู่ระบบอีกครั้งแล้วเกมจะกลับมา
           </p>
-          {notBackedUp && (
+          {notBackedUp !== null && (
             <p className="note error" role="alert">
-              สำรองไม่สำเร็จ จึงยังไม่ได้ออกจากระบบ ลองอีกครั้งเมื่อมีเน็ต หรือออกโดยเก็บเกมไว้ในเครื่องนี้ก่อน
-              (จะสำรองต่อเมื่อเข้าสู่ระบบอีกครั้ง)
+              สำรองไม่สำเร็จ จึงยังไม่ได้ออกจากระบบ
+              {notBackedUp > 0 ? ` มี ${notBackedUp} เกมที่ยังไม่ได้สำรอง` : ''} รอมีเน็ตแล้วลองอีกครั้ง
+              หรือออกเลยโดยทิ้งเกมที่ยังไม่ได้สำรอง
             </p>
           )}
           <div className="row">
-            <button type="button" disabled={busy} onClick={() => leave(true)}>
-              {notBackedUp ? 'ลองอีกครั้ง' : 'ยืนยันออกจากระบบ'}
+            <button type="button" disabled={busy} onClick={() => leave('backup-first')}>
+              {notBackedUp !== null ? 'ลองอีกครั้ง' : 'ยืนยันออกจากระบบ'}
             </button>
-            {notBackedUp && (
-              <button type="button" className="secondary" disabled={busy} onClick={() => leave(false)}>
-                ออกโดยเก็บเกมไว้ในเครื่องก่อน
+            {notBackedUp !== null && (
+              <button
+                type="button"
+                className="outline-danger"
+                disabled={busy}
+                onClick={() => {
+                  const lose = notBackedUp > 0 ? `${notBackedUp} เกมที่ยังไม่ได้สำรองจะหายถาวร` : 'เกมที่ยังไม่ได้สำรองจะหายถาวร'
+                  if (window.confirm(`ออกจากระบบโดยไม่สำรอง? ${lose} ส่วนเกมที่สำรองแล้วยังอยู่ในบัญชี`)) {
+                    leave('discard')
+                  }
+                }}
+              >
+                ออกและทิ้งเกมที่ยังไม่ได้สำรอง
               </button>
             )}
             <button
@@ -1011,7 +1038,7 @@ function BackupPanel({
               className="secondary"
               onClick={() => {
                 setLeaving(false)
-                setNotBackedUp(false)
+                setNotBackedUp(null)
               }}
             >
               ยกเลิก

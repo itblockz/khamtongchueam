@@ -1,6 +1,6 @@
 import 'fake-indexeddb/auto'
 import { IDBFactory } from 'fake-indexeddb'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import App from './App'
 import type { RemoteGame } from './cloud'
@@ -659,28 +659,48 @@ describe('judge app', () => {
       expect(screen.queryByText('กำลังเล่น · ตาของ บีม')).not.toBeInTheDocument()
     }, 12000)
 
-    it('when the backup before sign out fails, retries or signs out keeping the games', async () => {
+    it('when the backup before sign out fails, waits or gives up the games not backed up', async () => {
       const { pullGames } = await import('./cloud')
       cloud.account = { id: 'u1', email: 'a@example.com' }
       await startWith('ออย\nบีม')
       fireEvent.click(screen.getByRole('button', { name: 'หน้าแรก' }))
-      await waitFor(() => expect(screen.getByText(/สำรองล่าสุด/)).toBeInTheDocument(), { timeout: 4000 })
+      await waitFor(() => expect(cloud.pushed.flat()).toHaveLength(1), { timeout: 4000 })
+      cloud.remote = cloud.pushed.flat()
 
-      vi.mocked(pullGames).mockRejectedValueOnce(new Error('offline'))
+      // a second game, then the network goes away before it is backed up
+      vi.mocked(pullGames).mockRejectedValue(new Error('offline'))
+      onTestFinished(() => {
+        vi.mocked(pullGames).mockReset()
+        vi.mocked(pullGames).mockImplementation(async () => cloud.remote)
+      })
+      fireEvent.change(screen.getByLabelText(/รายชื่อผู้เล่น/), { target: { value: 'เจ\nบีม' } })
+      fireEvent.click(screen.getByRole('button', { name: 'เริ่มเกม' }))
+      fireEvent.click(screen.getByRole('button', { name: 'หน้าแรก' }))
+
       fireEvent.click(screen.getByRole('button', { name: 'ออกจากระบบ' }))
       fireEvent.click(screen.getByRole('button', { name: 'ยืนยันออกจากระบบ' }))
-
-      expect(await screen.findByText(/จึงยังไม่ได้ออกจากระบบ/)).toBeInTheDocument()
+      expect(await screen.findByText(/มี 1 เกมที่ยังไม่ได้สำรอง/)).toBeInTheDocument()
       expect(screen.getByText(/เข้าสู่ระบบเป็น a@example.com/)).toBeInTheDocument()
-      expect(screen.getByText('กำลังเล่น · ตาของ ออย')).toBeInTheDocument()
 
-      // still offline: sign out keeping the game here; it comes back on signing in
-      fireEvent.click(screen.getByRole('button', { name: 'ออกโดยเก็บเกมไว้ในเครื่องก่อน' }))
+      // waiting: retry still fails, still signed in
+      fireEvent.click(screen.getByRole('button', { name: 'ลองอีกครั้ง' }))
+      await waitFor(() => expect(screen.getByRole('button', { name: 'ลองอีกครั้ง' })).not.toBeDisabled())
+      expect(screen.getByText(/เข้าสู่ระบบเป็น a@example.com/)).toBeInTheDocument()
+
+      // giving up: signed out, nothing of the account left on the device
+      vi.mocked(pullGames).mockReset()
+      vi.mocked(pullGames).mockImplementation(async () => cloud.remote)
+      const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+      fireEvent.click(screen.getByRole('button', { name: 'ออกและทิ้งเกมที่ยังไม่ได้สำรอง' }))
+      expect(confirm.mock.lastCall?.[0]).toMatch(/1 เกมที่ยังไม่ได้สำรองจะหายถาวร/)
       await waitFor(() => expect(screen.getByRole('button', { name: 'เข้าสู่ระบบด้วย Google' })).toBeInTheDocument())
-      expect(screen.queryByText('กำลังเล่น · ตาของ ออย')).not.toBeInTheDocument()
+      expect(screen.queryByText(/ออย, บีม|เจ, บีม/)).not.toBeInTheDocument()
+
+      // signing in again brings back only the game that was backed up
       act(() => cloud.become({ id: 'u1', email: 'a@example.com' }))
-      expect(await screen.findByText('กำลังเล่น · ตาของ ออย')).toBeInTheDocument()
-    }, 12000)
+      expect(await screen.findByText(/ออย, บีม/)).toBeInTheDocument()
+      expect(screen.queryByText(/เจ, บีม/)).not.toBeInTheDocument()
+    }, 15000)
 
     it('sends a deletion to the account', async () => {
       cloud.account = { id: 'u1', email: null }
