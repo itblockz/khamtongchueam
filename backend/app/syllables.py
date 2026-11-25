@@ -144,6 +144,10 @@ SPLIT_PREFIXES = frozenset(
 
 
 def split_unwritten_vowel(chunk: str) -> list[str]:
+  # อว with nothing after it in the chunk reads as two syllables: อวกาศ = อะ-วะ-กาด
+  if len(chunk) == 2 and chunk[0] in THAI_CONSONANTS and chunk[1] == 'ว':
+    return [chunk[0], chunk[1]]
+
   if len(chunk) < 3 or chunk[0] not in THAI_CONSONANTS:
     return [chunk]
 
@@ -181,6 +185,12 @@ def apply_syllable_rules(chunks: list[str]) -> list[str]:
       and is_leading_consonant_pair(previous, chunk[0])
       and (previous + chunk)[:3] not in SPLIT_PREFIXES
     ):
+      syllables[-1] = previous + chunk
+      continue
+
+    # A piece ending in a silent letter that cannot stand alone joins the syllable
+    # before it: ตา + งศุ์ → ตางศุ์ (ศุ์ is silent, vowel and all)
+    if previous and '์' in chunk and not is_pronounceable(chunk):
       syllables[-1] = previous + chunk
       continue
 
