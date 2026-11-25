@@ -266,6 +266,11 @@ export default function App() {
     const timer = window.setTimeout(() => void syncNow(), BACKUP_DELAY_MS)
     return () => window.clearTimeout(timer)
   }, [account, loaded, storageError, games, syncNow])
+  // On signing in (or opening the app signed in), fetch the account's games at once
+  useEffect(() => {
+    if (!account || !loaded || storageError || !accountKnown) return
+    void syncNow()
+  }, [account, loaded, storageError, accountKnown, syncNow])
   useEffect(() => {
     if (!account) return
     const onVisible = () => {
@@ -302,7 +307,11 @@ export default function App() {
     setMergeAnswered(true)
   }
 
-  /** Sign out. Keeps the account's games on this device (hidden) unless asked not to. */
+  /**
+   * Sign out and remove the account's games from this device, after making sure the
+   * account has them all. If that backup fails, nothing happens unless the judge
+   * chooses to sign out keeping the games here (hidden) until they sign in again.
+   */
   async function leave(removeFromDevice: boolean): Promise<'done' | 'not-backed-up'> {
     if (!account) return 'done'
     const owner = account.id
@@ -886,8 +895,17 @@ function BackupPanel({
 }) {
   const [error, setError] = useState<string | null>(null)
   const [leaving, setLeaving] = useState(false)
-  const [removeHere, setRemoveHere] = useState(false)
+  const [notBackedUp, setNotBackedUp] = useState(false)
   const [busy, setBusy] = useState(false)
+
+  function leave(removeFromDevice: boolean) {
+    setBusy(true)
+    setError(null)
+    void onSignOut(removeFromDevice)
+      .then((result) => setNotBackedUp(result === 'not-backed-up'))
+      .catch(() => setError('ออกจากระบบไม่สำเร็จ ลองใหม่อีกครั้ง'))
+      .finally(() => setBusy(false))
+  }
 
   if (!account) {
     return (
@@ -946,6 +964,7 @@ function BackupPanel({
           aria-expanded={leaving}
           onClick={() => {
             setLeaving(!leaving)
+            setNotBackedUp(false)
             setError(null)
           }}
         >
@@ -969,34 +988,32 @@ function BackupPanel({
       </div>
       {leaving && (
         <div className="stack edit-box">
-          <label className="check">
-            <input type="checkbox" checked={removeHere} onChange={(e) => setRemoveHere(e.target.checked)} />
-            ลบเกมของบัญชีนี้ออกจากเครื่องนี้ด้วย (ถ้าใช้เครื่องคนอื่น)
-          </label>
           <p className="note">
-            {removeHere
-              ? 'จะสำรองให้ครบก่อนลบ เข้าสู่ระบบอีกครั้งแล้วเกมจะกลับมา'
-              : 'เกมของบัญชีนี้ยังอยู่ในเครื่องแต่จะไม่แสดง เข้าสู่ระบบอีกครั้งแล้วเห็นทันที'}
+            เกมของบัญชีนี้จะถูกสำรองให้ครบ แล้วลบออกจากเครื่องนี้ เข้าสู่ระบบอีกครั้งแล้วเกมจะกลับมา
           </p>
+          {notBackedUp && (
+            <p className="note error" role="alert">
+              สำรองไม่สำเร็จ จึงยังไม่ได้ออกจากระบบ ลองอีกครั้งเมื่อมีเน็ต หรือออกโดยเก็บเกมไว้ในเครื่องนี้ก่อน
+              (จะสำรองต่อเมื่อเข้าสู่ระบบอีกครั้ง)
+            </p>
+          )}
           <div className="row">
+            <button type="button" disabled={busy} onClick={() => leave(true)}>
+              {notBackedUp ? 'ลองอีกครั้ง' : 'ยืนยันออกจากระบบ'}
+            </button>
+            {notBackedUp && (
+              <button type="button" className="secondary" disabled={busy} onClick={() => leave(false)}>
+                ออกโดยเก็บเกมไว้ในเครื่องก่อน
+              </button>
+            )}
             <button
               type="button"
-              disabled={busy}
+              className="secondary"
               onClick={() => {
-                setBusy(true)
-                setError(null)
-                void onSignOut(removeHere)
-                  .then((result) => {
-                    if (result === 'not-backed-up') {
-                      setError('สำรองไม่สำเร็จ จึงยังไม่ได้ออกจากระบบ ลองใหม่เมื่อมีเน็ต หรือออกโดยไม่ลบเกม')
-                    }
-                  })
-                  .finally(() => setBusy(false))
+                setLeaving(false)
+                setNotBackedUp(false)
               }}
             >
-              ยืนยันออกจากระบบ
-            </button>
-            <button type="button" className="secondary" onClick={() => setLeaving(false)}>
               ยกเลิก
             </button>
           </div>
