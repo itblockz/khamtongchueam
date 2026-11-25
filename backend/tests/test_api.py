@@ -38,3 +38,23 @@ def test_syllable_api_returns_written_syllables() -> None:
   assert payload['engine'] == 'han_solo'
   assert payload['mode'] == 'written'
   assert 'pythainlp=' in payload['modelVersion']
+
+
+def test_syllable_api_points_out_hints_for_the_judge() -> None:
+  plain = client.post('/api/syllables', json={'text': 'บ้าน'}).json()
+  assert plain['hints'] == []
+
+  verb = client.post('/api/syllables', json={'text': 'กิน'}).json()
+  assert verb['hints'] == [{'kind': 'not-noun', 'of': None, 'english': None}]
+
+  translated = client.post('/api/syllables', json={'text': 'หมา', 'previous': 'ด็อก'}).json()
+  assert translated['hints'] == [{'kind': 'translation', 'of': 'ด็อก', 'english': 'dog'}]
+
+
+def test_judge_game_accepts_hints() -> None:
+  from backend.app.main import JudgeGameData
+  data = JudgeGameData(
+    version=1, mode='normal', playerCount=2, startedAt=1,
+    events=[{'type': 'word', 'playerId': 'p1', 'word': 'หมา', 'syllables': ['หมา'], 'hints': ['translation']}],
+  )
+  assert data.events[0].hints == ['translation']

@@ -62,6 +62,16 @@ describe('anonymize', () => {
     })
   })
 
+  it('sends the hints the judge was shown, to compare with the rulings later', () => {
+    let round = addWord(startRound(['ออย', 'บีม', 'เจ']), 'ด็อก', ['ด็อก'])
+    round = addWord(round, 'หมา', ['หมา'], false, undefined, ['translation'])
+    round = judgeOut(round, 'not-noun', 'กิน', ['กิน'], ['not-noun'])
+    const data = anonymize({ id: 'abc123', createdAt: 5, updatedAt: 6, round })
+    expect(data.events[0]).not.toHaveProperty('hints')
+    expect(data.events[1]).toMatchObject({ word: 'หมา', hints: ['translation'] })
+    expect(data.events[2]).toMatchObject({ type: 'judge', word: 'กิน', hints: ['not-noun'] })
+  })
+
   it('keeps the segmenter split from before a later correction', () => {
     let round = addWord(startRound(['ออย', 'บีม']), 'มหา', ['ม', 'หา'])
     round = editWord(round, 0, ['มหา'])

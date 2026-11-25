@@ -725,3 +725,12 @@ button.suggest-chip.group {
   background: #eef0f3;
   color: var(--ink);
 }
+
+/* hints for the judge under the typed word: a nudge, not a ruling */
+.hints {
+  list-style: none;
+  margin: -4px 0 0;
+  padding: 0;
+  color: #9a6700;
+  font-size: 0.95rem;
+}

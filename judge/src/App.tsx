@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
-import { SegmentError, segment, uploadGame } from './api'
+import { SegmentError, segment, segmentWithHints, uploadGame, type WordHint } from './api'
 import { setSoundOn, soundOn, timeUp, unlockAudio } from './sound'
 import {
   deleteAccount,
@@ -963,6 +963,10 @@ function Play({
 
   const [word, setWord] = useState('')
   const [preview, setPreview] = useState<string[]>([])
+  /** Hints for the word as typed (`for`), so stale ones never show. */
+  const [hints, setHints] = useState<{ for: string; hints: WordHint[] }>({ for: '', hints: [] })
+  /** The word said before, to point out a translation of it. */
+  const previousWord = game.words.at(-1)?.word ?? null
   /** null: use the segmenter's split; otherwise the judge's correction (space separated). */
   const [manualSplit, setManualSplit] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -980,8 +984,11 @@ function Play({
     }
     const controller = new AbortController()
     const timer = window.setTimeout(() => {
-      segment(text, controller.signal)
-        .then(setPreview)
+      segmentWithHints(text, previousWord, controller.signal)
+        .then((result) => {
+          setPreview(result.syllables)
+          setHints({ for: text, hints: result.hints })
+        })
         .catch(() => {
           /* preview is best-effort; submit reports errors */
         })
@@ -990,7 +997,9 @@ function Play({
       window.clearTimeout(timer)
       controller.abort()
     }
-  }, [word])
+  }, [word, previousWord])
+  const shownHints = hints.for === word.trim() && word.trim() ? hints.hints : []
+  const hintKinds = shownHints.map((hint) => hint.kind)
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault()
@@ -1011,7 +1020,7 @@ function Play({
       onChange(
         game.needsOpening
           ? addOpening(round, text, syllables, manual, manual ? preview : undefined)
-          : addWord(round, text, syllables, manual, manual ? preview : undefined),
+          : addWord(round, text, syllables, manual, manual ? preview : undefined, hintKinds),
       )
       setWord('')
       setPreview([])
@@ -1176,6 +1185,18 @@ function Play({
           <p className="syllables">{parseSyllables(manualSplit).join(' | ') || ' '}</p>
         </div>
       )}
+      {shownHints.length > 0 && (
+        <ul className="hints" aria-label="ข้อสังเกต">
+          {shownHints.map((hint) => (
+            <li key={hint.kind}>
+              ⚠{' '}
+              {hint.kind === 'not-noun'
+                ? 'อาจไม่ใช่คำนาม (พจนานุกรมไม่มีความหมายที่เป็นนาม)'
+                : `อาจเป็นคำแปลของ “${hint.of}” (${hint.english})`}
+            </li>
+          ))}
+        </ul>
+      )}
       {!game.needsOpening && <p className="note">ให้ตกรอบเพราะ</p>}
       {!game.needsOpening && (
         <div className="row judge-actions">
@@ -1191,7 +1212,7 @@ function Play({
               onClick={() => {
                 turnEnded.current = true
                 onChange(
-                  judgeOut(round, reason, word, manualSplit !== null ? parseSyllables(manualSplit) : preview),
+                  judgeOut(round, reason, word, manualSplit !== null ? parseSyllables(manualSplit) : preview, hintKinds),
                 )
                 setWord('')
                 setPreview([])

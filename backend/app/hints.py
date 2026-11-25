@@ -1,0 +1,123 @@
+"""Hints for the judge: a word that may not be a noun, or may be a translation of
+the word before it. Hints only point things out; the judge always decides.
+
+The data comes from free dictionaries, built by backend/benchmarks/build_word_hints.py.
+Measured on game words (see the PR notes): about 1 in 100 accepted words gets a
+not-a-noun hint, and translations are caught when both words are in the data.
+"""
+from __future__ import annotations
+
+import csv
+import json
+import re
+from functools import lru_cache
+from pathlib import Path
+from typing import Literal, TypedDict
+
+DATA = Path(__file__).resolve().parent / 'data' / 'word_hints.json'
+
+
+class Hint(TypedDict, total=False):
+  kind: Literal['not-noun', 'translation']
+  of: str
+  english: str
+
+
+@lru_cache(maxsize=1)
+def _data() -> tuple[frozenset[str], dict[str, list[str]], dict[str, set[str]]]:
+  raw = json.loads(DATA.read_text(encoding='utf-8'))
+  return frozenset(raw['notNoun']), raw['gloss'], _transliterations()
+
+
+def _transliterations() -> dict[str, set[str]]:
+  """Thai transliteration → English word, from the table PyThaiNLP ships with."""
+  import pythainlp.corpus as corpus
+
+  out: dict[str, set[str]] = {}
+  table = Path(corpus.__file__).resolve().parent / 'th_en_transliteration_v1.4.tsv'
+  try:
+    with open(table, encoding='utf-8') as f:
+      for row in csv.DictReader(f, delimiter='\t'):
+        out.setdefault(row['th'], set()).add(row['en'].lower())
+  except OSError:
+    pass  # hints still work from the sound match alone
+  return out
+
+
+def may_not_be_noun(word: str) -> bool:
+  return word.strip() in _data()[0]
+
+
+# Thai consonants and English letters reduced to the same sound skeleton, so that
+# ด็อก and dog both read D-K. Vowels and tone marks are dropped.
+_TH_SOUNDS = {}
+for _chars, _key in [
+  ('กขฃคฅฆ', 'K'), ('ง', 'N'), ('จฉชฌ', 'C'), ('ซศษส', 'S'), ('ดฎ', 'D'),
+  ('ตฏทธถฐฑฒ', 'T'), ('นณ', 'N'), ('บ', 'B'), ('ปพผภ', 'P'), ('ฟฝ', 'F'),
+  ('ม', 'M'), ('ยญ', 'Y'), ('รลฬ', 'L'), ('ว', 'W'), ('หฮ', 'H'), ('อ', ''),
+]:
+  for _ch in _chars:
+    _TH_SOUNDS[_ch] = _key
+_EN_SOUNDS = {
+  'c': 'K', 'k': 'K', 'q': 'K', 'g': 'K', 'j': 'C', 's': 'S', 'z': 'S', 'd': 'D',
+  't': 'T', 'n': 'N', 'b': 'B', 'p': 'P', 'f': 'F', 'v': 'W', 'm': 'M', 'y': 'Y',
+  'r': 'L', 'l': 'L', 'w': 'W', 'h': 'H',
+}
+
+
+def _collapse(text: str) -> str:
+  return re.sub(r'(.)\1+', r'\1', text)
+
+
+def _thai_skeletons(word: str) -> set[str]:
+  """With and without letters marked silent (เฮาส์ is H or H-S)."""
+  word = word.replace(' ', '')
+  spoken = re.sub(r'[ก-ฮ][ิุ]?์', '', word)
+  keys = {_collapse(''.join(_TH_SOUNDS.get(ch, '') for ch in form)) for form in (word.replace('์', ''), spoken)}
+  return {key for key in keys if len(key) >= 2}
+
+
+def _english_skeleton(word: str) -> str:
+  word = word.lower().replace(' ', '').replace('-', '')
+  for spelling, sound in [
+    ('sch', 'SK'), ('ch', 'C'), ('sh', 'C'), ('ph', 'F'), ('th', 'T'), ('ck', 'K'),
+    ('ng', 'N'), ('qu', 'KW'), ('x', 'KS'), ('wh', 'W'),
+  ]:
+    word = word.replace(spelling, sound)
+  word = re.sub(r'c(?=[eiy])', 'S', word)
+  return _collapse(''.join(ch if ch.isupper() else _EN_SOUNDS.get(ch, '') for ch in word))
+
+
+def _sounds_like(thai: str, english: str) -> bool:
+  key = _english_skeleton(english)
+  return len(key) >= 2 and key in _thai_skeletons(thai)
+
+
+def translation_between(previous: str, word: str) -> str | None:
+  """The English word if one of the two is Thai for it and the other is that
+  English word written in Thai (หมา → ด็อก, ด็อก → หมา); otherwise None."""
+  _, gloss, translit = _data()
+  previous, word = previous.strip(), word.strip()
+  if not previous or not word or previous == word:
+    return None
+  for thai, loan in ((previous, word), (word, previous)):
+    loan_meanings = gloss.get(loan, [])
+    for english in gloss.get(thai, []):
+      if _sounds_like(thai, english):
+        continue  # the "Thai" word is itself the loan
+      if loan_meanings and english not in loan_meanings:
+        continue  # a Thai word of its own that only sounds alike (วง, venue)
+      if english in translit.get(loan, []) or _sounds_like(loan, english):
+        return english
+  return None
+
+
+def hints_for(word: str, previous: str | None = None) -> list[Hint]:
+  hints: list[Hint] = []
+  if may_not_be_noun(word):
+    hints.append({'kind': 'not-noun'})
+  if previous:
+    english = translation_between(previous, word)
+    if english:
+      hints.append({'kind': 'translation', 'of': previous.strip(), 'english': english})
+  return hints

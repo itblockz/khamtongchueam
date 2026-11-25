@@ -46,7 +46,12 @@ export interface WordEvent {
   manual?: boolean
   /** With `manual`: the segmenter's own split, kept to learn from the correction. */
   segmented?: string[]
+  /** Hints the judge was shown for this word, to see later how often they agree. */
+  hints?: HintKind[]
 }
+
+/** A hint shown to the judge: may not be a noun, or a translation of the word before. */
+export type HintKind = 'not-noun' | 'translation'
 
 export type JudgeReason = 'not-connected' | 'not-noun' | 'forbidden' | 'too-slow'
 
@@ -58,6 +63,8 @@ export interface JudgeEvent {
   reason: JudgeReason
   /** The word's split, kept for display only (it does not use the syllables). */
   syllables?: string[]
+  /** Hints the judge was shown when ruling on the word as it was said. */
+  hints?: HintKind[]
   /** Set when the decision came from a player's successful challenge. */
   challengerId?: string
 }
@@ -442,6 +449,7 @@ export function addWord(
   syllables: string[],
   manual = false,
   segmented?: string[],
+  hints: HintKind[] = [],
 ): Round {
   const trimmed = word.trim()
   const state = replay(round)
@@ -459,6 +467,7 @@ export function addWord(
     event.manual = true
     if (segmented && segmented.length > 0) event.segmented = segmented
   }
+  if (hints.length > 0) event.hints = hints
   return { ...round, events: [...round.events, event] }
 }
 
@@ -615,7 +624,13 @@ export function fillJudgedSplits(round: Round, splits: Map<string, string[]>): R
 }
 
 /** The judge puts the current player out, e.g. the word is not a noun. */
-export function judgeOut(round: Round, reason: JudgeReason, word: string, syllables: string[] = []): Round {
+export function judgeOut(
+  round: Round,
+  reason: JudgeReason,
+  word: string,
+  syllables: string[] = [],
+  hints: HintKind[] = [],
+): Round {
   const state = replay(round)
   if (state.winnerId || (needsWord(reason) && !word.trim())) {
     return round
@@ -624,6 +639,7 @@ export function judgeOut(round: Round, reason: JudgeReason, word: string, syllab
   const said = reason === 'too-slow' ? '' : word.trim()
   const event: JudgeEvent = { type: 'judge', playerId: currentPlayer(state).id, word: said, reason }
   if (said && syllables.length > 0) event.syllables = syllables
+  if (said && hints.length > 0) event.hints = hints
   return { ...round, events: [...round.events, event] }
 }
 
@@ -640,7 +656,7 @@ export function applyJudge(
   if (!event || event.type !== 'word') {
     return { round, removed: [] }
   }
-  const judged: JudgeEvent = { type: 'judge', playerId: event.playerId, word: event.word, syllables: event.syllables, reason }
+  const judged: JudgeEvent = { type: 'judge', playerId: event.playerId, word: event.word, syllables: event.syllables, ...(event.hints ? { hints: event.hints } : {}), reason }
   return {
     round: { ...round, events: [...round.events.slice(0, index), judged] },
     removed: round.events.slice(index + 1),
@@ -690,6 +706,7 @@ export function revertRuling(round: Round, index: number): { round: Round; remov
   const kept = round.events.slice(0, index)
   if (event.type === 'judge' && event.word) {
     const word: WordEvent = { type: 'word', playerId: event.playerId, word: event.word, syllables: event.syllables! }
+    if (event.hints) word.hints = event.hints
     return { round: { ...round, events: [...kept, word] }, removed }
   }
   return { round: { ...round, events: kept }, removed }
@@ -739,7 +756,7 @@ export function applyChallenge(
     return { round, removed: [] }
   }
   if (succeeded) {
-    const ruled: JudgeEvent = { type: 'judge', playerId: event.playerId, word: event.word, syllables: event.syllables, reason, challengerId }
+    const ruled: JudgeEvent = { type: 'judge', playerId: event.playerId, word: event.word, syllables: event.syllables, ...(event.hints ? { hints: event.hints } : {}), reason, challengerId }
     return {
       round: { ...round, events: [...round.events.slice(0, index), ruled] },
       removed: round.events.slice(index + 1),

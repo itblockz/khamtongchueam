@@ -251,6 +251,7 @@ export function anonymize(game: SavedGame) {
           syllables: event.syllables,
           ...(event.manual ? { manual: true } : {}),
           ...(event.segmented ? { segmented: event.segmented } : {}),
+          ...(event.type === 'word' && event.hints?.length ? { hints: event.hints } : {}),
         }
       }
       if (event.type === 'judge') {
@@ -259,6 +260,7 @@ export function anonymize(game: SavedGame) {
           playerId: event.playerId,
           word: event.word,
           ...(event.syllables?.length ? { syllables: event.syllables } : {}),
+          ...(event.hints?.length ? { hints: event.hints } : {}),
           reason: event.reason,
           ...(event.challengerId ? { challengerId: event.challengerId } : {}),
         }
