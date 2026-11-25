@@ -27,3 +27,20 @@ def test_hints_for_combines_both() -> None:
   assert hints_for('กิน') == [{'kind': 'not-noun'}]
   assert hints_for('หมา', 'ด็อก') == [{'kind': 'translation', 'of': 'ด็อก', 'english': 'dog'}]
   assert hints_for('บ้าน', None) == []
+
+
+def test_checked_answers_override_the_dictionaries() -> None:
+  from backend.app.word_checks import WordCheck, reset_for_tests
+
+  try:
+    reset_for_tests({
+      'ตก': WordCheck(noun=True, english=()),  # confirmed: can be a noun
+      'บ้าน': WordCheck(noun=False, english=()),
+      'แมวน้ำ': WordCheck(noun=None, english=('seal',)),
+    })
+    assert not may_not_be_noun('ตก')
+    assert may_not_be_noun('บ้าน')
+    assert may_not_be_noun('กิน')  # no row: the dictionaries decide
+    assert translation_between('แมวน้ำ', 'ซีล') == 'seal'
+  finally:
+    reset_for_tests()
