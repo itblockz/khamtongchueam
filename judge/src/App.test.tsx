@@ -167,12 +167,12 @@ describe('judge app', () => {
 
   it('undoes the last word, bringing back a player who went out on it', async () => {
     await startWith('ออย\nบีม\nเจ')
-    expect(screen.getByRole('button', { name: 'ย้อนกลับ' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /^ย้อนกลับ/ })).toBeDisabled()
     await submit('หาดทราย')
     await submit('ทรายทอง')
     expect(screen.getByRole('heading', { name: 'บีม ตกรอบ' })).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'ย้อนกลับ' }))
+    fireEvent.click(screen.getByRole('button', { name: /^ย้อนกลับ/ }))
 
     expect(screen.queryByRole('heading', { name: 'บีม ตกรอบ' })).not.toBeInTheDocument()
     expect(screen.getByText('บีม', { selector: 'strong' })).toBeInTheDocument()
@@ -186,7 +186,7 @@ describe('judge app', () => {
     fireEvent.click(screen.getByRole('button', { name: 'ส่ง' }))
     await screen.findByRole('heading', { name: /^ออย ชนะ/ })
 
-    fireEvent.click(screen.getByRole('button', { name: 'ย้อนกลับ' }))
+    fireEvent.click(screen.getByRole('button', { name: /^ย้อนกลับ/ }))
 
     expect(screen.queryByRole('heading', { name: /^ออย ชนะ/ })).not.toBeInTheDocument()
     expect(screen.getByText('บีม', { selector: 'strong' })).toBeInTheDocument()
@@ -227,7 +227,7 @@ describe('judge app', () => {
     expect(screen.getByLabelText(/^คำของ/)).toHaveValue('')
     expect(screen.queryByRole('button', { name: 'แก้การแยก วิ่ง' })).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'ย้อนกลับ' }))
+    fireEvent.click(screen.getByRole('button', { name: /^ย้อนกลับ/ }))
     expect(screen.getByText('บีม', { selector: 'strong' })).toBeInTheDocument()
   })
 
@@ -338,8 +338,8 @@ describe('judge app', () => {
       expect(screen.getByText('บีม', { selector: 'strong' })).toBeInTheDocument()
       expect(screen.getByText('กา | แฟ')).toBeInTheDocument()
 
-      fireEvent.click(screen.getByRole('button', { name: 'ย้อนกลับ' }))
-      fireEvent.click(screen.getByRole('button', { name: 'ย้อนกลับ' }))
+      fireEvent.click(screen.getByRole('button', { name: /^ย้อนกลับ/ }))
+      fireEvent.click(screen.getByRole('button', { name: /^ย้อนกลับ/ }))
       expect(screen.getByRole('button', { name: 'เริ่มจับเวลา (5 วิ)' })).toBeInTheDocument()
     })
 
@@ -844,6 +844,29 @@ describe('judge app', () => {
     expect(screen.getByText('กาแฟ', { selector: '.word' })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'ไปรอบ 2' }))
     expect(screen.getByText(/รอบ 2\/4/)).toBeInTheDocument()
+  })
+
+  it('says what undo takes back, and puts it back with redo', async () => {
+    await startWith('ออย\nบีม\nเจ')
+    await submit('กาแฟ')
+    await submit('หาดทราย')
+
+    fireEvent.click(screen.getByRole('button', { name: 'ย้อนกลับ: หาดทราย' }))
+    fireEvent.click(screen.getByRole('button', { name: 'ย้อนกลับ: กาแฟ' }))
+    expect(screen.getByText('ยังไม่มีคำในรอบนี้')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'ทำซ้ำ: กาแฟ' }))
+    fireEvent.click(screen.getByRole('button', { name: 'ทำซ้ำ: หาดทราย' }))
+    expect(screen.getByText('หาดทราย', { selector: '.word' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^ทำซ้ำ/ })).not.toBeInTheDocument()
+  })
+
+  it('drops what could be redone once something new is entered', async () => {
+    await startWith('ออย\nบีม\nเจ')
+    await submit('กาแฟ')
+    fireEvent.click(screen.getByRole('button', { name: 'ย้อนกลับ: กาแฟ' }))
+    await submit('หาดทราย')
+    expect(screen.queryByRole('button', { name: /^ทำซ้ำ/ })).not.toBeInTheDocument()
   })
 })
 

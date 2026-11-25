@@ -397,3 +397,22 @@ button.selected-choice {
   font-weight: 600;
   white-space: nowrap;
 }
+
+.undo-redo {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.undo-redo > button {
+  max-width: 11em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.undo-what {
+  font-size: 0.85em;
+}
