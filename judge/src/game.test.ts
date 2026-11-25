@@ -8,6 +8,8 @@ import {
   editWord,
   findClashes,
   judgeOut,
+  judgedWithoutSplit,
+  fillJudgedSplits,
   nextPlayer,
   parseNames,
   parseSyllables,
@@ -299,6 +301,17 @@ describe('applyEdit', () => {
     const { round: fixed, removed } = applyEdit(longer, 2, ['บิ', 'กิ', 'นิ'])
     expect(fixed.events.map((e) => e.word)).toEqual(['อาหาร', 'อารบิก', 'บิกินี', 'นีออน'])
     expect(removed.map((e) => e.word)).toEqual(['ออนไลน์'])
+  })
+})
+
+describe('filling in splits for older judged words', () => {
+  it('finds judged words with no split and writes the found split back', () => {
+    const old = judgeOut(play(['ออย', 'บีม', 'เจ'], [['กาแฟ', ['กา', 'แฟ']]]), 'not-noun', 'วิ่งเล่น')
+    expect(judgedWithoutSplit(old)).toEqual(['วิ่งเล่น'])
+    const filled = fillJudgedSplits(old, new Map([['วิ่งเล่น', ['วิ่ง', 'เล่น']]]))
+    expect(replay(filled).results[1].syllables).toEqual(['วิ่ง', 'เล่น'])
+    expect(judgedWithoutSplit(filled)).toEqual([])
+    expect(fillJudgedSplits(filled, new Map([['วิ่งเล่น', ['x']]]))).toBe(filled)
   })
 })
 

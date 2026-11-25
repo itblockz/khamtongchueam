@@ -50,6 +50,8 @@ import {
   JUDGE_REASON_LABEL,
   JUDGE_REASONS,
   judgeOut,
+  judgedWithoutSplit,
+  fillJudgedSplits,
   judgedText,
   needsWord,
   type JudgeReason,
@@ -160,6 +162,35 @@ export default function App() {
     stored.current = new Map(games.map((g) => [g.id, g]))
     storeGames(changed, removed).catch(() => setStorageError(true))
   }, [games, loaded, storageError])
+
+  // Older games kept no split for words that were put out: work it out once and
+  // write it back, so the word list shows it (and the change syncs like any edit).
+  const splitTried = useRef(new Set<string>())
+  useEffect(() => {
+    if (!loaded) return
+    const words = [
+      ...new Set(games.flatMap((g) => judgedWithoutSplit(g.round))),
+    ].filter((w) => !splitTried.current.has(w))
+    if (words.length === 0) return
+    for (const w of words) splitTried.current.add(w)
+    void Promise.all(
+      words.map((w) =>
+        segment(w)
+          .then((syllables): [string, string[]] => [w, syllables])
+          .catch((): [string, string[]] => [w, []]),
+      ),
+    ).then((found) => {
+      const splits = new Map(found.filter(([, syllables]) => syllables.length > 0))
+      if (splits.size === 0) return
+      const now = Date.now()
+      setGames((all) =>
+        all.map((g) => {
+          const round = fillJudgedSplits(g.round, splits)
+          return round === g.round ? g : { ...g, round, updatedAt: now }
+        }),
+      )
+    })
+  }, [games, loaded])
 
   // Send changed games for collection, anonymously, a moment after they settle.
   // What the server already has is remembered across visits, so a send that failed

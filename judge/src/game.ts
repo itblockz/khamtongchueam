@@ -593,6 +593,27 @@ export function applyEdit(
   }
 }
 
+/** Words put out before their split was kept (older games), to fill in once. */
+export function judgedWithoutSplit(round: Round): string[] {
+  const words = round.events
+    .filter((event) => event.type === 'judge' && event.word.trim() && !event.syllables?.length)
+    .map((event) => event.word)
+  return [...new Set(words)]
+}
+
+/** Write the found splits into those judge events. Returns the same round if none apply. */
+export function fillJudgedSplits(round: Round, splits: Map<string, string[]>): Round {
+  let changed = false
+  const events = round.events.map((event) => {
+    if (event.type !== 'judge' || event.syllables?.length) return event
+    const syllables = splits.get(event.word)
+    if (!syllables?.length) return event
+    changed = true
+    return { ...event, syllables }
+  })
+  return changed ? { ...round, events } : round
+}
+
 /** The judge puts the current player out, e.g. the word is not a noun. */
 export function judgeOut(round: Round, reason: JudgeReason, word: string, syllables: string[] = []): Round {
   const state = replay(round)
