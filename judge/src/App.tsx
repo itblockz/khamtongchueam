@@ -516,7 +516,7 @@ export default function App() {
             </button>
           </div>
         )}
-        <MatchTable view={view} />
+        <MatchTable view={view} currentId={currentId} onOpenRound={setCurrentId} />
         <EliminationNotice game={game} />
         <WordList round={round} game={game} onChange={setRound} />
         <div className="row">{home}</div>
@@ -530,6 +530,8 @@ export default function App() {
     <Play
       matchLabel={playing.rounds > 1 ? `รอบ ${playing.round}/${playing.rounds}` : null}
       matchView={playingView}
+      currentId={currentId}
+      onOpenRound={setCurrentId}
       round={round}
       game={game}
       onChange={setRound}
@@ -698,6 +700,8 @@ function Play({
   homeButton,
   matchLabel,
   matchView,
+  currentId,
+  onOpenRound,
 }: {
   round: Round
   game: GameState
@@ -707,6 +711,8 @@ function Play({
   homeButton: ReactNode
   matchLabel: string | null
   matchView: MatchView
+  currentId: string | null
+  onOpenRound: (id: string) => void
 }) {
   const [showScores, setShowScores] = useState(false)
   const [timer, setTimer] = useState<TimerState>({ phase: 'idle' })
@@ -844,7 +850,7 @@ function Play({
           คะแนน
         </button>
       </p>
-      {showScores && <MatchTable view={matchView} />}
+      {showScores && <MatchTable view={matchView} currentId={currentId} onOpenRound={onOpenRound} />}
 
       {!game.needsOpening && <div className={`timer timer-${timer.phase}`} role="timer" aria-label="จับเวลา">
         {timer.phase === 'idle' && (
@@ -1289,7 +1295,15 @@ function BackupFile({
 }
 
 /** Points per round and the running total of a match (a tie when totals are equal). */
-function MatchTable({ view }: { view: MatchView }) {
+function MatchTable({
+  view,
+  currentId,
+  onOpenRound,
+}: {
+  view: MatchView
+  currentId?: string | null
+  onOpenRound?: (id: string) => void
+}) {
   return (
     <section>
       <h2 className="small-heading">
@@ -1304,11 +1318,25 @@ function MatchTable({ view }: { view: MatchView }) {
           <tr>
             <th scope="col">ผู้เล่น</th>
             {view.length > 1 &&
-              Array.from({ length: view.length }, (_, i) => (
-                <th scope="col" key={i}>
-                  {i + 1}
-                </th>
-              ))}
+              Array.from({ length: view.length }, (_, i) => {
+                const played = view.rounds.find((g) => matchOf(g).round === i + 1)
+                return (
+                  <th scope="col" key={i}>
+                    {played && onOpenRound && played.id !== currentId ? (
+                      <button
+                        type="button"
+                        className="link"
+                        aria-label={`ดูรอบ ${i + 1}`}
+                        onClick={() => onOpenRound(played.id)}
+                      >
+                        {i + 1}
+                      </button>
+                    ) : (
+                      <span className={played?.id === currentId ? 'current-round' : undefined}>{i + 1}</span>
+                    )}
+                  </th>
+                )
+              })}
             <th scope="col">รวม</th>
           </tr>
         </thead>
@@ -1386,8 +1414,35 @@ function WordList({
   game: GameState
   onChange: (round: Round) => void
 }) {
-  const [open, setOpen] = useState<{ index: number; kind: 'split' | 'judge' | 'challenge' } | null>(null)
+  const [open, setOpen] = useState<{ index: number; kind: 'split' | 'judge' | 'challenge'; word?: string } | null>(
+    null,
+  )
   const [draft, setDraft] = useState('')
+  /** The spelling being corrected, and what the segmenter gives for it. */
+  const [draftWord, setDraftWord] = useState('')
+  const [autoSplit, setAutoSplit] = useState<string[] | null>(null)
+  const [splitTouched, setSplitTouched] = useState(false)
+
+  // A corrected spelling gets the segmenter's split, until the judge edits the split
+  const wordChanged = open?.kind === 'split' && draftWord.trim() !== '' && draftWord.trim() !== open.word
+  useEffect(() => {
+    if (!wordChanged) return
+    const controller = new AbortController()
+    const timer = window.setTimeout(() => {
+      segment(draftWord.trim(), controller.signal)
+        .then((split) => {
+          setAutoSplit(split)
+          if (!splitTouched) setDraft(split.join(' '))
+        })
+        .catch(() => {
+          /* keep whatever split is there */
+        })
+    }, PREVIEW_DELAY_MS)
+    return () => {
+      window.clearTimeout(timer)
+      controller.abort()
+    }
+  }, [wordChanged, draftWord, splitTouched])
   /** No reason is picked in advance: the judge chooses each time. */
   const [reason, setReason] = useState<JudgeReason | null>(null)
   const [challengerId, setChallengerId] = useState<string | null>(null)
@@ -1401,7 +1456,15 @@ function WordList({
   const draftSyllables = parseSyllables(draft)
 
   let pending: Pending | null = null
-  if (open?.kind === 'split' && draftSyllables.length > 0) pending = applyEdit(round, open.index, draftSyllables)
+  if (open?.kind === 'split' && draftSyllables.length > 0) {
+    const manual = !autoSplit || draftSyllables.join(' ') !== autoSplit.join(' ')
+    pending = applyEdit(
+      round,
+      open.index,
+      draftSyllables,
+      wordChanged ? { word: draftWord, manual, ...(manual && autoSplit ? { segmented: autoSplit } : {}) } : {},
+    )
+  }
   if (open?.kind === 'judge' && reason) pending = applyJudge(round, open.index, reason)
   if (open?.kind === 'challenge' && challengerId && succeeded !== null) {
     pending = applyChallenge(round, open.index, challengerId, succeeded)
@@ -1453,8 +1516,11 @@ function WordList({
                   className="link"
                   aria-label={`แก้การแยก ${result.word}`}
                   onClick={() => {
-                    setOpen({ index: result.index, kind: 'split' })
+                    setOpen({ index: result.index, kind: 'split', word: result.word })
                     setDraft(result.syllables.join(' '))
+                    setDraftWord(result.word)
+                    setAutoSplit(null)
+                    setSplitTouched(false)
                   }}
                 >
                   แก้
@@ -1492,13 +1558,28 @@ function WordList({
               <div className="stack edit-box">
                 {open.kind === 'split' ? (
                   <>
+                    <label htmlFor={`word-${result.index}`}>คำ (แก้ถ้าพิมพ์ผิด)</label>
+                    <input
+                      id={`word-${result.index}`}
+                      value={draftWord}
+                      onChange={(event) => {
+                        setDraftWord(event.target.value)
+                        setSplitTouched(false)
+                      }}
+                      autoComplete="off"
+                      autoCorrect="off"
+                      spellCheck={false}
+                    />
                     <label htmlFor={`edit-${result.index}`}>
-                      แก้การแยก “{result.word}” (เว้นวรรคระหว่างพยางค์)
+                      แก้การแยก “{wordChanged ? draftWord.trim() : result.word}” (เว้นวรรคระหว่างพยางค์)
                     </label>
                     <input
                       id={`edit-${result.index}`}
                       value={draft}
-                      onChange={(event) => setDraft(event.target.value)}
+                      onChange={(event) => {
+                        setDraft(event.target.value)
+                        setSplitTouched(true)
+                      }}
                       autoComplete="off"
                       autoCorrect="off"
                       spellCheck={false}

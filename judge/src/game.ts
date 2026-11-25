@@ -469,12 +469,37 @@ export function undo(round: Round): Round {
 }
 
 /** Replace the split of an earlier word (the judge corrected it). */
-export function editWord(round: Round, index: number, syllables: string[]): Round {
+export interface WordFix {
+  /** A corrected spelling (e.g. a typo); the split given goes with it. */
+  word?: string
+  /** For a new spelling: whether the judge typed the split (default: yes). */
+  manual?: boolean
+  /** For a new spelling the judge re-split: what the segmenter gave for it. */
+  segmented?: string[]
+}
+
+/** Correct an earlier word's split, and optionally its spelling. */
+export function editWord(round: Round, index: number, syllables: string[], fix: WordFix = {}): Round {
   const event = round.events[index]
   if (!event || (event.type !== 'word' && event.type !== 'opening') || syllables.length === 0) {
     return round
   }
   const events = round.events.slice()
+  const word = fix.word?.trim()
+  if (word && word !== event.word) {
+    // a new spelling starts afresh: the old split and correction belong to the old word
+    const rest = { ...event }
+    delete rest.manual
+    delete rest.segmented
+    const manual = fix.manual ?? true
+    events[index] = {
+      ...rest,
+      word,
+      syllables,
+      ...(manual ? { manual: true, ...(fix.segmented?.length ? { segmented: fix.segmented } : {}) } : {}),
+    }
+    return { ...round, events }
+  }
   // Keep the segmenter's split from before the first correction
   const segmented = event.manual ? event.segmented : event.syllables
   events[index] = { ...event, syllables, manual: true, ...(segmented ? { segmented } : {}) }
@@ -544,8 +569,9 @@ export function applyEdit(
   round: Round,
   index: number,
   syllables: string[],
+  fix: WordFix = {},
 ): { round: Round; removed: RoundEvent[] } {
-  const edited = editWord(round, index, syllables)
+  const edited = editWord(round, index, syllables, fix)
   if (edited === round) {
     return { round, removed: [] }
   }

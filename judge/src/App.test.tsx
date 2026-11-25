@@ -43,6 +43,7 @@ const SYLLABLES: Record<string, string[]> = {
   ทรายทอง: ['ทราย', 'ทอง'],
   กาแฟ: ['กา', 'แฟ'],
   ทะเล: ['ทะ', 'เล'],
+  กาแป: ['กา', 'แป'],
 }
 
 beforeEach(async () => {
@@ -813,6 +814,36 @@ describe('judge app', () => {
 
     expect(screen.getByRole('heading', { name: /^จบแมตช์/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'เริ่มแมตช์ใหม่' })).toBeInTheDocument()
+  })
+
+  it('corrects the spelling of an earlier word', async () => {
+    await startWith('ออย\nบีม\nเจ')
+    await submit('กาแป')
+    await submit('หาดทราย')
+
+    fireEvent.click(screen.getByRole('button', { name: 'แก้การแยก กาแป' }))
+    fireEvent.change(screen.getByLabelText('คำ (แก้ถ้าพิมพ์ผิด)'), { target: { value: 'กาแฟ' } })
+    // the segmenter splits the corrected word
+    await waitFor(() => expect(screen.getByLabelText(/แก้การแยก “กาแฟ”/)).toHaveValue('กา แฟ'))
+    fireEvent.click(screen.getByRole('button', { name: 'บันทึก' }))
+
+    expect(screen.getByText('กาแฟ', { selector: '.word' })).toBeInTheDocument()
+    expect(screen.queryByText('กาแป')).not.toBeInTheDocument()
+    expect(screen.queryByText('แยกเอง')).not.toBeInTheDocument()
+  })
+
+  it('opens an earlier round from the score table', async () => {
+    await startWith('ออย\nบีม')
+    await submit('กาแฟ')
+    fireEvent.click(screen.getByRole('button', { name: 'ไม่ทันเวลา' }))
+    fireEvent.click(screen.getByRole('button', { name: 'รอบถัดไป (2/4)' }))
+
+    fireEvent.click(screen.getByRole('button', { name: 'คะแนน' }))
+    fireEvent.click(screen.getByRole('button', { name: 'ดูรอบ 1' }))
+    expect(screen.getByRole('heading', { name: /ชนะ รอบ 1\/4/ })).toBeInTheDocument()
+    expect(screen.getByText('กาแฟ', { selector: '.word' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'ไปรอบ 2' }))
+    expect(screen.getByText(/รอบ 2\/4/)).toBeInTheDocument()
   })
 })
 
