@@ -28,3 +28,11 @@ Each entry:
 3. Do not repeat a consonant that is pronounced twice: `ราช|การ`. Exceptions are listed in `SYLLABLE_EXCEPTIONS` in `backend/app/syllables.py` (e.g. `อุ|บัติ|ติ|เหตุ`).
 4. Symbols are not supported and are dropped: `ๆ`, `ฯ`, `!`.
 5. A syllable is a duplicate only if it is written the same way (and therefore read the same way).
+
+
+## Words from real games (`from_games`)
+
+Common words played in real games with the judge app, whose splits the project
+owner confirmed (2026-11-25), are in the verified set under the category
+`from_games`. Only ordinary words are included: names of people, brands, titles,
+places and other proper nouns from the games stay out of this public repository.
