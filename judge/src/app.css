@@ -27,7 +27,9 @@ body {
 .page {
   max-width: 560px;
   margin: 0 auto;
-  padding: 16px;
+  /* keep clear of the notch, rounded corners and home bar (viewport-fit=cover) */
+  padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right))
+    max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -686,9 +688,9 @@ button.more {
   /* the word list stays in view and scrolls on its own */
   .side {
     position: sticky;
-    top: 16px;
+    top: max(16px, env(safe-area-inset-top));
     max-height: calc(100vh - 32px);
-    max-height: calc(100dvh - 32px);
+    max-height: calc(100dvh - max(16px, env(safe-area-inset-top)) - max(16px, env(safe-area-inset-bottom)));
     overflow-y: auto;
   }
 }
