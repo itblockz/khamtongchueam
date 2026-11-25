@@ -59,6 +59,7 @@ import {
   fillJudgedSplits,
   judgedText,
   needsWord,
+  type HintKind,
   type JudgeReason,
   applyEdit,
   applyJudge,
@@ -965,6 +966,8 @@ function Play({
   const [preview, setPreview] = useState<string[]>([])
   /** Hints for the word as typed (`for`), so stale ones never show. */
   const [hints, setHints] = useState<{ for: string; hints: WordHint[] }>({ for: '', hints: [] })
+  /** Hints of the word just sent, with their details, for the banner under the turn. */
+  const [lastHints, setLastHints] = useState<{ index: number; hints: WordHint[] } | null>(null)
   /** The word said before, to point out a translation of it. */
   const previousWord = game.words.at(-1)?.word ?? null
   /** null: use the segmenter's split; otherwise the judge's correction (space separated). */
@@ -1011,7 +1014,10 @@ function Play({
     setError(null)
     try {
       const manual = manualSplit !== null
-      const syllables = manual ? parseSyllables(manualSplit) : await segment(text)
+      // hints come with the split, so they are kept even when the judge sends at once
+      const checked = await segmentWithHints(text, previousWord)
+      const syllables = manual ? parseSyllables(manualSplit) : checked.syllables
+      const sentHints = checked.hints
       if (syllables.length === 0) {
         setError('ใส่การแยกพยางค์ก่อนส่ง')
         return
@@ -1020,8 +1026,9 @@ function Play({
       onChange(
         game.needsOpening
           ? addOpening(round, text, syllables, manual, manual ? preview : undefined)
-          : addWord(round, text, syllables, manual, manual ? preview : undefined, hintKinds),
+          : addWord(round, text, syllables, manual, manual ? preview : undefined, sentHints.map((h) => h.kind)),
       )
+      if (sentHints.length > 0) setLastHints({ index: round.events.length, hints: sentHints })
       setWord('')
       setPreview([])
       setManualSplit(null)
@@ -1098,6 +1105,8 @@ function Play({
           </li>
         ))}
       </ul>
+
+      <LastWordHints round={round} game={game} details={lastHints} onChange={onChange} />
 
       <section className="card">
 
@@ -1651,6 +1660,55 @@ function MatchTable({
   )
 }
 
+/**
+ * Hints for the word just sent, shown under the turn until the next word, with a
+ * button to rule it out for that reason. The judge often sends before the hint
+ * shows under the input, so this is where it is seen.
+ */
+function LastWordHints({
+  round,
+  game,
+  details,
+  onChange,
+}: {
+  round: Round
+  game: GameState
+  details: { index: number; hints: WordHint[] } | null
+  onChange: (round: Round) => void
+}) {
+  const index = round.events.length - 1
+  const event = round.events[index]
+  if (game.winnerId || !event || event.type !== 'word' || !event.hints?.length) return null
+  if (game.results[index]?.status !== 'counted') return null
+  const before = game.words.at(-2)?.word
+  const known = details?.index === index ? details.hints : []
+  return (
+    <section className="hint-banner" aria-label="ข้อสังเกตของคำล่าสุด">
+      {event.hints.map((kind) => {
+        const translation = known.find((h) => h.kind === 'translation')
+        const reason: JudgeReason = kind === 'not-noun' ? 'not-noun' : 'forbidden'
+        return (
+          <div key={kind} className="row tight">
+            <span>
+              ⚠ “{event.word}”{' '}
+              {kind === 'not-noun'
+                ? 'อาจไม่ใช่คำนาม'
+                : `อาจเป็นคำแปลของ “${translation?.kind === 'translation' ? translation.of : before}”${translation?.kind === 'translation' ? ` (${translation.english})` : ''}`}
+            </span>
+            <button
+              type="button"
+              className="outline-danger compact"
+              onClick={() => onChange(applyJudge(round, index, reason).round)}
+            >
+              {JUDGE_REASON_LABEL[reason]}
+            </button>
+          </div>
+        )
+      })}
+    </section>
+  )
+}
+
 /** A short name for a log entry, for the undo and redo buttons. */
 function describeEntry(event: RoundEvent): string {
   if (event.type === 'challenge-lost') return `ชาเลนจ์ “${event.word}”`
@@ -1828,6 +1886,11 @@ function WordList({
             <div className="word-meta">
               <span className="word-player">{nameOf(result.playerId)}</span>
               {result.manual && <span className="tag">แยกเอง</span>}
+              {(round.events[result.index] as { hints?: HintKind[] } | undefined)?.hints?.map((kind) => (
+                <span key={kind} className="tag hint">
+                  ⚠ {kind === 'not-noun' ? 'อาจไม่ใช่คำนาม' : 'อาจเป็นคำแปล'}
+                </span>
+              ))}
               {result.status !== 'judged' && STATUS_LABEL[result.status] && (
                 <span className="tag status">{STATUS_LABEL[result.status]}</span>
               )}
