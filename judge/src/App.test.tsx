@@ -828,7 +828,11 @@ describe('judge app', () => {
     tooSlow()
 
     expect(screen.getByRole('heading', { name: /^จบแมตช์/ })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'เริ่มแมตช์ใหม่' })).toBeInTheDocument()
+    // a new match starts over in round 1's order: ออย, บีม, เจ
+    fireEvent.click(screen.getByRole('button', { name: 'เริ่มแมตช์ใหม่' }))
+    expect(screen.getByText('ออย', { selector: 'strong' })).toBeInTheDocument()
+    expect(screen.getByText(/ถัดไป บีม/)).toBeInTheDocument()
+    expect(screen.getByText(/รอบ 1\/4/)).toBeInTheDocument()
   })
 
   it('corrects the spelling of an earlier word', async () => {
