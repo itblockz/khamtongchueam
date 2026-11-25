@@ -394,6 +394,8 @@ describe('judge app', () => {
       // finish round 2 and end the match there
       fireEvent.click(screen.getByRole('button', { name: 'เล่นต่อ ออย, บีม' }))
       fireEvent.click(screen.getByRole('button', { name: 'ไม่ทันเวลา' }))
+      // nothing was said: the list says so instead of an empty line
+      expect(screen.getByText('(ไม่ได้พูดคำ)')).toBeInTheDocument()
       vi.spyOn(window, 'confirm').mockReturnValue(true)
       fireEvent.click(screen.getByRole('button', { name: 'จบแมตช์ตอนนี้' }))
       // ออย 3 + 1, บีม 1 + 3: equal totals are a tie

@@ -620,8 +620,10 @@ export function judgeOut(round: Round, reason: JudgeReason, word: string, syllab
   if (state.winnerId || (needsWord(reason) && !word.trim())) {
     return round
   }
-  const event: JudgeEvent = { type: 'judge', playerId: currentPlayer(state).id, word: word.trim(), reason }
-  if (word.trim() && syllables.length > 0) event.syllables = syllables
+  // too slow is about time, not the word: whatever was typed is not kept
+  const said = reason === 'too-slow' ? '' : word.trim()
+  const event: JudgeEvent = { type: 'judge', playerId: currentPlayer(state).id, word: said, reason }
+  if (said && syllables.length > 0) event.syllables = syllables
   return { ...round, events: [...round.events, event] }
 }
 
