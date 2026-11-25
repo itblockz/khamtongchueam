@@ -1671,8 +1671,14 @@ function WordList({
               </div>
             ) : (
               <div>
-                <span className="word">{result.word}</span>
-                <span className="word-syllables">{result.syllables.join(' | ')}</span>
+                {result.word ? (
+                  <>
+                    <span className="word">{result.word}</span>
+                    <span className="word-syllables">{result.syllables.join(' | ')}</span>
+                  </>
+                ) : (
+                  <span className="no-word">(ไม่ได้พูดคำ)</span>
+                )}
               </div>
             )}
             {result.status === 'duplicate' && (

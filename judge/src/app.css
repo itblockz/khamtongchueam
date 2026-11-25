@@ -651,3 +651,7 @@ button.more {
 .games li:last-child {
   border-bottom: 0;
 }
+
+.no-word {
+  color: var(--muted);
+}
