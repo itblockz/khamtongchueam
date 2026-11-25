@@ -1,6 +1,18 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import 'fake-indexeddb/auto'
+import { IDBFactory } from 'fake-indexeddb'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { addWord, editWord, judgeOut, startRound } from './game'
-import { anonymize, exportGames, mergeGames, parseExport, save, type SavedGame } from './storage'
+import {
+  anonymize,
+  exportGames,
+  loadGames,
+  loadSettings,
+  mergeGames,
+  parseExport,
+  resetDbForTests,
+  storeGames,
+  type SavedGame,
+} from './storage'
 
 function game(id: string, updatedAt: number, finished: boolean): SavedGame {
   let round = startRound(['ออย', 'บีม'])
@@ -46,20 +58,33 @@ describe('anonymize', () => {
   })
 })
 
-describe('save when storage is full', () => {
-  it('drops the oldest finished games, never the open or unfinished ones', () => {
-    const games = [game('old1', 1, true), game('open1', 2, true), game('live1', 0, false), game('new1', 9, true)]
-    const real = Storage.prototype.setItem
-    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (this: Storage, key, value) {
-      // pretend only three games fit
-      if ((JSON.parse(value) as { games: unknown[] }).games.length > 3) {
-        throw new DOMException('full', 'QuotaExceededError')
-      }
-      real.call(this, key, value)
+describe('games in IndexedDB', () => {
+  beforeEach(async () => {
+    resetDbForTests()
+    globalThis.indexedDB = new IDBFactory()
+  })
+
+  it('stores, updates and removes games', async () => {
+    await storeGames([game('aaa111', 1, false), game('bbb222', 2, true)])
+    await storeGames([{ ...game('aaa111', 5, true) }], ['bbb222'])
+    const all = await loadGames()
+    expect(all.map((g) => [g.id, g.updatedAt])).toEqual([['aaa111', 5]])
+  })
+
+  it('moves games saved by the localStorage versions, keeping the settings', async () => {
+    localStorage.setItem(
+      'khamtongchueam.judge.v2',
+      JSON.stringify({ namesText: 'ออย', seconds: 4, currentId: 'ccc333', games: [game('ccc333', 3, false)] }),
+    )
+    expect((await loadGames()).map((g) => g.id)).toEqual(['ccc333'])
+    expect(JSON.parse(localStorage.getItem('khamtongchueam.judge.v2')!)).toEqual({
+      namesText: 'ออย',
+      seconds: 4,
+      currentId: 'ccc333',
     })
-    const result = save({ namesText: '', seconds: 3, games, currentId: 'open1' })
-    expect(result.dropped).toBe(1)
-    expect(result.games.map((g) => g.id)).toEqual(['open1', 'live1', 'new1'])
+    expect(loadSettings()).toEqual({ namesText: 'ออย', seconds: 4, currentId: 'ccc333' })
+    // a second load does not duplicate anything
+    expect(await loadGames()).toHaveLength(1)
   })
 })
 

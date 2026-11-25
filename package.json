@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "@codemirror/commands": "^6.10.3",
+    "@supabase/supabase-js": "2.119.0",
     "@uiw/react-codemirror": "^4.25.9",
     "lucide-react": "^1.8.0",
     "react": "^19.2.4",
@@ -39,6 +40,7 @@
     "eslint": "^9.39.4",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.5.2",
+    "fake-indexeddb": "6.0.0",
     "globals": "^17.4.0",
     "jsdom": "^29.0.1",
     "typescript": "~5.9.3",

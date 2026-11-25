@@ -1,6 +1,30 @@
+import 'fake-indexeddb/auto'
+import { IDBFactory } from 'fake-indexeddb'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import App from './App'
+import type { RemoteGame } from './cloud'
+
+// Stand-in for Google sign-in and the account backup (no network in tests)
+const cloud = vi.hoisted(() => ({
+  account: null as { id: string; email: string | null } | null,
+  remote: [] as RemoteGame[],
+  pushed: [] as RemoteGame[][],
+}))
+vi.mock('./cloud', () => ({
+  watchAccount: (listener: (a: typeof cloud.account) => void) => {
+    listener(cloud.account)
+    return () => {}
+  },
+  signInWithGoogle: vi.fn(async () => {}),
+  signOut: vi.fn(async () => {}),
+  deleteAccount: vi.fn(async () => {}),
+  pullGames: vi.fn(async () => cloud.remote),
+  pushGames: vi.fn(async (games: RemoteGame[]) => {
+    cloud.pushed.push(games)
+  }),
+}))
+import { resetDbForTests } from './storage'
 
 const SYLLABLES: Record<string, string[]> = {
   อาหาร: ['อา', 'หาร'],
@@ -13,8 +37,13 @@ const SYLLABLES: Record<string, string[]> = {
   กาแฟ: ['กา', 'แฟ'],
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   localStorage.clear()
+  cloud.account = null
+  cloud.remote = []
+  cloud.pushed = []
+  resetDbForTests()
+  globalThis.indexedDB = new IDBFactory()
   vi.stubGlobal(
     'fetch',
     vi.fn(async (_url: string, init?: RequestInit) => {
@@ -27,8 +56,15 @@ beforeEach(() => {
   )
 })
 
-function startWith(names: string) {
-  render(<App />)
+/** Render the app and wait until it has loaded the saved games. */
+async function renderApp() {
+  const view = render(<App />)
+  await waitFor(() => expect(screen.queryByText('กำลังโหลด…')).not.toBeInTheDocument())
+  return view
+}
+
+async function startWith(names: string) {
+  await renderApp()
   fireEvent.change(screen.getByLabelText(/รายชื่อผู้เล่น/), { target: { value: names } })
   fireEvent.click(screen.getByRole('button', { name: 'เริ่มเกม' }))
 }
@@ -40,8 +76,8 @@ async function submit(word: string) {
 }
 
 describe('judge app', () => {
-  it('blocks starting with repeated names', () => {
-    render(<App />)
+  it('blocks starting with repeated names', async () => {
+    await renderApp()
     fireEvent.change(screen.getByLabelText(/รายชื่อผู้เล่น/), { target: { value: 'ออย\nบีม\nออย' } })
 
     expect(screen.getByText('ชื่อซ้ำ: ออย')).toBeInTheDocument()
@@ -49,7 +85,7 @@ describe('judge app', () => {
   })
 
   it('moves the turn after a word and lists it with its syllables', async () => {
-    startWith('ออย\nบีม')
+    await startWith('ออย\nบีม')
     expect(screen.getByText('ออย', { selector: 'strong' })).toBeInTheDocument()
 
     await submit('มหา')
@@ -59,7 +95,7 @@ describe('judge app', () => {
   })
 
   it('puts the player out straight away on a repeated syllable and says why', async () => {
-    startWith('ออย\nบีม\nเจ')
+    await startWith('ออย\nบีม\nเจ')
     await submit('หาดทราย')
     await submit('ทรายทอง')
 
@@ -76,7 +112,7 @@ describe('judge app', () => {
   })
 
   it('shows the winner with the reason for the last elimination', async () => {
-    startWith('ออย\nบีม')
+    await startWith('ออย\nบีม')
     await submit('หาดทราย')
     // the last word ends the game, so the input disappears instead of clearing
     fireEvent.change(screen.getByLabelText(/^คำของ/), { target: { value: 'ทรายทอง' } })
@@ -90,7 +126,7 @@ describe('judge app', () => {
   })
 
   it('lets the judge correct the split before sending', async () => {
-    startWith('ออย\nบีม')
+    await startWith('ออย\nบีม')
     fireEvent.change(screen.getByLabelText(/^คำของ/), { target: { value: 'ไปรษณีย์' } })
     expect(await screen.findByText('ไป | รษ | ณีย์')).toBeInTheDocument()
 
@@ -109,7 +145,7 @@ describe('judge app', () => {
   })
 
   it('drops a correction when the word itself changes', async () => {
-    startWith('ออย\nบีม')
+    await startWith('ออย\nบีม')
     fireEvent.change(screen.getByLabelText(/^คำของ/), { target: { value: 'ไปรษณีย์' } })
     await screen.findByText('ไป | รษ | ณีย์')
     fireEvent.click(screen.getByRole('button', { name: 'แก้การแยก' }))
@@ -120,7 +156,7 @@ describe('judge app', () => {
   })
 
   it('undoes the last word, bringing back a player who went out on it', async () => {
-    startWith('ออย\nบีม\nเจ')
+    await startWith('ออย\nบีม\nเจ')
     expect(screen.getByRole('button', { name: 'ย้อนกลับ' })).toBeDisabled()
     await submit('หาดทราย')
     await submit('ทรายทอง')
@@ -134,7 +170,7 @@ describe('judge app', () => {
   })
 
   it('can undo from the winner screen back into the round', async () => {
-    startWith('ออย\nบีม')
+    await startWith('ออย\nบีม')
     await submit('หาดทราย')
     fireEvent.change(screen.getByLabelText(/^คำของ/), { target: { value: 'ทรายทอง' } })
     fireEvent.click(screen.getByRole('button', { name: 'ส่ง' }))
@@ -147,7 +183,7 @@ describe('judge app', () => {
   })
 
   it('corrects an earlier word, shows what changes, then applies it', async () => {
-    startWith('ชช\nลล\nมม')
+    await startWith('ชช\nลล\nมม')
     await submit('อาหาร')
     await submit('อารบิก')
     await submit('บิกินี')
@@ -169,7 +205,7 @@ describe('judge app', () => {
   })
 
   it('lets the judge put the current player out as not a noun, and undo it', async () => {
-    startWith('ออย\nบีม\nเจ')
+    await startWith('ออย\nบีม\nเจ')
     await submit('กาแฟ')
     fireEvent.change(screen.getByLabelText(/^คำของ/), { target: { value: 'วิ่ง' } })
 
@@ -185,8 +221,8 @@ describe('judge app', () => {
     expect(screen.getByText('บีม', { selector: 'strong' })).toBeInTheDocument()
   })
 
-  it('needs a typed word before the judge can decide', () => {
-    startWith('ออย\nบีม')
+  it('needs a typed word before the judge can decide', async () => {
+    await startWith('ออย\nบีม')
     expect(screen.getByRole('button', { name: 'คำต้องห้าม' })).toBeDisabled()
 
     fireEvent.change(screen.getByLabelText(/^คำของ/), { target: { value: 'คำหยาบ' } })
@@ -197,7 +233,7 @@ describe('judge app', () => {
   })
 
   it('rules an earlier word out and rewinds to it after confirming', async () => {
-    startWith('ชช\nลล\nมม')
+    await startWith('ชช\nลล\nมม')
     await submit('อาหาร')
     await submit('บิกินี')
     await submit('กาแฟ')
@@ -216,7 +252,7 @@ describe('judge app', () => {
   })
 
   it('has no judge button for not connecting: that is left to challenges', async () => {
-    startWith('ออย\nบีม\nเจ')
+    await startWith('ออย\nบีม\nเจ')
     await submit('กาแฟ')
     expect(screen.queryByRole('button', { name: 'ไม่เชื่อม' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'ตัดสิน กาแฟ' }))
@@ -230,9 +266,9 @@ describe('judge app', () => {
       vi.useRealTimers()
     })
 
-    it('waits for the judge on the first turn, then runs out of time', () => {
+    it('waits for the judge on the first turn, then runs out of time', async () => {
+      await startWith('ออย\nบีม\nเจ')
       vi.useFakeTimers()
-      startWith('ออย\nบีม\nเจ')
       fireEvent.click(screen.getByRole('button', { name: /เริ่มจับเวลา/ }))
       expect(screen.getByRole('button', { name: 'จับเวลาใหม่' })).toBeInTheDocument()
       expect(screen.getByLabelText(/^คำของ/)).toHaveFocus()
@@ -245,9 +281,9 @@ describe('judge app', () => {
       expect(screen.getByText('บีม', { selector: 'strong' })).toBeInTheDocument()
     })
 
-    it('can restart the count at any time', () => {
+    it('can restart the count at any time', async () => {
+      await startWith('ออย\nบีม')
       vi.useFakeTimers()
-      startWith('ออย\nบีม')
       fireEvent.click(screen.getByRole('button', { name: /เริ่มจับเวลา/ }))
       act(() => vi.advanceTimersByTime(2000))
       fireEvent.click(screen.getByRole('button', { name: 'จับเวลาใหม่' }))
@@ -259,13 +295,13 @@ describe('judge app', () => {
     })
 
     it('starts counting on its own after a word is sent', async () => {
-      startWith('ออย\nบีม\nเจ')
+      await startWith('ออย\nบีม\nเจ')
       await submit('กาแฟ')
       expect(await screen.findByRole('button', { name: 'จับเวลาใหม่' })).toBeInTheDocument()
     })
 
     it('counts on its own after a word, but waits for the judge after someone goes out', async () => {
-      render(<App />)
+      await renderApp()
       fireEvent.change(screen.getByLabelText(/รายชื่อผู้เล่น/), { target: { value: 'ออย\nบีม\nเจ' } })
       fireEvent.change(screen.getByLabelText(/เวลาต่อตา/), { target: { value: '5' } })
       fireEvent.click(screen.getByRole('button', { name: 'เริ่มเกม' }))
@@ -281,14 +317,14 @@ describe('judge app', () => {
 
   describe('saved game', () => {
     it('picks the round back up after a reload', async () => {
-      const { unmount } = render(<App />)
+      const { unmount } = await renderApp()
       fireEvent.change(screen.getByLabelText(/รายชื่อผู้เล่น/), { target: { value: 'ออย\nบีม\nเจ' } })
       fireEvent.change(screen.getByLabelText(/เวลาต่อตา/), { target: { value: '5' } })
       fireEvent.click(screen.getByRole('button', { name: 'เริ่มเกม' }))
       await submit('กาแฟ')
       unmount()
 
-      render(<App />)
+      await renderApp()
       expect(screen.getByText('บีม', { selector: 'strong' })).toBeInTheDocument()
       expect(screen.getByText('กา | แฟ')).toBeInTheDocument()
 
@@ -297,21 +333,21 @@ describe('judge app', () => {
       expect(screen.getByRole('button', { name: 'เริ่มจับเวลา (5 วิ)' })).toBeInTheDocument()
     })
 
-    it('keeps a game in progress across a remount', () => {
-      startWith('ออย\nบีม')
-      cleanupAndRender()
+    it('keeps a game in progress across a remount', async () => {
+      await startWith('ออย\nบีม')
+      await cleanupAndRender()
       expect(screen.getByText('ออย', { selector: 'strong' })).toBeInTheDocument()
     })
 
-    it('ignores saved data it cannot read', () => {
+    it('ignores saved data it cannot read', async () => {
       localStorage.setItem('khamtongchueam.judge.v2', '{"games":[{"id":"x","round":{"players":"oops"}}]')
-      render(<App />)
+      await renderApp()
       expect(screen.getByLabelText(/รายชื่อผู้เล่น/)).toHaveValue('')
     })
   })
 
   it('goes back to the first page and carries on with the same game', async () => {
-    startWith('ออย\nบีม')
+    await startWith('ออย\nบีม')
     await submit('กาแฟ')
     fireEvent.click(screen.getByRole('button', { name: 'หน้าแรก' }))
 
@@ -324,7 +360,7 @@ describe('judge app', () => {
 
   describe('saved games', () => {
     it('keeps a finished game when playing again, and lists both', async () => {
-      startWith('ออย\nบีม')
+      await startWith('ออย\nบีม')
       await submit('หาดทราย')
       fireEvent.change(screen.getByLabelText(/^คำของ/), { target: { value: 'ทรายทอง' } })
       fireEvent.click(screen.getByRole('button', { name: 'ส่ง' }))
@@ -340,14 +376,14 @@ describe('judge app', () => {
     })
 
     it('deletes a game after asking', async () => {
-      startWith('ออย\nบีม')
+      await startWith('ออย\nบีม')
       fireEvent.click(screen.getByRole('button', { name: 'หน้าแรก' }))
       vi.spyOn(window, 'confirm').mockReturnValue(true)
       fireEvent.click(screen.getByRole('button', { name: 'ลบเกม ออย, บีม' }))
       expect(screen.queryByText('เกมที่บันทึกไว้ในเครื่องนี้')).not.toBeInTheDocument()
     })
 
-    it('carries over a game saved by the previous version', () => {
+    it('carries over a game saved by the previous version', async () => {
       localStorage.setItem(
         'khamtongchueam.judge.v1',
         JSON.stringify({
@@ -362,14 +398,14 @@ describe('judge app', () => {
           },
         }),
       )
-      render(<App />)
+      await renderApp()
       expect(screen.getByText('กา | แฟ')).toBeInTheDocument()
       expect(screen.getByRole('button', { name: 'เริ่มจับเวลา (4 วิ)' })).toBeInTheDocument()
     })
   })
 
   it('records a lost challenge against an earlier word', async () => {
-    startWith('ออย\nบีม\nเจ')
+    await startWith('ออย\nบีม\nเจ')
     await submit('อาหาร')
     await submit('กาแฟ')
 
@@ -388,7 +424,7 @@ describe('judge app', () => {
   })
 
   it('a successful challenge puts the speaker out and goes back to that word', async () => {
-    startWith('ออย\nบีม\nเจ')
+    await startWith('ออย\nบีม\nเจ')
     await submit('อาหาร')
     await submit('กาแฟ')
     await submit('บิกินี')
@@ -408,7 +444,7 @@ describe('judge app', () => {
   })
 
   it('sends the game without names a moment after it changes', async () => {
-    startWith('ออย\nบีม')
+    await startWith('ออย\nบีม')
     await submit('กาแฟ')
     const fetchMock = vi.mocked(fetch)
     await waitFor(() =>
@@ -422,7 +458,7 @@ describe('judge app', () => {
   })
 
   it('imports games from an exported file', async () => {
-    render(<App />)
+    await renderApp()
     const file = new File(
       [
         JSON.stringify({
@@ -463,23 +499,76 @@ describe('judge app', () => {
       return { ok: true, json: async () => ({ syllables: SYLLABLES[text] ?? [text] }) } as Response
     })
 
-    startWith('ออย\nบีม')
+    await startWith('ออย\nบีม')
     await submit('กาแฟ')
     await waitFor(() => expect(uploads()).toBe(1), { timeout: 3000 })
     cleanup()
 
     serverUp = true
-    render(<App />)
+    await renderApp()
     await waitFor(() => expect(uploads()).toBe(2), { timeout: 3000 })
     cleanup()
 
-    render(<App />)
+    await renderApp()
     await new Promise((resolve) => setTimeout(resolve, 2000))
     expect(uploads()).toBe(2)
   }, 10000)
+
+  describe('account backup', () => {
+    it('offers Google sign-in but plays without it', async () => {
+      await startWith('ออย\nบีม')
+      fireEvent.click(screen.getByRole('button', { name: 'หน้าแรก' }))
+      expect(screen.getByRole('button', { name: 'เข้าสู่ระบบด้วย Google' })).toBeInTheDocument()
+    })
+
+    it('brings in games from the account and backs up this device\'s games', async () => {
+      cloud.account = { id: 'u1', email: 'judge@example.com' }
+      cloud.remote = [
+        {
+          id: 'fromcloud1',
+          updatedAt: 5,
+          deleted: false,
+          game: {
+            id: 'fromcloud1',
+            createdAt: 1,
+            updatedAt: 5,
+            round: {
+              players: [
+                { id: 'p1', name: 'เจ' },
+                { id: 'p2', name: 'บีม' },
+              ],
+              events: [{ type: 'word', playerId: 'p1', word: 'กาแฟ', syllables: ['กา', 'แฟ'] }],
+            },
+          },
+        },
+      ]
+      await startWith('ออย\nบีม')
+      await submit('มหา')
+      fireEvent.click(screen.getByRole('button', { name: 'หน้าแรก' }))
+
+      expect(screen.getByText(/เข้าสู่ระบบเป็น judge@example.com/)).toBeInTheDocument()
+      expect(await screen.findByText('กำลังเล่น · ตาของ บีม', {}, { timeout: 4000 })).toBeInTheDocument()
+      await waitFor(() => expect(screen.getByText(/สำรองล่าสุด/)).toBeInTheDocument(), { timeout: 4000 })
+      const pushedIds = cloud.pushed.flat().map((g) => g.id)
+      expect(pushedIds).not.toContain('fromcloud1')
+      expect(pushedIds.length).toBeGreaterThan(0)
+    }, 10000)
+
+    it('sends a deletion to the account', async () => {
+      cloud.account = { id: 'u1', email: null }
+      await startWith('ออย\nบีม')
+      fireEvent.click(screen.getByRole('button', { name: 'หน้าแรก' }))
+      vi.spyOn(window, 'confirm').mockReturnValue(true)
+      fireEvent.click(screen.getByRole('button', { name: 'ลบเกม ออย, บีม' }))
+      await waitFor(
+        () => expect(cloud.pushed.flat().some((g) => g.deleted)).toBe(true),
+        { timeout: 4000 },
+      )
+    }, 10000)
+  })
 })
 
-function cleanupAndRender() {
+async function cleanupAndRender() {
   cleanup()
-  render(<App />)
+  await renderApp()
 }

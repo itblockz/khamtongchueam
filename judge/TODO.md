@@ -2,12 +2,21 @@
 
 Ideas agreed but not built yet, roughly in the order planned.
 
-1. **Hand a game to another device (link / QR).** "ส่งต่อเกม" builds a link that
-   carries the whole game in the URL, also shown as a QR code. Opening it adds the
-   game to that device's list. A copy, not a sync. Nothing is stored on a server,
-   so player names stay on the devices. Move to Supabase only if live sync across
-   devices turns out to be needed (that would store names on the server: needs a
-   new notice and a way to delete).
+1. **Optional sign-in with backup** (in progress). Playing never needs an account.
+   - Signed out: games stay on the device (IndexedDB, done) and move between
+     devices with export/import files. A link/QR hand-over was built and dropped:
+     long games do not fit LINE messages or QR codes, and one way for every game
+     is clearer.
+   - Signed in: every game is backed up to the account and shows on every device
+     signed in to it. Games played before signing in are merged in. Signing out
+     keeps games on the device. Offline play syncs later.
+   - Sign-in: Google and an emailed code first (needs Google Cloud OAuth set up by
+     the owner, and an SMTP service such as Gmail with an app password, since
+     Supabase's built-in mail is for testing only). LINE later if asked for: not a
+     built-in Supabase provider, so it needs a custom bridge.
+   - Player names are stored readable, visible only to the account owner through
+     row-level security (and to project admins). Update the in-app notice, and add
+     a button that deletes the account with all its games (PDPA).
 2. **Try it for real on a phone and an iPad.** Check the keyboard stays up when
    pressing timer and judge buttons.
 3. **Two game modes**, chosen at setup. The app plays normal mode today.
@@ -27,6 +36,11 @@ Ideas agreed but not built yet, roughly in the order planned.
    **Never feed game data straight into the segmenter or word lists.** Judges make
    mistakes, so a game's split or decision is only a candidate: it goes to review,
    and only what a person confirms is used (like the verified gold set).
+   The review page should show how often the same word got the same split or
+   decision across games and judges: agreement is the best signal of what is right.
+   Marking games from trusted judges (a judge code set as a secret on Vercel) is
+   not planned. Do it only if junk games from the public link become too many to
+   review.
 5. **Switch production to the judge app** (merge to master). Render keeps the old app.
 6. **Matches of several rounds and scores.** A successful challenge earns the
    challenger points; the log already records who challenged (`challengerId` on the
@@ -35,4 +49,12 @@ Ideas agreed but not built yet, roughly in the order planned.
    - can syllables used in one round be used again in the next, or not all match
    - who starts each new round (same player, or rotate)
    - the match winner: total points, or rounds won
-7. **Landscape / iPad layout.**
+7. **Player stats across games**, worked out on the judge's device from its saved
+   games (names never leave the device): games played and won, how players go out,
+   successful challenges, words per game. Games from other devices can be merged
+   in with import first.
+   - Names must match across games ("ใบปอ" vs "ปอ" would be two people). Suggest
+     names from earlier games in the setup box; worth doing before the stats page
+     so names match from the start.
+   - On the stats page, allow merging two names that are the same person.
+8. **Landscape / iPad layout.**

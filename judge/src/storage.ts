@@ -1,4 +1,4 @@
-import { replay, type Round } from './game'
+import type { Round } from './game'
 
 /** One game kept in this browser, finished or not. */
 export interface SavedGame {
@@ -8,18 +8,18 @@ export interface SavedGame {
   round: Round
 }
 
-/** Everything kept in this browser so games survive a reload, a closed tab or a
- * phone that put the browser to sleep. Nothing here leaves the device. */
-export interface Saved {
+/** Small settings kept in localStorage (read synchronously at start). */
+export interface Settings {
   namesText: string
   seconds: number
-  games: SavedGame[]
   /** The game on screen, or null on the first page. */
   currentId: string | null
 }
 
 const KEY = 'khamtongchueam.judge.v2'
 const OLD_KEY = 'khamtongchueam.judge.v1'
+const DB_NAME = 'khamtongchueam-judge'
+const STORE = 'games'
 
 function isRound(value: unknown): value is Round {
   if (!value || typeof value !== 'object') return false
@@ -40,7 +40,7 @@ function isRound(value: unknown): value is Round {
   )
 }
 
-function isGame(value: unknown): value is SavedGame {
+export function isGame(value: unknown): value is SavedGame {
   if (!value || typeof value !== 'object') return false
   const game = value as SavedGame
   return (
@@ -55,70 +55,123 @@ export function newId(): string {
   return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`
 }
 
-export function load(): Partial<Saved> {
+function readLocal(key: string): Record<string, unknown> | null {
   try {
-    const raw = localStorage.getItem(KEY)
-    if (raw) {
-      const data = JSON.parse(raw) as Record<string, unknown>
-      const saved: Partial<Saved> = {}
-      if (typeof data.namesText === 'string') saved.namesText = data.namesText
-      if (typeof data.seconds === 'number' && data.seconds > 0) saved.seconds = data.seconds
-      if (Array.isArray(data.games)) saved.games = data.games.filter(isGame)
-      if (typeof data.currentId === 'string' && saved.games?.some((g) => g.id === data.currentId)) {
-        saved.currentId = data.currentId
-      }
-      return saved
-    }
-    return loadOld()
+    const raw = localStorage.getItem(key)
+    return raw ? (JSON.parse(raw) as Record<string, unknown>) : null
   } catch {
-    return {} // storage blocked (private mode) or unreadable: start fresh
+    return null
   }
 }
 
-/** The previous version kept a single round; carry it over as the only game. */
-function loadOld(): Partial<Saved> {
-  const raw = localStorage.getItem(OLD_KEY)
-  if (!raw) return {}
-  const data = JSON.parse(raw) as Record<string, unknown>
-  const saved: Partial<Saved> = {}
-  if (typeof data.namesText === 'string') saved.namesText = data.namesText
-  if (typeof data.seconds === 'number' && data.seconds > 0) saved.seconds = data.seconds
-  if (isRound(data.round)) {
-    const now = Date.now()
-    const game = { id: newId(), createdAt: now, updatedAt: now, round: data.round }
-    saved.games = [game]
-    saved.currentId = game.id
+export function loadSettings(): Partial<Settings> {
+  const data = readLocal(KEY) ?? readLocal(OLD_KEY) ?? {}
+  const settings: Partial<Settings> = {}
+  if (typeof data.namesText === 'string') settings.namesText = data.namesText
+  if (typeof data.seconds === 'number' && data.seconds > 0) settings.seconds = data.seconds
+  if (typeof data.currentId === 'string') settings.currentId = data.currentId
+  return settings
+}
+
+export function saveSettings(settings: Settings) {
+  try {
+    const old = readLocal(KEY) ?? {}
+    // keep any games of the previous version until they have been moved
+    localStorage.setItem(KEY, JSON.stringify({ ...old, ...settings }))
+  } catch {
+    /* blocked: settings just will not survive a reload */
   }
-  return saved
 }
 
 /**
- * Save everything. When the browser's storage is full, the oldest finished games are
- * dropped one at a time until it fits; the game on screen and unfinished games are
- * never dropped. Returns the games actually kept and how many were dropped.
+ * Games live in IndexedDB, which browsers give far more room than localStorage
+ * (hundreds of MB rather than about 5 MB), so a judge never has to worry about it
+ * filling up. Earlier versions kept games in localStorage; they are moved over.
  */
-export function save(saved: Saved): { games: SavedGame[]; dropped: number } {
-  let games = saved.games
-  for (;;) {
-    try {
-      localStorage.setItem(KEY, JSON.stringify({ ...saved, games }))
-      localStorage.removeItem(OLD_KEY)
-      return { games, dropped: saved.games.length - games.length }
-    } catch (error) {
-      const oldestFinished = [...games]
-        .filter((g) => g.id !== saved.currentId && replay(g.round).winnerId)
-        .sort((a, b) => a.updatedAt - b.updatedAt)[0]
-      if (!isQuotaError(error) || !oldestFinished) {
-        // blocked storage, or nothing left to drop: play on without saving
-        return { games: saved.games, dropped: 0 }
-      }
-      games = games.filter((g) => g !== oldestFinished)
-    }
-  }
+function openDb(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, 1)
+    request.onupgradeneeded = () => request.result.createObjectStore(STORE, { keyPath: 'id' })
+    request.onsuccess = () => resolve(request.result)
+    request.onerror = () => reject(request.error)
+  })
 }
 
-function isQuotaError(error: unknown): boolean {
-  return error instanceof DOMException && (error.name === 'QuotaExceededError' || error.code === 22)
+let dbPromise: Promise<IDBDatabase> | null = null
+function db(): Promise<IDBDatabase> {
+  dbPromise ??= openDb()
+  dbPromise.catch(() => {
+    dbPromise = null
+  })
+  return dbPromise
+}
+
+function done(tx: IDBTransaction): Promise<void> {
+  return new Promise((resolve, reject) => {
+    tx.oncomplete = () => resolve()
+    tx.onerror = () => reject(tx.error)
+    tx.onabort = () => reject(tx.error)
+  })
+}
+
+/** Games saved by earlier versions in localStorage. */
+function legacyGames(): SavedGame[] {
+  const current = readLocal(KEY)
+  if (current && Array.isArray(current.games)) return current.games.filter(isGame)
+  const old = readLocal(OLD_KEY)
+  if (old && isRound(old.round)) {
+    // the one-slot version always had its game open: keep it open
+    const now = Date.now()
+    const game = { id: newId(), createdAt: now, updatedAt: now, round: old.round }
+    saveSettings({ ...loadSettings(), currentId: game.id } as Settings)
+    return [game]
+  }
+  return []
+}
+
+/** Every game on this device. Throws if the browser will not open IndexedDB. */
+export async function loadGames(): Promise<SavedGame[]> {
+  const database = await db()
+  const legacy = legacyGames()
+  if (legacy.length > 0) {
+    const tx = database.transaction(STORE, 'readwrite')
+    for (const game of legacy) tx.objectStore(STORE).put(game)
+    await done(tx)
+    try {
+      const current = readLocal(KEY) ?? {}
+      delete current.games
+      localStorage.setItem(KEY, JSON.stringify(current))
+      localStorage.removeItem(OLD_KEY)
+    } catch {
+      /* moved already; the copy left behind is ignored next time */
+    }
+  }
+  const request = database.transaction(STORE, 'readonly').objectStore(STORE).getAll()
+  const all = await new Promise<unknown[]>((resolve, reject) => {
+    request.onsuccess = () => resolve(request.result)
+    request.onerror = () => reject(request.error)
+  })
+  return all.filter(isGame)
+}
+
+/** Tests only: forget the open database so the next call opens a fresh one. */
+export function resetDbForTests() {
+  void dbPromise?.then((database) => database.close()).catch(() => undefined)
+  dbPromise = null
+}
+
+/** Write the given games and remove the given ids, in one go. */
+export async function storeGames(put: SavedGame[], remove: string[] = []): Promise<void> {
+  if (put.length === 0 && remove.length === 0) return
+  const tx = (await db()).transaction(STORE, 'readwrite')
+  for (const game of put) tx.objectStore(STORE).put(game)
+  for (const id of remove) tx.objectStore(STORE).delete(id)
+  await done(tx)
+}
+
+/** Ask the browser not to clear this site's storage when the device runs low. */
+export function askToKeepStorage() {
+  void navigator.storage?.persist?.().catch(() => false)
 }
 
 /** A file the player keeps: every game on this device, names included. */
@@ -232,5 +285,21 @@ export function saveSent(sent: Map<string, string>, games: SavedGame[]) {
     localStorage.setItem(SENT_KEY, JSON.stringify(Object.fromEntries([...sent].filter(([id]) => kept.has(id)))))
   } catch {
     /* blocked or full: games are just sent again next time */
+  }
+}
+
+const TOMBSTONES_KEY = 'khamtongchueam.judge.deleted.v1'
+
+/** Games deleted on this device (id → when), so a signed-in backup drops them too. */
+export function loadTombstones(): Record<string, number> {
+  const data = readLocal(TOMBSTONES_KEY) ?? {}
+  return Object.fromEntries(Object.entries(data).filter((e): e is [string, number] => typeof e[1] === 'number'))
+}
+
+export function saveTombstones(tombstones: Record<string, number>) {
+  try {
+    localStorage.setItem(TOMBSTONES_KEY, JSON.stringify(tombstones))
+  } catch {
+    /* blocked: a deleted game may come back from the backup once */
   }
 }

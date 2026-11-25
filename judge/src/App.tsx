@@ -1,16 +1,31 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { SegmentError, segment, uploadGame } from './api'
+import {
+  deleteAccount,
+  pullGames,
+  pushGames,
+  signInWithGoogle,
+  signOut,
+  watchAccount,
+  type Account,
+} from './cloud'
+import { applyRemote, reconcile } from './sync'
 import {
   anonymize,
   exportGames,
   fingerprint,
   loadSent,
-  load,
+  askToKeepStorage,
+  loadGames,
+  loadSettings,
+  loadTombstones,
   mergeGames,
   newId,
   parseExport,
-  save,
   saveSent,
+  saveSettings,
+  saveTombstones,
+  storeGames,
   type SavedGame,
 } from './storage'
 import {
@@ -43,6 +58,9 @@ import {
 
 const PREVIEW_DELAY_MS = 250
 const UPLOAD_DELAY_MS = 1500
+const BACKUP_DELAY_MS = 2000
+
+type BackupState = { status: 'idle' | 'syncing' | 'error' } | { status: 'done'; at: number }
 
 /** Pressing a timer button must not take focus from the word input, or the phone
  * keyboard closes and the judge loses a beat reopening it. */
@@ -61,25 +79,60 @@ const DEFAULT_TIMER: TimerSettings = { seconds: 3 }
 type TimerState = { phase: 'idle' } | { phase: 'counting'; startedAt: number } | { phase: 'late' }
 
 export default function App() {
-  const [saved] = useState(load)
-  const [namesText, setNamesText] = useState(saved.namesText ?? '')
-  const [timer, setTimer] = useState<TimerSettings>({ seconds: saved.seconds ?? DEFAULT_TIMER.seconds })
-  const [games, setGames] = useState<SavedGame[]>(saved.games ?? [])
-  const [currentId, setCurrentId] = useState<string | null>(saved.currentId ?? null)
+  const [settings] = useState(loadSettings)
+  const [namesText, setNamesText] = useState(settings.namesText ?? '')
+  const [timer, setTimer] = useState<TimerSettings>({ seconds: settings.seconds ?? DEFAULT_TIMER.seconds })
+  const [games, setGames] = useState<SavedGame[]>([])
+  const [currentId, setCurrentId] = useState<string | null>(settings.currentId ?? null)
+  /** Games come from IndexedDB, which answers asynchronously. */
+  const [loaded, setLoaded] = useState(false)
+  /** Set when the browser will not store games (some private modes). */
+  const [storageError, setStorageError] = useState(false)
 
-  /** How many finished games were dropped because storage was full (shown once). */
-  const [dropped, setDropped] = useState(0)
-
-  // Keep every game in this browser so a reload or a sleeping phone does not lose it
   useEffect(() => {
-    const result = save({ namesText, seconds: timer.seconds, games, currentId })
-    if (result.dropped > 0) {
-      // Rare: storage was full and old finished games had to go. Show what was kept.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setGames(result.games)
-      setDropped((n) => n + result.dropped)
+    let cancelled = false
+    askToKeepStorage()
+    loadGames()
+      .then((all) => {
+        if (cancelled) return
+        setGames(all)
+        // a game carried over from an older version may have been opened while loading
+        const wanted = loadSettings().currentId ?? null
+        setCurrentId((id) => {
+          const open = id ?? wanted
+          return open && all.some((g) => g.id === open) ? open : null
+        })
+      })
+      .catch(() => {
+        if (!cancelled) setStorageError(true)
+      })
+      .finally(() => {
+        if (!cancelled) setLoaded(true)
+      })
+    return () => {
+      cancelled = true
     }
-  }, [namesText, timer.seconds, games, currentId])
+  }, [])
+
+  useEffect(() => {
+    saveSettings({ namesText, seconds: timer.seconds, currentId })
+  }, [namesText, timer.seconds, currentId])
+
+  // Write only the games that changed (and drop deleted ones) once loading is done
+  const stored = useRef<Map<string, SavedGame> | null>(null)
+  useEffect(() => {
+    if (!loaded || storageError) return
+    if (stored.current === null) {
+      stored.current = new Map(games.map((g) => [g.id, g]))
+      return
+    }
+    const previous = stored.current
+    const changed = games.filter((g) => previous.get(g.id) !== g)
+    const current = new Set(games.map((g) => g.id))
+    const removed = [...previous.keys()].filter((id) => !current.has(id))
+    stored.current = new Map(games.map((g) => [g.id, g]))
+    storeGames(changed, removed).catch(() => setStorageError(true))
+  }, [games, loaded, storageError])
 
   // Send changed games for collection, anonymously, a moment after they settle.
   // What the server already has is remembered across visits, so a send that failed
@@ -109,6 +162,56 @@ export default function App() {
     return () => window.clearTimeout(timer)
   }, [games])
 
+  // Optional Google sign-in: a signed-in judge's games are backed up to their account
+  // and brought together with every other device signed in to it.
+  const [account, setAccount] = useState<Account | null>(null)
+  const [backup, setBackup] = useState<BackupState>({ status: 'idle' })
+  const tombstones = useRef(loadTombstones())
+  useEffect(() => watchAccount(setAccount), [])
+
+  const syncing = useRef(false)
+  const syncNow = useCallback(async () => {
+    if (!account || syncing.current) return
+    syncing.current = true
+    setBackup({ status: 'syncing' })
+    try {
+      const remote = await pullGames()
+      const result = reconcile(gamesRef.current, tombstones.current, remote)
+      if (result.take.length > 0 || result.remove.length > 0) {
+        setGames((all) => applyRemote(all, result.take, result.remove))
+      }
+      await pushGames(result.push)
+      tombstones.current = result.tombstones
+      saveTombstones(tombstones.current)
+      setBackup({ status: 'done', at: Date.now() })
+    } catch {
+      setBackup({ status: 'error' })
+    } finally {
+      syncing.current = false
+    }
+  }, [account])
+
+  // Back up a moment after games change, and catch up when the app comes back to view
+  useEffect(() => {
+    if (!account || !loaded || storageError) return
+    const timer = window.setTimeout(() => void syncNow(), BACKUP_DELAY_MS)
+    return () => window.clearTimeout(timer)
+  }, [account, loaded, storageError, games, syncNow])
+  useEffect(() => {
+    if (!account) return
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void syncNow()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [account, syncNow])
+
+  function removeGame(id: string) {
+    tombstones.current = { ...tombstones.current, [id]: Date.now() }
+    saveTombstones(tombstones.current)
+    setGames((all) => all.filter((g) => g.id !== id))
+  }
+
   const round = games.find((g) => g.id === currentId)?.round ?? null
   const game = useMemo(() => (round ? replay(round) : null), [round])
 
@@ -129,6 +232,14 @@ export default function App() {
     </button>
   )
 
+  if (!loaded) {
+    return (
+      <main className="page">
+        <p className="note">กำลังโหลด…</p>
+      </main>
+    )
+  }
+
   if (!round || !game) {
     return (
       <Setup
@@ -139,13 +250,16 @@ export default function App() {
         onStart={startGame}
         games={games}
         onOpen={setCurrentId}
-        onDelete={(id) => setGames((all) => all.filter((g) => g.id !== id))}
+        onDelete={removeGame}
         onImport={(incoming) => {
           const result = mergeGames(games, incoming)
           setGames(result.games)
           return result
         }}
-        dropped={dropped}
+        storageError={storageError}
+        account={account}
+        backup={backup}
+        onBackupNow={() => void syncNow()}
       />
     )
   }
@@ -201,7 +315,10 @@ function Setup({
   onOpen,
   onDelete,
   onImport,
-  dropped,
+  storageError,
+  account,
+  backup,
+  onBackupNow,
 }: {
   namesText: string
   onNamesChange: (text: string) => void
@@ -212,7 +329,10 @@ function Setup({
   onOpen: (id: string) => void
   onDelete: (id: string) => void
   onImport: (games: SavedGame[]) => { added: number; updated: number }
-  dropped: number
+  storageError: boolean
+  account: Account | null
+  backup: BackupState
+  onBackupNow: () => void
 }) {
   const { names, duplicates, canStart } = parseNames(namesText)
 
@@ -264,10 +384,12 @@ function Setup({
         แอปเก็บคำ การแยกพยางค์ และผลการตัดสินแบบไม่ระบุตัวตน (ไม่เก็บชื่อผู้เล่น)
         เพื่อใช้พัฒนาระบบ
       </p>
+      <BackupPanel account={account} backup={backup} onBackupNow={onBackupNow} />
       <SavedGames games={games} onOpen={onOpen} onDelete={onDelete} />
-      {dropped > 0 && (
-        <p className="note error" role="status">
-          ลบเกมเก่าที่จบแล้ว {dropped} เกม เพราะพื้นที่เก็บในเบราว์เซอร์เต็ม
+      {storageError && (
+        <p className="note error" role="alert">
+          เบราว์เซอร์นี้ไม่ให้บันทึกเกมในเครื่อง (อาจเปิดแบบส่วนตัวอยู่) เกมจะหายเมื่อปิดหน้า
+          ส่งออกเป็นไฟล์ไว้ก่อนปิด
         </p>
       )}
       <BackupFile games={games} onImport={onImport} />
@@ -551,8 +673,8 @@ function SavedGames({
     <section>
       <h2 className="small-heading">เกมที่บันทึกไว้ในเครื่องนี้</h2>
       <p className="note">
-        เก็บไว้ในเบราว์เซอร์ของเครื่องนี้เท่านั้น ถ้าพื้นที่เต็ม เกมที่จบแล้วที่เก่าที่สุดจะถูกลบอัตโนมัติ
-        และถ้าล้างข้อมูลเบราว์เซอร์ เกมทั้งหมดจะหาย ส่งออกเป็นไฟล์ไว้ได้ถ้าอยากเก็บถาวร
+        เก็บไว้ในเบราว์เซอร์ของเครื่องนี้เท่านั้น ถ้าล้างข้อมูลเบราว์เซอร์ เกมทั้งหมดจะหาย
+        ส่งออกเป็นไฟล์ไว้ได้ถ้าอยากเก็บถาวร
       </p>
       <ul className="games">
         {sorted.map((saved) => {
@@ -591,6 +713,97 @@ function SavedGames({
           )
         })}
       </ul>
+    </section>
+  )
+}
+
+const TIME_FORMAT = new Intl.DateTimeFormat('th-TH', { hour: '2-digit', minute: '2-digit' })
+
+/** Sign in with Google to back games up to an account; playing never needs it. */
+function BackupPanel({
+  account,
+  backup,
+  onBackupNow,
+}: {
+  account: Account | null
+  backup: BackupState
+  onBackupNow: () => void
+}) {
+  const [error, setError] = useState<string | null>(null)
+
+  if (!account) {
+    return (
+      <section className="stack">
+        <h2 className="small-heading">สำรองเกม</h2>
+        <p className="note">
+          เข้าสู่ระบบด้วย Google เพื่อสำรองเกมไว้ในบัญชี และเปิดได้จากหลายเครื่อง
+          ไม่เข้าสู่ระบบก็เล่นได้ตามปกติ
+        </p>
+        <div className="row">
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => {
+              setError(null)
+              signInWithGoogle().catch(() => setError('เข้าสู่ระบบไม่สำเร็จ ลองใหม่อีกครั้ง'))
+            }}
+          >
+            เข้าสู่ระบบด้วย Google
+          </button>
+        </div>
+        {error && (
+          <p className="note error" role="alert">
+            {error}
+          </p>
+        )}
+      </section>
+    )
+  }
+
+  return (
+    <section className="stack">
+      <h2 className="small-heading">สำรองเกม</h2>
+      <p className="note">
+        เข้าสู่ระบบเป็น {account.email ?? 'บัญชี Google'} · เกมทั้งหมดรวมชื่อผู้เล่นสำรองไว้ในบัญชีนี้
+        เห็นได้เฉพาะคุณ
+      </p>
+      <p className={backup.status === 'error' ? 'note error' : 'note'} role="status">
+        {backup.status === 'syncing'
+          ? 'กำลังสำรอง…'
+          : backup.status === 'done'
+            ? `สำรองล่าสุด ${TIME_FORMAT.format(backup.at)}`
+            : backup.status === 'error'
+              ? 'สำรองไม่สำเร็จ จะลองใหม่เมื่อเกมเปลี่ยนหรือเปิดแอปครั้งถัดไป'
+              : 'รอสำรอง'}
+      </p>
+      <div className="row">
+        <button type="button" className="secondary" onClick={onBackupNow} disabled={backup.status === 'syncing'}>
+          สำรองตอนนี้
+        </button>
+        <button type="button" className="secondary" onClick={() => void signOut()}>
+          ออกจากระบบ
+        </button>
+        <button
+          type="button"
+          className="link"
+          onClick={() => {
+            if (
+              window.confirm(
+                'ลบบัญชีและเกมที่สำรองไว้ทั้งหมด? เกมที่อยู่ในเครื่องนี้ยังอยู่ แต่ข้อมูลในบัญชีจะกู้คืนไม่ได้',
+              )
+            ) {
+              deleteAccount().catch(() => setError('ลบบัญชีไม่สำเร็จ ลองใหม่อีกครั้ง'))
+            }
+          }}
+        >
+          ลบบัญชี
+        </button>
+      </div>
+      {error && (
+        <p className="note error" role="alert">
+          {error}
+        </p>
+      )}
     </section>
   )
 }
