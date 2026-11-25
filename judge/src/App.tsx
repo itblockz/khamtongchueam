@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import qrcode from 'qrcode-generator'
 import { SegmentError, segment, uploadGame } from './api'
+import { hasSharedGame, QR_MAX_LENGTH, readShared, shareLink } from './share'
 import {
   anonymize,
   exportGames,
@@ -109,6 +111,16 @@ export default function App() {
     return () => window.clearTimeout(timer)
   }, [games])
 
+  // A game handed over from another device arrives as a link (#game=...)
+  const [incoming, setIncoming] = useState<SavedGame | 'broken' | null>(null)
+  useEffect(() => {
+    const hash = window.location.hash
+    if (!hasSharedGame(hash)) return
+    // drop the game from the address bar so a reload does not offer it again
+    window.history.replaceState(null, '', window.location.pathname + window.location.search)
+    void readShared(hash).then((game) => setIncoming(game ?? 'broken'))
+  }, [])
+
   const round = games.find((g) => g.id === currentId)?.round ?? null
   const game = useMemo(() => (round ? replay(round) : null), [round])
 
@@ -129,6 +141,21 @@ export default function App() {
     </button>
   )
 
+  if (incoming && incoming !== 'broken') {
+    return (
+      <ReceiveGame
+        game={incoming}
+        alreadyHere={games.find((g) => g.id === incoming.id) ?? null}
+        onAccept={() => {
+          setGames((all) => mergeGames(all, [incoming]).games)
+          setCurrentId(incoming.id)
+          setIncoming(null)
+        }}
+        onDecline={() => setIncoming(null)}
+      />
+    )
+  }
+
   if (!round || !game) {
     return (
       <Setup
@@ -146,6 +173,7 @@ export default function App() {
           return result
         }}
         dropped={dropped}
+        brokenLink={incoming === 'broken'}
       />
     )
   }
@@ -202,6 +230,7 @@ function Setup({
   onDelete,
   onImport,
   dropped,
+  brokenLink,
 }: {
   namesText: string
   onNamesChange: (text: string) => void
@@ -213,6 +242,7 @@ function Setup({
   onDelete: (id: string) => void
   onImport: (games: SavedGame[]) => { added: number; updated: number }
   dropped: number
+  brokenLink: boolean
 }) {
   const { names, duplicates, canStart } = parseNames(namesText)
 
@@ -226,6 +256,11 @@ function Setup({
   return (
     <main className="page">
       <h1>คำต้องเชื่อม</h1>
+      {brokenLink && (
+        <p className="note error" role="alert">
+          เปิดเกมจากลิงก์ไม่ได้ ลิงก์อาจไม่ครบ ลองส่งใหม่อีกครั้ง
+        </p>
+      )}
       <form className="stack" onSubmit={handleSubmit}>
         <label htmlFor="names">รายชื่อผู้เล่น (บรรทัดละคน เรียงตามลำดับเล่น)</label>
         <textarea
@@ -545,6 +580,7 @@ function SavedGames({
   onOpen: (id: string) => void
   onDelete: (id: string) => void
 }) {
+  const [sharingId, setSharingId] = useState<string | null>(null)
   if (games.length === 0) return null
   const sorted = [...games].sort((a, b) => b.updatedAt - a.updatedAt)
   return (
@@ -578,6 +614,15 @@ function SavedGames({
                 </button>
                 <button
                   type="button"
+                  className="secondary"
+                  aria-label={`ส่งต่อเกม ${names}`}
+                  aria-expanded={sharingId === saved.id}
+                  onClick={() => setSharingId(sharingId === saved.id ? null : saved.id)}
+                >
+                  ส่งต่อ
+                </button>
+                <button
+                  type="button"
                   className="link"
                   aria-label={`ลบเกม ${names}`}
                   onClick={() => {
@@ -587,11 +632,123 @@ function SavedGames({
                   ลบ
                 </button>
               </div>
+              {sharingId === saved.id && <ShareBox game={saved} />}
             </li>
           )
         })}
       </ul>
     </section>
+  )
+}
+
+/** Asks before adding a game opened from another device's link. */
+function ReceiveGame({
+  game,
+  alreadyHere,
+  onAccept,
+  onDecline,
+}: {
+  game: SavedGame
+  alreadyHere: SavedGame | null
+  onAccept: () => void
+  onDecline: () => void
+}) {
+  const state = replay(game.round)
+  const winner = state.players.find((p) => p.id === state.winnerId)
+  const older = alreadyHere !== null && alreadyHere.updatedAt >= game.updatedAt
+  return (
+    <main className="page">
+      <h1>รับเกมจากอีกเครื่อง</h1>
+      <p>
+        <strong>{winner ? `${winner.name} ชนะ` : `กำลังเล่น · ตาของ ${currentPlayer(state).name}`}</strong>
+      </p>
+      <p className="note">
+        {DATE_FORMAT.format(game.updatedAt)} · {state.words.length} คำ ·{' '}
+        {game.round.players.map((p) => p.name).join(', ')}
+      </p>
+      {alreadyHere && (
+        <p className="note">
+          {older
+            ? 'เครื่องนี้มีเกมนี้ฉบับเดียวกันหรือใหม่กว่าอยู่แล้ว'
+            : 'เครื่องนี้มีเกมนี้ฉบับเก่ากว่า จะถูกแทนด้วยฉบับนี้'}
+        </p>
+      )}
+      <div className="row">
+        <button type="button" onClick={onAccept}>
+          {older ? 'เปิดเกม' : 'เพิ่มเข้ารายการและเปิด'}
+        </button>
+        <button type="button" className="secondary" onClick={onDecline}>
+          ไม่รับ
+        </button>
+      </div>
+    </main>
+  )
+}
+
+/** A link (and QR code) that hands this game to another device. */
+function ShareBox({ game }: { game: SavedGame }) {
+  const [link, setLink] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    void shareLink(game).then((made) => {
+      if (!cancelled) setLink(made)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [game])
+
+  const qr = useMemo(() => {
+    if (!link || link.length > QR_MAX_LENGTH) return null
+    const code = qrcode(0, 'L')
+    code.addData(link)
+    code.make()
+    return code.createDataURL(4, 4)
+  }, [link])
+
+  if (!link) return <p className="note">กำลังสร้างลิงก์…</p>
+
+  return (
+    <div className="stack edit-box">
+      <p className="note">
+        เปิดลิงก์นี้บนอีกเครื่อง เกมจะถูกเพิ่มเข้ารายการของเครื่องนั้น (เป็นสำเนา ควรเล่นต่อเครื่องเดียว)
+        ลิงก์มีชื่อผู้เล่นอยู่ด้วย ส่งเฉพาะคนที่ต้องการ
+      </p>
+      {qr ? (
+        <img className="qr" src={qr} alt="QR code ของลิงก์เกมนี้" />
+      ) : (
+        <p className="note">เกมนี้ยาวเกินกว่าจะทำเป็น QR code ส่งลิงก์ทางแชทแทน</p>
+      )}
+      <div className="row">
+        {typeof navigator.share === 'function' && (
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => {
+              navigator.share({ title: 'เกมคำต้องเชื่อม', url: link }).catch(() => {
+                /* cancelled */
+              })
+            }}
+          >
+            แชร์ลิงก์
+          </button>
+        )}
+        <button
+          type="button"
+          className="secondary"
+          onClick={() => {
+            navigator.clipboard
+              ?.writeText(link)
+              .then(() => setCopied(true))
+              .catch(() => setCopied(false))
+          }}
+        >
+          {copied ? 'คัดลอกแล้ว' : 'คัดลอกลิงก์'}
+        </button>
+      </div>
+    </div>
   )
 }
 

@@ -40,7 +40,7 @@ function isRound(value: unknown): value is Round {
   )
 }
 
-function isGame(value: unknown): value is SavedGame {
+export function isGame(value: unknown): value is SavedGame {
   if (!value || typeof value !== 'object') return false
   const game = value as SavedGame
   return (
