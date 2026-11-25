@@ -18,6 +18,12 @@ import {
   askToKeepStorage,
   loadGames,
   loadSettings,
+  loadNames,
+  saveNames,
+  declinedMerge,
+  markOwnersAssigned,
+  ownersAssigned,
+  setDeclinedMerge,
   loadTombstones,
   mergeGames,
   newId,
@@ -115,8 +121,8 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    saveSettings({ namesText, seconds: timer.seconds, currentId })
-  }, [namesText, timer.seconds, currentId])
+    saveSettings({ namesText: '', seconds: timer.seconds, currentId })
+  }, [timer.seconds, currentId])
 
   // Write only the games that changed (and drop deleted ones) once loading is done
   const stored = useRef<Map<string, SavedGame> | null>(null)
@@ -165,27 +171,90 @@ export default function App() {
   // Optional Google sign-in: a signed-in judge's games are backed up to their account
   // and brought together with every other device signed in to it.
   const [account, setAccount] = useState<Account | null>(null)
+  /** Sign-in state is read asynchronously; games are shown once it is known. */
+  const [accountKnown, setAccountKnown] = useState(false)
   const [backup, setBackup] = useState<BackupState>({ status: 'idle' })
   const tombstones = useRef(loadTombstones())
-  useEffect(() => watchAccount(setAccount), [])
+  useEffect(
+    () =>
+      watchAccount((next) => {
+        setAccount((prev) => (prev?.id === next?.id ? prev : next))
+        setAccountKnown(true)
+      }),
+    [],
+  )
+
+  // Each game belongs to whoever played it: an account (owner = user id) or nobody
+  // (played signed out). Only the games of whoever is using the app are shown and
+  // backed up, so two accounts on one device never see or take each other's games.
+  const ownerId = account?.id
+  const mine = useMemo(() => games.filter((g) => g.owner === ownerId), [games, ownerId])
+  const mineRef = useRef(mine)
+  useEffect(() => {
+    mineRef.current = mine
+  }, [mine])
+  const guestGames = useMemo(() => games.filter((g) => g.owner === undefined), [games])
+
+  // The player-names box follows whoever is using the app, like their games
+  const namesKey = ownerId ?? 'guest'
+  const namesFor = useRef<string | null>(null)
+  useEffect(() => {
+    if (!accountKnown || namesFor.current === namesKey) return
+    const first = namesFor.current === null
+    namesFor.current = namesKey
+    // names typed before this was kept per account go to whoever is using it now
+    const next = loadNames(namesKey) ?? (first ? (settings.namesText ?? '') : '')
+    setNamesText(next)
+  }, [accountKnown, namesKey, settings.namesText])
+  useEffect(() => {
+    if (namesFor.current === namesKey) saveNames(namesKey, namesText)
+  }, [namesText, namesKey])
+
+  // Games saved before accounts existed belong to whoever was signed in at the time
+  useEffect(() => {
+    if (!loaded || !accountKnown || ownersAssigned()) return
+    markOwnersAssigned()
+    if (account) {
+      setGames((all) => all.map((g) => (g.owner === undefined ? { ...g, owner: account.id } : g)))
+    }
+  }, [loaded, accountKnown, account])
+
+  // A game open from another owner (after signing in or out) is closed
+  useEffect(() => {
+    if (!loaded || !accountKnown || currentId === null) return
+    if (!mine.some((g) => g.id === currentId) && games.some((g) => g.id === currentId)) {
+      setCurrentId(null)
+    }
+  }, [loaded, accountKnown, currentId, mine, games])
 
   const syncing = useRef(false)
-  const syncNow = useCallback(async () => {
-    if (!account || syncing.current) return
+  const syncNow = useCallback(async (): Promise<boolean> => {
+    if (!account || syncing.current) return false
     syncing.current = true
     setBackup({ status: 'syncing' })
     try {
       const remote = await pullGames()
-      const result = reconcile(gamesRef.current, tombstones.current, remote)
+      const result = reconcile(mineRef.current, tombstones.current, remote)
       if (result.take.length > 0 || result.remove.length > 0) {
-        setGames((all) => applyRemote(all, result.take, result.remove))
+        const owner = account.id
+        const take = result.take.map((g) => ({ ...g, owner }))
+        setGames((all) => [
+          ...all.filter((g) => g.owner !== owner),
+          ...applyRemote(
+            all.filter((g) => g.owner === owner),
+            take,
+            result.remove,
+          ),
+        ])
       }
       await pushGames(result.push)
       tombstones.current = result.tombstones
       saveTombstones(tombstones.current)
       setBackup({ status: 'done', at: Date.now() })
+      return true
     } catch {
       setBackup({ status: 'error' })
+      return false
     } finally {
       syncing.current = false
     }
@@ -207,12 +276,51 @@ export default function App() {
   }, [account, syncNow])
 
   function removeGame(id: string) {
-    tombstones.current = { ...tombstones.current, [id]: Date.now() }
-    saveTombstones(tombstones.current)
+    if (account) {
+      // tell the account (and its other devices) this game is gone
+      tombstones.current = { ...tombstones.current, [id]: Date.now() }
+      saveTombstones(tombstones.current)
+    }
     setGames((all) => all.filter((g) => g.id !== id))
   }
 
-  const round = games.find((g) => g.id === currentId)?.round ?? null
+  /** Signed-out games join the account that just signed in, if the judge says yes. */
+  const [mergeAnswered, setMergeAnswered] = useState(false)
+  const askMerge =
+    account !== null &&
+    ownersAssigned() &&
+    !mergeAnswered &&
+    guestGames.length > 0 &&
+    !declinedMerge(account.id)
+  function answerMerge(yes: boolean) {
+    if (!account) return
+    if (yes) {
+      setGames((all) => all.map((g) => (g.owner === undefined ? { ...g, owner: account.id } : g)))
+    } else {
+      setDeclinedMerge(account.id)
+    }
+    setMergeAnswered(true)
+  }
+
+  /** Sign out. Keeps the account's games on this device (hidden) unless asked not to. */
+  async function leave(removeFromDevice: boolean): Promise<'done' | 'not-backed-up'> {
+    if (!account) return 'done'
+    const owner = account.id
+    if (removeFromDevice && !(await syncNow())) return 'not-backed-up'
+    await signOut()
+    if (removeFromDevice) setGames((all) => all.filter((g) => g.owner !== owner))
+    setMergeAnswered(false)
+    return 'done'
+  }
+
+  async function removeAccount() {
+    if (!account) return
+    const owner = account.id
+    await deleteAccount()
+    setGames((all) => all.filter((g) => g.owner !== owner))
+  }
+
+  const round = mine.find((g) => g.id === currentId)?.round ?? null
   const game = useMemo(() => (round ? replay(round) : null), [round])
 
   function setRound(next: Round) {
@@ -221,7 +329,13 @@ export default function App() {
 
   function startGame(names: string[]) {
     const now = Date.now()
-    const created: SavedGame = { id: newId(), createdAt: now, updatedAt: now, round: startRound(names) }
+    const created: SavedGame = {
+      id: newId(),
+      createdAt: now,
+      updatedAt: now,
+      round: startRound(names),
+      ...(ownerId ? { owner: ownerId } : {}),
+    }
     setGames((all) => [created, ...all])
     setCurrentId(created.id)
   }
@@ -232,7 +346,7 @@ export default function App() {
     </button>
   )
 
-  if (!loaded) {
+  if (!loaded || !accountKnown) {
     return (
       <main className="page">
         <p className="note">กำลังโหลด…</p>
@@ -248,18 +362,28 @@ export default function App() {
         timer={timer}
         onTimerChange={setTimer}
         onStart={startGame}
-        games={games}
+        games={mine}
         onOpen={setCurrentId}
         onDelete={removeGame}
         onImport={(incoming) => {
-          const result = mergeGames(games, incoming)
-          setGames(result.games)
+          // imported games belong to whoever is using the app now
+          const owned = incoming.map((g) => {
+            const copy: SavedGame = { id: g.id, createdAt: g.createdAt, updatedAt: g.updatedAt, round: g.round }
+            return ownerId ? { ...copy, owner: ownerId } : copy
+          })
+          const result = mergeGames(mine, owned)
+          const ids = new Set(result.games.map((g) => g.id))
+          setGames((all) => [...all.filter((g) => !ids.has(g.id)), ...result.games])
           return result
         }}
         storageError={storageError}
         account={account}
         backup={backup}
         onBackupNow={() => void syncNow()}
+        askMerge={askMerge ? guestGames.length : 0}
+        onAnswerMerge={answerMerge}
+        onSignOut={leave}
+        onDeleteAccount={removeAccount}
       />
     )
   }
@@ -319,6 +443,10 @@ function Setup({
   account,
   backup,
   onBackupNow,
+  askMerge,
+  onAnswerMerge,
+  onSignOut,
+  onDeleteAccount,
 }: {
   namesText: string
   onNamesChange: (text: string) => void
@@ -333,6 +461,10 @@ function Setup({
   account: Account | null
   backup: BackupState
   onBackupNow: () => void
+  askMerge: number
+  onAnswerMerge: (yes: boolean) => void
+  onSignOut: (removeFromDevice: boolean) => Promise<'done' | 'not-backed-up'>
+  onDeleteAccount: () => Promise<void>
 }) {
   const { names, duplicates, canStart } = parseNames(namesText)
 
@@ -384,7 +516,26 @@ function Setup({
         แอปเก็บคำ การแยกพยางค์ และผลการตัดสินแบบไม่ระบุตัวตน (ไม่เก็บชื่อผู้เล่น)
         เพื่อใช้พัฒนาระบบ
       </p>
-      <BackupPanel account={account} backup={backup} onBackupNow={onBackupNow} />
+      {askMerge > 0 && (
+        <section className="stack edit-box" role="dialog" aria-label="เพิ่มเกมเข้าบัญชี">
+          <p>มีเกมที่เล่นไว้ในเครื่องนี้ตอนยังไม่ได้เข้าสู่ระบบ {askMerge} เกม เพิ่มเข้าบัญชีนี้ไหม</p>
+          <div className="row">
+            <button type="button" onClick={() => onAnswerMerge(true)}>
+              เพิ่มเข้าบัญชี
+            </button>
+            <button type="button" className="secondary" onClick={() => onAnswerMerge(false)}>
+              ไม่ต้อง
+            </button>
+          </div>
+        </section>
+      )}
+      <BackupPanel
+        account={account}
+        backup={backup}
+        onBackupNow={onBackupNow}
+        onSignOut={onSignOut}
+        onDeleteAccount={onDeleteAccount}
+      />
       <SavedGames games={games} onOpen={onOpen} onDelete={onDelete} />
       {storageError && (
         <p className="note error" role="alert">
@@ -724,12 +875,19 @@ function BackupPanel({
   account,
   backup,
   onBackupNow,
+  onSignOut,
+  onDeleteAccount,
 }: {
   account: Account | null
   backup: BackupState
   onBackupNow: () => void
+  onSignOut: (removeFromDevice: boolean) => Promise<'done' | 'not-backed-up'>
+  onDeleteAccount: () => Promise<void>
 }) {
   const [error, setError] = useState<string | null>(null)
+  const [leaving, setLeaving] = useState(false)
+  const [removeHere, setRemoveHere] = useState(false)
+  const [busy, setBusy] = useState(false)
 
   if (!account) {
     return (
@@ -782,7 +940,15 @@ function BackupPanel({
             ลองอีกครั้ง
           </button>
         )}
-        <button type="button" className="secondary" onClick={() => void signOut()}>
+        <button
+          type="button"
+          className="secondary"
+          aria-expanded={leaving}
+          onClick={() => {
+            setLeaving(!leaving)
+            setError(null)
+          }}
+        >
           ออกจากระบบ
         </button>
         <button
@@ -794,13 +960,48 @@ function BackupPanel({
                 'ลบบัญชีและเกมที่สำรองไว้ทั้งหมด? เกมที่อยู่ในเครื่องนี้ยังอยู่ แต่ข้อมูลในบัญชีจะกู้คืนไม่ได้',
               )
             ) {
-              deleteAccount().catch(() => setError('ลบบัญชีไม่สำเร็จ ลองใหม่อีกครั้ง'))
+              onDeleteAccount().catch(() => setError('ลบบัญชีไม่สำเร็จ ลองใหม่อีกครั้ง'))
             }
           }}
         >
           ลบบัญชี
         </button>
       </div>
+      {leaving && (
+        <div className="stack edit-box">
+          <label className="check">
+            <input type="checkbox" checked={removeHere} onChange={(e) => setRemoveHere(e.target.checked)} />
+            ลบเกมของบัญชีนี้ออกจากเครื่องนี้ด้วย (ถ้าใช้เครื่องคนอื่น)
+          </label>
+          <p className="note">
+            {removeHere
+              ? 'จะสำรองให้ครบก่อนลบ เข้าสู่ระบบอีกครั้งแล้วเกมจะกลับมา'
+              : 'เกมของบัญชีนี้ยังอยู่ในเครื่องแต่จะไม่แสดง เข้าสู่ระบบอีกครั้งแล้วเห็นทันที'}
+          </p>
+          <div className="row">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                setBusy(true)
+                setError(null)
+                void onSignOut(removeHere)
+                  .then((result) => {
+                    if (result === 'not-backed-up') {
+                      setError('สำรองไม่สำเร็จ จึงยังไม่ได้ออกจากระบบ ลองใหม่เมื่อมีเน็ต หรือออกโดยไม่ลบเกม')
+                    }
+                  })
+                  .finally(() => setBusy(false))
+              }}
+            >
+              ยืนยันออกจากระบบ
+            </button>
+            <button type="button" className="secondary" onClick={() => setLeaving(false)}>
+              ยกเลิก
+            </button>
+          </div>
+        </div>
+      )}
       {error && (
         <p className="note error" role="alert">
           {error}

@@ -350,3 +350,14 @@ button.selected-choice {
 .challenge-line {
   font-weight: 600;
 }
+
+.check {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.check input {
+  width: auto;
+  margin-top: 4px;
+}

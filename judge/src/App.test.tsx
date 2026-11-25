@@ -10,15 +10,22 @@ const cloud = vi.hoisted(() => ({
   account: null as { id: string; email: string | null } | null,
   remote: [] as RemoteGame[],
   pushed: [] as RemoteGame[][],
+  listener: null as ((a: { id: string; email: string | null } | null) => void) | null,
+  /** Sign in or out as if the user did it in another tab or came back from Google. */
+  become(next: { id: string; email: string | null } | null) {
+    this.account = next
+    this.listener?.(next)
+  },
 }))
 vi.mock('./cloud', () => ({
   watchAccount: (listener: (a: typeof cloud.account) => void) => {
+    cloud.listener = listener
     listener(cloud.account)
     return () => {}
   },
   signInWithGoogle: vi.fn(async () => {}),
-  signOut: vi.fn(async () => {}),
-  deleteAccount: vi.fn(async () => {}),
+  signOut: vi.fn(async () => cloud.become(null)),
+  deleteAccount: vi.fn(async () => cloud.become(null)),
   pullGames: vi.fn(async () => cloud.remote),
   pushGames: vi.fn(async (games: RemoteGame[]) => {
     cloud.pushed.push(games)
@@ -42,6 +49,7 @@ beforeEach(async () => {
   cloud.account = null
   cloud.remote = []
   cloud.pushed = []
+  cloud.listener = null
   resetDbForTests()
   globalThis.indexedDB = new IDBFactory()
   vi.stubGlobal(
@@ -565,6 +573,101 @@ describe('judge app', () => {
       fireEvent.click(await screen.findByRole('button', { name: 'ลองอีกครั้ง' }, { timeout: 4000 }))
       await waitFor(() => expect(screen.getByText(/สำรองล่าสุด/)).toBeInTheDocument(), { timeout: 4000 })
       expect(screen.queryByRole('button', { name: 'ลองอีกครั้ง' })).not.toBeInTheDocument()
+    }, 10000)
+
+    it('asks before adding games played signed out, and keeps them apart if not', async () => {
+      await startWith('ออย\nบีม')
+      await submit('กาแฟ')
+      fireEvent.click(screen.getByRole('button', { name: 'หน้าแรก' }))
+
+      act(() => cloud.become({ id: 'u1', email: 'a@example.com' }))
+      const ask = await screen.findByRole('dialog', { name: 'เพิ่มเกมเข้าบัญชี' })
+      expect(within(ask).getByText(/1 เกม/)).toBeInTheDocument()
+      fireEvent.click(within(ask).getByRole('button', { name: 'ไม่ต้อง' }))
+
+      // not this account's game: not listed, not backed up
+      expect(screen.queryByText('กำลังเล่น · ตาของ บีม')).not.toBeInTheDocument()
+      await waitFor(() => expect(screen.getByText(/สำรองล่าสุด/)).toBeInTheDocument(), { timeout: 4000 })
+      expect(cloud.pushed.flat()).toEqual([])
+
+      // signed out again, the game is back
+      act(() => cloud.become(null))
+      expect(await screen.findByText('กำลังเล่น · ตาของ บีม')).toBeInTheDocument()
+    }, 10000)
+
+    it('adds games played signed out to the account when asked to', async () => {
+      await startWith('ออย\nบีม')
+      await submit('กาแฟ')
+      fireEvent.click(screen.getByRole('button', { name: 'หน้าแรก' }))
+
+      act(() => cloud.become({ id: 'u1', email: 'a@example.com' }))
+      fireEvent.click(await screen.findByRole('button', { name: 'เพิ่มเข้าบัญชี' }))
+
+      expect(screen.getByText('กำลังเล่น · ตาของ บีม')).toBeInTheDocument()
+      await waitFor(() => expect(cloud.pushed.flat()).toHaveLength(1), { timeout: 4000 })
+      expect(cloud.pushed.flat()[0].game?.owner).toBe('u1')
+    }, 10000)
+
+    it('never shows or backs up one account\'s games under another', async () => {
+      cloud.account = { id: 'u1', email: 'a@example.com' }
+      await startWith('ออย\nบีม')
+      await submit('กาแฟ')
+      fireEvent.click(screen.getByRole('button', { name: 'หน้าแรก' }))
+      await waitFor(() => expect(cloud.pushed.flat()).toHaveLength(1), { timeout: 4000 })
+
+      // sign out, keeping the games on this device
+      fireEvent.click(screen.getByRole('button', { name: 'ออกจากระบบ' }))
+      fireEvent.click(screen.getByRole('button', { name: 'ยืนยันออกจากระบบ' }))
+      await waitFor(() => expect(screen.queryByText('กำลังเล่น · ตาของ บีม')).not.toBeInTheDocument())
+
+      cloud.pushed = []
+      act(() => cloud.become({ id: 'u2', email: 'b@example.com' }))
+      await waitFor(() => expect(screen.getByText(/สำรองล่าสุด/)).toBeInTheDocument(), { timeout: 4000 })
+      expect(screen.queryByText('กำลังเล่น · ตาของ บีม')).not.toBeInTheDocument()
+      expect(cloud.pushed.flat()).toEqual([])
+
+      // nor its player names
+      expect(screen.getByLabelText(/รายชื่อผู้เล่น/)).toHaveValue('')
+
+      // the first account gets its game and names back straight away
+      act(() => cloud.become({ id: 'u1', email: 'a@example.com' }))
+      expect(await screen.findByText('กำลังเล่น · ตาของ บีม')).toBeInTheDocument()
+      expect(screen.getByLabelText(/รายชื่อผู้เล่น/)).toHaveValue('ออย\nบีม')
+    }, 12000)
+
+    it('can remove the account\'s games from this device on sign out, after backing up', async () => {
+      cloud.account = { id: 'u1', email: 'a@example.com' }
+      await startWith('ออย\nบีม')
+      await submit('กาแฟ')
+      fireEvent.click(screen.getByRole('button', { name: 'หน้าแรก' }))
+
+      fireEvent.click(screen.getByRole('button', { name: 'ออกจากระบบ' }))
+      fireEvent.click(screen.getByLabelText(/ลบเกมของบัญชีนี้ออกจากเครื่องนี้ด้วย/))
+      fireEvent.click(screen.getByRole('button', { name: 'ยืนยันออกจากระบบ' }))
+
+      await waitFor(() => expect(screen.getByRole('button', { name: 'เข้าสู่ระบบด้วย Google' })).toBeInTheDocument())
+      expect(cloud.pushed.flat().map((g) => g.game?.round.players[0].name)).toContain('ออย')
+      // gone from this device: signing in as someone else or again shows nothing locally
+      act(() => cloud.become({ id: 'u1', email: 'a@example.com' }))
+      await waitFor(() => expect(screen.getByText(/สำรองล่าสุด/)).toBeInTheDocument(), { timeout: 4000 })
+      expect(screen.queryByText('กำลังเล่น · ตาของ บีม')).not.toBeInTheDocument()
+    }, 12000)
+
+    it('does not sign out or remove games when the backup before removing fails', async () => {
+      const { pullGames } = await import('./cloud')
+      cloud.account = { id: 'u1', email: 'a@example.com' }
+      await startWith('ออย\nบีม')
+      fireEvent.click(screen.getByRole('button', { name: 'หน้าแรก' }))
+      await waitFor(() => expect(screen.getByText(/สำรองล่าสุด/)).toBeInTheDocument(), { timeout: 4000 })
+
+      vi.mocked(pullGames).mockRejectedValueOnce(new Error('offline'))
+      fireEvent.click(screen.getByRole('button', { name: 'ออกจากระบบ' }))
+      fireEvent.click(screen.getByLabelText(/ลบเกมของบัญชีนี้ออกจากเครื่องนี้ด้วย/))
+      fireEvent.click(screen.getByRole('button', { name: 'ยืนยันออกจากระบบ' }))
+
+      expect(await screen.findByText(/จึงยังไม่ได้ออกจากระบบ/)).toBeInTheDocument()
+      expect(screen.getByText(/เข้าสู่ระบบเป็น a@example.com/)).toBeInTheDocument()
+      expect(screen.getByText('กำลังเล่น · ตาของ ออย')).toBeInTheDocument()
     }, 10000)
 
     it('sends a deletion to the account', async () => {
