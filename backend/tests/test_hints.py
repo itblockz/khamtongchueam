@@ -44,3 +44,30 @@ def test_checked_answers_override_the_dictionaries() -> None:
     assert translation_between('แมวน้ำ', 'ซีล') == 'seal'
   finally:
     reset_for_tests()
+
+
+def test_gemini_answers_are_used_when_the_word_is_sent(monkeypatch) -> None:
+  from backend.app import llm
+
+  monkeypatch.setattr(llm, 'check', lambda previous, word: llm.Verdict(
+    noun={'กิน': False, 'หญิงสาว': False, 'ตก': True}.get(word),
+    translation='dog' if (previous, word) == ('ด็อก', 'หมาน้อย') else None,
+    answered=True,
+  ))
+  # Gemini: not a noun → hint (no dictionary gives กิน a noun sense)
+  assert hints_for('กิน', 'ข้าว', ask_model=True) == [{'kind': 'not-noun'}]
+  # a dictionary noun sense overrules Gemini
+  assert hints_for('หญิงสาว', 'คาน', ask_model=True) == []
+  # Gemini says ตก is a noun here (ทิศตะวันตก): no hint, though the dictionaries would give one
+  assert hints_for('ตก', 'ออก', ask_model=True) == []
+  assert hints_for('ตก', 'ออก') == [{'kind': 'not-noun'}]
+  # a translation only Gemini finds
+  assert hints_for('หมาน้อย', 'ด็อก', ask_model=True) == [{'kind': 'translation', 'of': 'ด็อก', 'english': 'dog'}]
+
+
+def test_without_a_key_gemini_is_not_asked(monkeypatch) -> None:
+  from backend.app import llm
+
+  monkeypatch.delenv('GEMINI_API_KEY', raising=False)
+  assert llm.check('ด็อก', 'หมา') == {'noun': None, 'translation': None, 'answered': False}
+  assert hints_for('หมา', 'ด็อก', ask_model=True) == [{'kind': 'translation', 'of': 'ด็อก', 'english': 'dog'}]

@@ -15,11 +15,13 @@ export async function segmentWithHints(
   text: string,
   previous: string | null,
   signal?: AbortSignal,
+  /** The word is being sent: worth a slower, better check (Gemini, if set up). */
+  check = false,
 ): Promise<{ syllables: string[]; hints: WordHint[] }> {
   const response = await fetch('/api/syllables', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(previous ? { text, previous } : { text }),
+    body: JSON.stringify({ text, ...(previous ? { previous } : {}), ...(check ? { check: true } : {}) }),
     signal,
   })
 

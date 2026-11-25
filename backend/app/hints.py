@@ -14,6 +14,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal, TypedDict
 
+from . import llm
 from .word_checks import checks
 
 DATA = Path(__file__).resolve().parent / 'data' / 'word_hints.json'
@@ -26,9 +27,9 @@ class Hint(TypedDict, total=False):
 
 
 @lru_cache(maxsize=1)
-def _data() -> tuple[frozenset[str], dict[str, list[str]], dict[str, set[str]]]:
+def _data() -> tuple[frozenset[str], dict[str, list[str]], dict[str, set[str]], frozenset[str]]:
   raw = json.loads(DATA.read_text(encoding='utf-8'))
-  return frozenset(raw['notNoun']), raw['gloss'], _transliterations()
+  return frozenset(raw['notNoun']), raw['gloss'], _transliterations(), frozenset(raw.get('noun', []))
 
 
 def _transliterations() -> dict[str, set[str]]:
@@ -125,12 +126,30 @@ def translation_between(previous: str, word: str) -> str | None:
   return None
 
 
-def hints_for(word: str, previous: str | None = None) -> list[Hint]:
+def hints_for(word: str, previous: str | None = None, ask_model: bool = False) -> list[Hint]:
+  """Dictionaries always; with ask_model (when the word is sent) Gemini too, if set up.
+
+  - not a noun: a checked answer decides; else Gemini (with the word before as
+    context), unless a dictionary gives the word a noun sense; else the dictionaries.
+  - translation: Gemini or the dictionaries, whichever finds one.
+  """
+  word = word.strip()
+  previous = previous.strip() if previous else None
+  verdict = llm.check(previous, word) if ask_model else llm.Verdict(noun=None, translation=None, answered=False)
   hints: list[Hint] = []
-  if may_not_be_noun(word):
+
+  checked = checks().get(word)
+  if checked is not None and checked.noun is not None:
+    not_noun = not checked.noun
+  elif verdict['noun'] is not None:
+    not_noun = verdict['noun'] is False and word not in _data()[3]
+  else:
+    not_noun = may_not_be_noun(word)
+  if not_noun:
     hints.append({'kind': 'not-noun'})
+
   if previous:
-    english = translation_between(previous, word)
+    english = verdict['translation'] or translation_between(previous, word)
     if english:
-      hints.append({'kind': 'translation', 'of': previous.strip(), 'english': english})
+      hints.append({'kind': 'translation', 'of': previous, 'english': english})
   return hints

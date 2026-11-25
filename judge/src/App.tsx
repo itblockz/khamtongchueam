@@ -1015,7 +1015,7 @@ function Play({
     try {
       const manual = manualSplit !== null
       // hints come with the split, so they are kept even when the judge sends at once
-      const checked = await segmentWithHints(text, previousWord)
+      const checked = await segmentWithHints(text, previousWord, undefined, true)
       const syllables = manual ? parseSyllables(manualSplit) : checked.syllables
       const sentHints = checked.hints
       if (syllables.length === 0) {

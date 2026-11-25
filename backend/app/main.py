@@ -27,6 +27,8 @@ class SyllableRequest(BaseModel):
   engine: SyllableEngine = DEFAULT_ENGINE
   # the word said before, to point out a translation of it (judge app)
   previous: str | None = Field(default=None, max_length=feedback.MAX_TEXT_LENGTH)
+  # set when the judge sends the word: worth a slower, better check (Gemini)
+  check: bool = False
 
 
 class WordHint(BaseModel):
@@ -81,7 +83,7 @@ def tokenize_syllables(payload: SyllableRequest) -> SyllableResponse:
     raise HTTPException(status_code=503, detail=str(error)) from error
 
   try:
-    word_hints = [WordHint(**hint) for hint in hints.hints_for(payload.text, payload.previous)]
+    word_hints = [WordHint(**hint) for hint in hints.hints_for(payload.text, payload.previous, ask_model=payload.check)]
   except Exception:  # noqa: BLE001 - hints are extra; segmentation must not fail on them
     word_hints = []
 
