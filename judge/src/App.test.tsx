@@ -554,6 +554,19 @@ describe('judge app', () => {
       expect(pushedIds.length).toBeGreaterThan(0)
     }, 10000)
 
+    it('shows a retry button only when a backup fails', async () => {
+      const { pullGames } = await import('./cloud')
+      cloud.account = { id: 'u1', email: null }
+      vi.mocked(pullGames).mockRejectedValueOnce(new Error('offline'))
+      await startWith('ออย\nบีม')
+      fireEvent.click(screen.getByRole('button', { name: 'หน้าแรก' }))
+      expect(screen.queryByRole('button', { name: 'ลองอีกครั้ง' })).not.toBeInTheDocument()
+
+      fireEvent.click(await screen.findByRole('button', { name: 'ลองอีกครั้ง' }, { timeout: 4000 }))
+      await waitFor(() => expect(screen.getByText(/สำรองล่าสุด/)).toBeInTheDocument(), { timeout: 4000 })
+      expect(screen.queryByRole('button', { name: 'ลองอีกครั้ง' })).not.toBeInTheDocument()
+    }, 10000)
+
     it('sends a deletion to the account', async () => {
       cloud.account = { id: 'u1', email: null }
       await startWith('ออย\nบีม')
