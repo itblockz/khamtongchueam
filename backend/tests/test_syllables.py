@@ -84,3 +84,20 @@ def test_an_abbreviation_part_with_a_vowel_is_split_like_a_word() -> None:
 
 def test_a_word_without_a_dot_is_not_an_abbreviation() -> None:
   assert segment_syllables('คน') == ['คน']
+
+
+@pytest.mark.parametrize(
+  ('text', 'expected'),
+  [
+    ('อวกาศ', ['อ', 'ว', 'กาศ']),
+    ('อวตาร', ['อ', 'ว', 'ตาร']),
+    ('อวยพร', ['อวย', 'พร']),
+  ],
+)
+def test_a_bare_wo_wan_after_a_consonant_is_its_own_syllable(text: str, expected: list[str]) -> None:
+  assert segment_syllables(text) == expected
+
+
+def test_a_silent_letter_with_a_vowel_joins_the_syllable_before() -> None:
+  assert segment_syllables('สิตางศุ์') == ['สิ', 'ตางศุ์']
+  assert segment_syllables('ศักดิ์ศรี') == ['ศักดิ์', 'ศรี']
