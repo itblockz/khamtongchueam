@@ -387,6 +387,8 @@ describe('applyJudge', () => {
 describe('too slow', () => {
   it('puts the player out without a typed word', async () => {
     const { judgeOut, replay, startRound } = await import('./game')
+    const typed = replay(judgeOut(startRound(['ก', 'ข', 'ค']), 'too-slow', 'กาแฟ', ['กา', 'แฟ']))
+    expect(typed.results[0]).toMatchObject({ word: '', syllables: [] })
     const state = replay(judgeOut(startRound(['ก', 'ข', 'ค']), 'too-slow', ''))
     expect(state.lastElimination?.reason).toBe('too-slow')
     expect(state.players[0].out).toBe(true)
