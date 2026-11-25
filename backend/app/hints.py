@@ -14,6 +14,8 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal, TypedDict
 
+from .word_checks import checks
+
 DATA = Path(__file__).resolve().parent / 'data' / 'word_hints.json'
 
 
@@ -45,7 +47,18 @@ def _transliterations() -> dict[str, set[str]]:
 
 
 def may_not_be_noun(word: str) -> bool:
-  return word.strip() in _data()[0]
+  word = word.strip()
+  checked = checks().get(word)
+  if checked is not None and checked.noun is not None:
+    return not checked.noun  # a checked answer beats the dictionaries
+  return word in _data()[0]
+
+
+def _meanings(word: str) -> list[str]:
+  """English meanings: checked ones first, then the dictionary's."""
+  checked = checks().get(word)
+  extra = list(checked.english) if checked else []
+  return extra + [e for e in _data()[1].get(word, []) if e not in extra]
 
 
 # Thai consonants and English letters reduced to the same sound skeleton, so that
@@ -96,13 +109,13 @@ def _sounds_like(thai: str, english: str) -> bool:
 def translation_between(previous: str, word: str) -> str | None:
   """The English word if one of the two is Thai for it and the other is that
   English word written in Thai (หมา → ด็อก, ด็อก → หมา); otherwise None."""
-  _, gloss, translit = _data()
+  translit = _data()[2]
   previous, word = previous.strip(), word.strip()
   if not previous or not word or previous == word:
     return None
   for thai, loan in ((previous, word), (word, previous)):
-    loan_meanings = gloss.get(loan, [])
-    for english in gloss.get(thai, []):
+    loan_meanings = _meanings(loan)
+    for english in _meanings(thai):
       if _sounds_like(thai, english):
         continue  # the "Thai" word is itself the loan
       if loan_meanings and english not in loan_meanings:
