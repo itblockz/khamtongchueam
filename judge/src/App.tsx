@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { SegmentError, segment, uploadGame } from './api'
+import { setSoundOn, soundOn, timeUp, unlockAudio } from './sound'
 import {
   deleteAccount,
   pullGames,
@@ -117,6 +118,12 @@ export default function App() {
   const [loaded, setLoaded] = useState(false)
   /** Set when the browser will not store games (some private modes). */
   const [storageError, setStorageError] = useState(false)
+
+  // the timer can start by itself on a new turn: let any touch unlock its sound
+  useEffect(() => {
+    document.addEventListener('pointerdown', unlockAudio)
+    return () => document.removeEventListener('pointerdown', unlockAudio)
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -855,13 +862,16 @@ function Play({
       setNow(current)
       if (current - timer.startedAt >= settings.seconds * 1000) {
         setTimer({ phase: 'late' })
-        navigator.vibrate?.(300)
+        timeUp()
       }
     }, 100)
     return () => window.clearInterval(id)
   }, [timer, settings.seconds])
 
+  const [sound, setSound] = useState(soundOn)
+
   function startTimer() {
+    unlockAudio()
     setNow(Date.now())
     setTimer({ phase: 'counting', startedAt: Date.now() })
     inputRef.current?.focus() // keep the keyboard up so the judge can type straight away
@@ -946,6 +956,19 @@ function Play({
             onClick={() => setShowScores(!showScores)}
           >
             คะแนน
+          </button>
+          <button
+            type="button"
+            className="link"
+            aria-pressed={sound}
+            aria-label="เสียงหมดเวลา"
+            onClick={() => {
+              unlockAudio()
+              setSoundOn(!sound)
+              setSound(!sound)
+            }}
+          >
+            {sound ? '🔔 เสียง' : '🔕 ปิดเสียง'}
           </button>
         </div>
         {undoButton}

@@ -835,6 +835,17 @@ describe('judge app', () => {
     expect(screen.getByText(/รอบ 1\/4/)).toBeInTheDocument()
   })
 
+  it('turns the time-up sound off and remembers it', async () => {
+    await startWith('ออย\nบีม')
+    const toggle = () => screen.getByRole('button', { name: 'เสียงหมดเวลา' })
+    expect(toggle()).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.click(toggle())
+    expect(toggle()).toHaveAttribute('aria-pressed', 'false')
+    expect(toggle()).toHaveTextContent('ปิดเสียง')
+    const { soundOn } = await import('./sound')
+    expect(soundOn()).toBe(false)
+  })
+
   it('corrects the spelling of an earlier word', async () => {
     await startWith('ออย\nบีม\nเจ')
     await submit('กาแป')
