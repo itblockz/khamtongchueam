@@ -50,6 +50,18 @@ describe('anonymize', () => {
     })
   })
 
+  it('sends the split of a word put out, so a filled-in split reaches collection', () => {
+    const round = judgeOut(startRound(['ออย', 'บีม', 'เจ']), 'not-noun', 'วิ่งเล่น', ['วิ่ง', 'เล่น'])
+    const data = anonymize({ id: 'abc123', createdAt: 5, updatedAt: 6, round })
+    expect(data.events[0]).toEqual({
+      type: 'judge',
+      playerId: 'p1',
+      word: 'วิ่งเล่น',
+      syllables: ['วิ่ง', 'เล่น'],
+      reason: 'not-noun',
+    })
+  })
+
   it('keeps the segmenter split from before a later correction', () => {
     let round = addWord(startRound(['ออย', 'บีม']), 'มหา', ['ม', 'หา'])
     round = editWord(round, 0, ['มหา'])
