@@ -361,14 +361,14 @@ describe('judge app', () => {
     fireEvent.click(screen.getByRole('button', { name: 'หน้าแรก' }))
 
     expect(screen.getByLabelText(/รายชื่อผู้เล่น/)).toHaveValue('ออย\nบีม')
-    expect(screen.getByText('กำลังเล่น · ตาของ บีม')).toBeInTheDocument()
+    expect(screen.getByText(/กำลังเล่น · ตาของ บีม$/)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'เล่นต่อ ออย, บีม' }))
     expect(screen.getByText('กา | แฟ')).toBeInTheDocument()
   })
 
 
   describe('saved games', () => {
-    it('keeps a finished game when playing again, and lists both', async () => {
+    it('lists a match as one row with its round and points, and ends a match early', async () => {
       await startWith('ออย\nบีม')
       await submit('หาดทราย')
       fireEvent.change(screen.getByLabelText(/^คำของ/), { target: { value: 'ทรายทอง' } })
@@ -378,10 +378,20 @@ describe('judge app', () => {
       fireEvent.click(screen.getByRole('button', { name: 'รอบถัดไป (2/4)' }))
       fireEvent.click(screen.getByRole('button', { name: 'หน้าแรก' }))
 
-      expect(screen.getByText('ออย ชนะ')).toBeInTheDocument()
-      expect(screen.getByText('กำลังเล่น · ตาของ ออย')).toBeInTheDocument()
-      fireEvent.click(screen.getByRole('button', { name: 'ดู ออย, บีม' }))
-      expect(screen.getByRole('heading', { name: /^ออย ชนะ/ })).toBeInTheDocument()
+      expect(screen.getAllByRole('listitem')).toHaveLength(1)
+      expect(screen.getByText('รอบ 2/4 · กำลังเล่น · ตาของ ออย')).toBeInTheDocument()
+      expect(screen.getByText('คะแนน: ออย 3 · บีม 1')).toBeInTheDocument()
+
+      // finish round 2 and end the match there
+      fireEvent.click(screen.getByRole('button', { name: 'เล่นต่อ ออย, บีม' }))
+      fireEvent.click(screen.getByRole('button', { name: 'ไม่ทันเวลา' }))
+      vi.spyOn(window, 'confirm').mockReturnValue(true)
+      fireEvent.click(screen.getByRole('button', { name: 'จบแมตช์ตอนนี้' }))
+      // ออย 3 + 1, บีม 1 + 3: equal totals are a tie
+      expect(screen.getByRole('heading', { name: /^จบแมตช์ · เสมอ: (ออย, บีม|บีม, ออย)$/ })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'เริ่มแมตช์ใหม่' })).toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: 'หน้าแรก' }))
+      expect(screen.getByText(/^เสมอ: /)).toBeInTheDocument()
     })
 
     it('deletes a game after asking', async () => {
@@ -495,7 +505,7 @@ describe('judge app', () => {
     )
     fireEvent.change(screen.getByLabelText('ไฟล์เกมที่จะนำเข้า'), { target: { files: [file] } })
     expect(await screen.findByText('นำเข้า 1 เกมใหม่')).toBeInTheDocument()
-    expect(screen.getByText('กำลังเล่น · ตาของ บีม')).toBeInTheDocument()
+    expect(screen.getByText(/กำลังเล่น · ตาของ บีม$/)).toBeInTheDocument()
   })
 
   it('retries a failed send on the next open, and does not resend what arrived', async () => {
@@ -589,13 +599,13 @@ describe('judge app', () => {
       fireEvent.click(within(ask).getByRole('button', { name: 'ไม่ต้อง' }))
 
       // not this account's game: not listed, not backed up
-      expect(screen.queryByText('กำลังเล่น · ตาของ บีม')).not.toBeInTheDocument()
+      expect(screen.queryByText(/กำลังเล่น · ตาของ บีม$/)).not.toBeInTheDocument()
       await waitFor(() => expect(screen.getByText(/สำรองล่าสุด/)).toBeInTheDocument(), { timeout: 4000 })
       expect(cloud.pushed.flat()).toEqual([])
 
       // signed out again, the game is back
       act(() => cloud.become(null))
-      expect(await screen.findByText('กำลังเล่น · ตาของ บีม')).toBeInTheDocument()
+      expect(await screen.findByText(/กำลังเล่น · ตาของ บีม$/)).toBeInTheDocument()
     }, 10000)
 
     it('adds games played signed out to the account when asked to', async () => {
@@ -606,7 +616,7 @@ describe('judge app', () => {
       act(() => cloud.become({ id: 'u1', email: 'a@example.com' }))
       fireEvent.click(await screen.findByRole('button', { name: 'เพิ่มเข้าบัญชี' }))
 
-      expect(screen.getByText('กำลังเล่น · ตาของ บีม')).toBeInTheDocument()
+      expect(screen.getByText(/กำลังเล่น · ตาของ บีม$/)).toBeInTheDocument()
       await waitFor(() => expect(cloud.pushed.flat()).toHaveLength(1), { timeout: 4000 })
       expect(cloud.pushed.flat()[0].game?.owner).toBe('u1')
     }, 10000)
@@ -623,14 +633,14 @@ describe('judge app', () => {
       fireEvent.click(screen.getByRole('button', { name: 'ออกจากระบบ' }))
       fireEvent.click(screen.getByRole('button', { name: 'ยืนยันออกจากระบบ' }))
       await waitFor(() => expect(screen.getByRole('button', { name: 'เข้าสู่ระบบด้วย Google' })).toBeInTheDocument())
-      expect(screen.queryByText('กำลังเล่น · ตาของ บีม')).not.toBeInTheDocument()
+      expect(screen.queryByText(/กำลังเล่น · ตาของ บีม$/)).not.toBeInTheDocument()
 
       cloud.pushed = []
       const backupOfU1 = cloud.remote
       cloud.remote = []
       act(() => cloud.become({ id: 'u2', email: 'b@example.com' }))
       await waitFor(() => expect(screen.getByText(/สำรองล่าสุด/)).toBeInTheDocument(), { timeout: 4000 })
-      expect(screen.queryByText('กำลังเล่น · ตาของ บีม')).not.toBeInTheDocument()
+      expect(screen.queryByText(/กำลังเล่น · ตาของ บีม$/)).not.toBeInTheDocument()
       expect(cloud.pushed.flat()).toEqual([])
 
       // nor its player names
@@ -639,7 +649,7 @@ describe('judge app', () => {
       // the first account gets its game back from its backup, and its names
       cloud.remote = backupOfU1
       act(() => cloud.become({ id: 'u1', email: 'a@example.com' }))
-      expect(await screen.findByText('กำลังเล่น · ตาของ บีม', {}, { timeout: 4000 })).toBeInTheDocument()
+      expect(await screen.findByText(/กำลังเล่น · ตาของ บีม$/, {}, { timeout: 4000 })).toBeInTheDocument()
       expect(screen.getByLabelText(/รายชื่อผู้เล่น/)).toHaveValue('ออย\nบีม')
     }, 12000)
 
@@ -657,7 +667,7 @@ describe('judge app', () => {
       // gone from this device: signing in as someone else or again shows nothing locally
       act(() => cloud.become({ id: 'u1', email: 'a@example.com' }))
       await waitFor(() => expect(screen.getByText(/สำรองล่าสุด/)).toBeInTheDocument(), { timeout: 4000 })
-      expect(screen.queryByText('กำลังเล่น · ตาของ บีม')).not.toBeInTheDocument()
+      expect(screen.queryByText(/กำลังเล่น · ตาของ บีม$/)).not.toBeInTheDocument()
     }, 12000)
 
     it('when the backup before sign out fails, waits or gives up the games not backed up', async () => {
@@ -738,7 +748,7 @@ describe('judge app', () => {
       await waitFor(() => expect(cloud.pushed.flat().some((g) => g.id === 'imported1' && !g.deleted)).toBe(true), {
         timeout: 4000,
       })
-      expect(screen.getByText('กำลังเล่น · ตาของ บีม')).toBeInTheDocument()
+      expect(screen.getByText(/กำลังเล่น · ตาของ บีม$/)).toBeInTheDocument()
     }, 10000)
 
     it('sends a deletion to the account', async () => {

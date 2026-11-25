@@ -25,6 +25,8 @@ export interface Settings {
   seconds: number
   /** The mode new games start in. */
   mode?: GameMode
+  /** Rounds in a new match. */
+  rounds?: number
   /** The game on screen, or null on the first page. */
   currentId: string | null
 }
@@ -83,6 +85,7 @@ export function loadSettings(): Partial<Settings> {
   if (typeof data.namesText === 'string') settings.namesText = data.namesText
   if (typeof data.seconds === 'number' && data.seconds > 0) settings.seconds = data.seconds
   if (data.mode === 'normal' || data.mode === 'competition') settings.mode = data.mode
+  if (typeof data.rounds === 'number' && data.rounds >= 1) settings.rounds = data.rounds
   if (typeof data.currentId === 'string') settings.currentId = data.currentId
   return settings
 }

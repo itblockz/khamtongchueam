@@ -45,6 +45,11 @@ Ideas agreed but not built yet, roughly in the order planned.
    third 1 each, a successful challenge 2 to the challenger. Syllables may repeat
    across rounds. Next round: the previous winner starts and play goes the other
    way round the table. Highest total wins the match; equal totals are a tie.
+   The number of rounds is set at setup (default by mode, 1 or more), and a match
+   can be ended early after any round. Rounds saved before matches existed count as
+   round 1 of a match of the usual length. The saved list shows one row per match
+   with its round and points; the score table is on every winner screen and can be
+   opened during play.
 7. **Player stats across games**, worked out on the judge's device from its saved
    games (names never leave the device): games played and won, how players go out,
    successful challenges, words per game. Games from other devices can be merged

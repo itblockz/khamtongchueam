@@ -758,7 +758,8 @@ export function standings(names: string[], rounds: (GameState | null)[]): Standi
     const points = roundPoints(state)
     for (const row of table) {
       const p = points.get(row.name)?.points ?? 0
-      row.rounds[i] = p
+      // a round still being played shows only points already earned (challenges)
+      row.rounds[i] = state.winnerId || p > 0 ? p : null
       row.total += p
     }
   })

@@ -10,6 +10,7 @@ import {
   type Account,
 } from './cloud'
 import { applyRemote, reconcile } from './sync'
+import { groupMatches, matchOf, viewMatch, type MatchView } from './match'
 import {
   anonymize,
   exportGames,
@@ -38,9 +39,7 @@ import {
 import {
   addOpening,
   MATCH_ROUNDS,
-  matchWinners,
   nextRoundOrder,
-  standings,
   addWord,
   JUDGE_ID,
   MODE_LABEL,
@@ -88,6 +87,8 @@ function keepFocus(event: { preventDefault: () => void }) {
 interface TimerSettings {
   /** The mode new games start in (kept with the other setup choices). */
   mode: GameMode
+  /** Rounds in a new match. */
+  rounds: number
   /** Time allowed from the start of a turn to the player's first sound. */
   seconds: number
 }
@@ -103,6 +104,7 @@ export default function App() {
   const [timer, setTimer] = useState<TimerSettings>({
     seconds: settings.seconds ?? DEFAULT_TIMER.seconds,
     mode: settings.mode ?? 'normal',
+    rounds: settings.rounds ?? MATCH_ROUNDS[settings.mode ?? 'normal'],
   })
   const [games, setGames] = useState<SavedGame[]>([])
   const [currentId, setCurrentId] = useState<string | null>(settings.currentId ?? null)
@@ -137,8 +139,8 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    saveSettings({ namesText: '', seconds: timer.seconds, mode: timer.mode, currentId })
-  }, [timer.seconds, timer.mode, currentId])
+    saveSettings({ namesText: '', seconds: timer.seconds, mode: timer.mode, rounds: timer.rounds, currentId })
+  }, [timer.seconds, timer.mode, timer.rounds, currentId])
 
   // Write only the games that changed (and drop deleted ones) once loading is done
   const stored = useRef<Map<string, SavedGame> | null>(null)
@@ -372,11 +374,21 @@ export default function App() {
       createdAt: now,
       updatedAt: now,
       round: startRound(names, mode),
-      match: match ?? { id: newId(), round: 1, rounds: MATCH_ROUNDS[mode] },
+      match: match ?? { id: newId(), round: 1, rounds: timer.rounds },
       ...(ownerId ? { owner: ownerId } : {}),
     }
     setGames((all) => [created, ...all])
     setCurrentId(created.id)
+  }
+
+  /** End a match early: it becomes as long as the rounds already played. */
+  function endMatch(view: MatchView) {
+    const played = matchOf(view.latest).round
+    const ids = new Set(view.rounds.map((g) => g.id))
+    const now = Date.now()
+    setGames((all) =>
+      all.map((g) => (ids.has(g.id) ? { ...g, match: { ...matchOf(g), rounds: played }, updatedAt: now } : g)),
+    )
   }
 
   const home = (
@@ -457,43 +469,54 @@ export default function App() {
 
   if (game.winnerId) {
     const winner = game.players.find((player) => player.id === game.winnerId)
-    const current = mine.find((g) => g.id === currentId)
-    const match = current?.match
+    const current = mine.find((g) => g.id === currentId)!
+    const match = matchOf(current)
+    const view = viewMatch(mine.filter((g) => matchOf(g).id === match.id))
     const mode = round.mode ?? 'normal'
     const names = round.players.map((p) => p.name)
-    const matchRounds = match ? mine.filter((g) => g.match?.id === match.id) : []
-    const nextRound = match ? matchRounds.find((g) => g.match?.round === match.round + 1) : undefined
-    const matchOver = !match || match.round >= match.rounds
+    const nextRound = view.rounds.find((g) => matchOf(g).round === match.round + 1)
+    const matchOver = match.round >= match.rounds
     return (
       <main className="page">
         <div className="turn">
           <h1 className="winner">
-            {winner?.name} ชนะ{match ? ` รอบ ${match.round}/${match.rounds}` : ''}
+            {winner?.name} ชนะ{match.rounds > 1 ? ` รอบ ${match.round}/${match.rounds}` : ''}
           </h1>
           {undoButton}
         </div>
         {nextRound ? (
           <button type="button" onClick={() => setCurrentId(nextRound.id)}>
-            ไปรอบ {match!.round + 1}
+            ไปรอบ {match.round + 1}
           </button>
         ) : matchOver ? (
           <button type="button" onClick={() => startGame(names, mode)}>
             เริ่มแมตช์ใหม่
           </button>
         ) : (
-          <button
-            type="button"
-            onClick={() =>
-              startGame(nextRoundOrder(names, winner?.name ?? names[0]), mode, {
-                ...match!,
-                round: match!.round + 1,
-              })
-            }
-          >
-            รอบถัดไป ({match!.round + 1}/{match!.rounds})
-          </button>
+          <div className="row">
+            <button
+              type="button"
+              onClick={() =>
+                startGame(nextRoundOrder(names, winner?.name ?? names[0]), mode, {
+                  ...match,
+                  round: match.round + 1,
+                })
+              }
+            >
+              รอบถัดไป ({match.round + 1}/{match.rounds})
+            </button>
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => {
+                if (window.confirm(`จบแมตช์ที่รอบ ${match.round}? คะแนนนับเฉพาะรอบที่เล่นแล้ว`)) endMatch(view)
+              }}
+            >
+              จบแมตช์ตอนนี้
+            </button>
+          </div>
         )}
-        {match && <MatchTable rounds={matchRounds} total={match.rounds} over={matchOver} />}
+        <MatchTable view={view} />
         <EliminationNotice game={game} />
         <WordList round={round} game={game} onChange={setRound} />
         <div className="row">{home}</div>
@@ -501,10 +524,12 @@ export default function App() {
     )
   }
 
-  const playing = mine.find((g) => g.id === currentId)?.match
+  const playing = matchOf(mine.find((g) => g.id === currentId)!)
+  const playingView = viewMatch(mine.filter((g) => matchOf(g).id === playing.id))
   return (
     <Play
-      matchLabel={playing ? `รอบ ${playing.round}/${playing.rounds}` : null}
+      matchLabel={playing.rounds > 1 ? `รอบ ${playing.round}/${playing.rounds}` : null}
+      matchView={playingView}
       round={round}
       game={game}
       onChange={setRound}
@@ -588,7 +613,7 @@ function Setup({
                 type="radio"
                 name="mode"
                 checked={timer.mode === mode}
-                onChange={() => onTimerChange({ ...timer, mode })}
+                onChange={() => onTimerChange({ ...timer, mode, rounds: MATCH_ROUNDS[mode] })}
               />
               {mode === 'normal'
                 ? 'ปกติ: คนแรกพูดคำอะไรก็ได้ และหลังมีคนตกรอบ คนถัดไปเริ่มคำใหม่ได้'
@@ -596,6 +621,20 @@ function Setup({
             </label>
           ))}
         </fieldset>
+        <label htmlFor="rounds">จำนวนรอบในแมตช์</label>
+        <input
+          id="rounds"
+          type="number"
+          inputMode="numeric"
+          min={1}
+          max={20}
+          step={1}
+          value={timer.rounds}
+          onChange={(event) => {
+            const rounds = Math.round(Number(event.target.value))
+            if (rounds >= 1 && rounds <= 20) onTimerChange({ ...timer, rounds })
+          }}
+        />
         <label htmlFor="seconds">เวลาต่อตา (วินาที)</label>
         <input
           id="seconds"
@@ -658,6 +697,7 @@ function Play({
   timer: settings,
   homeButton,
   matchLabel,
+  matchView,
 }: {
   round: Round
   game: GameState
@@ -666,7 +706,9 @@ function Play({
   timer: TimerSettings
   homeButton: ReactNode
   matchLabel: string | null
+  matchView: MatchView
 }) {
+  const [showScores, setShowScores] = useState(false)
   const [timer, setTimer] = useState<TimerState>({ phase: 'idle' })
   const [now, setNow] = useState(() => Date.now())
   /** Set when this screen sends a word or a decision, so the next turn can start counting. */
@@ -792,8 +834,17 @@ function Play({
         {game.mode === 'competition' && `โหมด${MODE_LABEL.competition} · `}
         ยังเล่นอยู่: {game.players.filter((p) => !p.out).map((p) => p.name).join(', ')}
         {game.players.some((p) => p.out) &&
-          ` · ตกรอบ: ${game.players.filter((p) => p.out).map((p) => p.name).join(', ')}`}
+          ` · ตกรอบ: ${game.players.filter((p) => p.out).map((p) => p.name).join(', ')}`}{' '}
+        <button
+          type="button"
+          className="link"
+          aria-expanded={showScores}
+          onClick={() => setShowScores(!showScores)}
+        >
+          คะแนน
+        </button>
       </p>
+      {showScores && <MatchTable view={matchView} />}
 
       {!game.needsOpening && <div className={`timer timer-${timer.phase}`} role="timer" aria-label="จับเวลา">
         {timer.phase === 'idle' && (
@@ -938,7 +989,7 @@ function SavedGames({
   onDelete: (id: string) => void
 }) {
   if (games.length === 0) return null
-  const sorted = [...games].sort((a, b) => b.updatedAt - a.updatedAt)
+  const matches = groupMatches(games)
   return (
     <section>
       <h2 className="small-heading">เกมที่บันทึกไว้ในเครื่องนี้</h2>
@@ -947,41 +998,53 @@ function SavedGames({
         ส่งออกเป็นไฟล์ไว้ได้ถ้าอยากเก็บถาวร
       </p>
       <ul className="games">
-        {sorted.map((saved) => {
-          const state = replay(saved.round)
-          const winner = state.players.find((p) => p.id === state.winnerId)
-          const names = saved.round.players.map((p) => p.name).join(', ')
+        {matches.map((view) => {
+          const state = view.latestState
+          const info = matchOf(view.latest)
+          const names = view.rounds[0].round.players.map((p) => p.name).join(', ')
+          const roundLabel = view.length > 1 ? `รอบ ${info.round}/${view.length} · ` : ''
+          const status = view.over
+            ? view.winners.length > 1
+              ? `เสมอ: ${view.winners.join(', ')}`
+              : `${view.winners[0]} ชนะ${view.length > 1 ? 'แมตช์' : ''}`
+            : state.winnerId
+              ? `${roundLabel}จบรอบแล้ว · รอรอบถัดไป`
+              : state.needsOpening
+                ? `${roundLabel}รอคำเปิด`
+                : `${roundLabel}กำลังเล่น · ตาของ ${currentPlayer(state).name}`
+          const scores = view.table
+            .filter((row) => row.total > 0)
+            .map((row) => `${row.name} ${row.total}`)
+            .join(' · ')
+          const updated = Math.max(...view.rounds.map((g) => g.updatedAt))
           return (
-            <li key={saved.id}>
+            <li key={view.id}>
               <div>
-                <strong>
-                  {winner
-                    ? `${winner.name} ชนะ`
-                    : state.needsOpening
-                      ? 'รอคำเปิด'
-                      : `กำลังเล่น · ตาของ ${currentPlayer(state).name}`}
-                </strong>
+                <strong>{status}</strong>
               </div>
+              {scores && <div className="note">คะแนน: {scores}</div>}
               <div className="note">
-                {saved.match && `รอบ ${saved.match.round}/${saved.match.rounds} · `}
                 {state.mode === 'competition' && `โหมด${MODE_LABEL.competition} · `}
-                {DATE_FORMAT.format(saved.updatedAt)} · {state.words.length} คำ · {names}
+                {DATE_FORMAT.format(updated)} · {names}
               </div>
               <div className="row">
                 <button
                   type="button"
                   className="secondary"
-                  aria-label={`${winner ? 'ดู' : 'เล่นต่อ'} ${names}`}
-                  onClick={() => onOpen(saved.id)}
+                  aria-label={`${view.over ? 'ดู' : 'เล่นต่อ'} ${names}`}
+                  onClick={() => onOpen(view.latest.id)}
                 >
-                  {winner ? 'ดู' : 'เล่นต่อ'}
+                  {view.over ? 'ดู' : 'เล่นต่อ'}
                 </button>
                 <button
                   type="button"
                   className="link"
                   aria-label={`ลบเกม ${names}`}
                   onClick={() => {
-                    if (window.confirm('ลบเกมนี้? กู้คืนไม่ได้')) onDelete(saved.id)
+                    const what = view.rounds.length > 1 ? `แมตช์นี้ (${view.rounds.length} รอบ)` : 'เกมนี้'
+                    if (window.confirm(`ลบ${what}? กู้คืนไม่ได้`)) {
+                      for (const g of view.rounds) onDelete(g.id)
+                    }
                   }}
                 >
                   ลบ
@@ -1226,40 +1289,34 @@ function BackupFile({
 }
 
 /** Points per round and the running total of a match (a tie when totals are equal). */
-function MatchTable({ rounds, total, over }: { rounds: SavedGame[]; total: number; over: boolean }) {
-  const byNumber = Array.from({ length: total }, (_, i) => rounds.find((g) => g.match?.round === i + 1) ?? null)
-  const states = byNumber.map((g) => (g ? replay(g.round) : null))
-  const names = byNumber[0]?.round.players.map((p) => p.name) ?? rounds[0]?.round.players.map((p) => p.name) ?? []
-  const table = standings(names, states)
-  const winners = over ? matchWinners(table) : []
+function MatchTable({ view }: { view: MatchView }) {
   return (
     <section>
       <h2 className="small-heading">
-        {over
-          ? winners.length > 1
-            ? `จบแมตช์ · เสมอ: ${winners.join(', ')}`
-            : `จบแมตช์ · ${winners[0]} ชนะแมตช์`
-          : 'คะแนนแมตช์'}
+        {view.over && view.length > 1
+          ? view.winners.length > 1
+            ? `จบแมตช์ · เสมอ: ${view.winners.join(', ')}`
+            : `จบแมตช์ · ${view.winners[0]} ชนะแมตช์`
+          : 'คะแนน'}
       </h2>
       <table className="scores">
         <thead>
           <tr>
             <th scope="col">ผู้เล่น</th>
-            {byNumber.map((_, i) => (
-              <th scope="col" key={i}>
-                {i + 1}
-              </th>
-            ))}
+            {view.length > 1 &&
+              Array.from({ length: view.length }, (_, i) => (
+                <th scope="col" key={i}>
+                  {i + 1}
+                </th>
+              ))}
             <th scope="col">รวม</th>
           </tr>
         </thead>
         <tbody>
-          {table.map((row) => (
+          {view.table.map((row) => (
             <tr key={row.name}>
               <th scope="row">{row.name}</th>
-              {row.rounds.map((points, i) => (
-                <td key={i}>{points ?? '–'}</td>
-              ))}
+              {view.length > 1 && row.rounds.map((points, i) => <td key={i}>{points ?? '–'}</td>)}
               <td>
                 <strong>{row.total}</strong>
               </td>
