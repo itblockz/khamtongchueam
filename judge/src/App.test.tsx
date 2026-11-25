@@ -73,9 +73,15 @@ async function renderApp() {
   return view
 }
 
+/** Open a word's ⋯ menu and pick an action ('แก้คำ', 'ตัดสิน' or 'ชาเลนจ์'). */
+function pick(action: string, word: string) {
+  fireEvent.click(screen.getByRole('button', { name: `ตัวเลือก ${word}` }))
+  fireEvent.click(screen.getByRole('button', { name: `${action} ${word}` }))
+}
+
 async function startWith(names: string) {
   await renderApp()
-  fireEvent.change(screen.getByLabelText(/รายชื่อผู้เล่น/), { target: { value: names } })
+  fireEvent.change(screen.getByLabelText('ผู้เล่น'), { target: { value: names } })
   fireEvent.click(screen.getByRole('button', { name: 'เริ่มเกม' }))
 }
 
@@ -88,7 +94,7 @@ async function submit(word: string) {
 describe('judge app', () => {
   it('blocks starting with repeated names', async () => {
     await renderApp()
-    fireEvent.change(screen.getByLabelText(/รายชื่อผู้เล่น/), { target: { value: 'ออย\nบีม\nออย' } })
+    fireEvent.change(screen.getByLabelText('ผู้เล่น'), { target: { value: 'ออย\nบีม\nออย' } })
 
     expect(screen.getByText('ชื่อซ้ำ: ออย')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'เริ่มเกม' })).toBeDisabled()
@@ -113,7 +119,7 @@ describe('judge app', () => {
     expect(within(notice).getByRole('heading', { name: 'บีม ตกรอบ' })).toBeInTheDocument()
     expect(within(notice).getByText('“ทราย” ซ้ำกับ คำที่ 1 “หาดทราย” ของ ออย')).toBeInTheDocument()
     expect(screen.getByText('เจ', { selector: 'strong' })).toBeInTheDocument()
-    expect(screen.getByText('คำในรอบนี้ (นับ 1)')).toBeInTheDocument()
+    expect(screen.getByText('นับ 1 คำ')).toBeInTheDocument()
     // once in the notice, once in the word list
     expect(screen.getAllByText('“ทราย” ซ้ำกับ คำที่ 1 “หาดทราย” ของ ออย')).toHaveLength(2)
 
@@ -131,7 +137,7 @@ describe('judge app', () => {
     expect(await screen.findByRole('heading', { name: /^ออย ชนะ/ })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'บีม ตกรอบ' })).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'รอบถัดไป (2/4)' }))
+    fireEvent.click(screen.getByRole('button', { name: /^รอบถัดไป \(2\/4\)/ }))
     expect(screen.getByText('ยังไม่มีคำในรอบนี้')).toBeInTheDocument()
   })
 
@@ -148,7 +154,7 @@ describe('judge app', () => {
     expect(screen.getByText('ไปร | ษ | ณีย์')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'ส่ง' }))
 
-    const list = await screen.findByRole('list')
+    const list = await screen.findByRole('list', { name: 'คำในรอบนี้' })
     expect(within(list).getByText('ไปร | ษ | ณีย์')).toBeInTheDocument()
     expect(within(list).getByText('แยกเอง')).toBeInTheDocument()
     expect(screen.queryByLabelText(/แก้การแยกพยางค์/)).not.toBeInTheDocument()
@@ -176,7 +182,7 @@ describe('judge app', () => {
 
     expect(screen.queryByRole('heading', { name: 'บีม ตกรอบ' })).not.toBeInTheDocument()
     expect(screen.getByText('บีม', { selector: 'strong' })).toBeInTheDocument()
-    expect(screen.getByText(/ยังเล่นอยู่: ออย, บีม, เจ/)).toBeInTheDocument()
+    expect(screen.queryByLabelText(/ตกรอบ/)).not.toBeInTheDocument()
   })
 
   it('can undo from the winner screen back into the round', async () => {
@@ -198,7 +204,7 @@ describe('judge app', () => {
     await submit('อารบิก')
     await submit('บิกินี')
 
-    fireEvent.click(screen.getByRole('button', { name: 'แก้การแยก อารบิก' }))
+    pick('แก้คำ', 'อารบิก')
     const field = screen.getByLabelText(/แก้การแยก “อารบิก”/)
     expect(field).toHaveValue('อาร บิก')
 
@@ -222,10 +228,10 @@ describe('judge app', () => {
     fireEvent.click(screen.getByRole('button', { name: 'ไม่ใช่คำนาม' }))
 
     expect(screen.getByRole('heading', { name: 'บีม ตกรอบ' })).toBeInTheDocument()
-    expect(screen.getByText('“วิ่ง” ไม่ใช่คำนาม')).toBeInTheDocument()
+    expect(screen.getByText('“วิ่ง” ไม่ใช่คำนาม', { selector: '.banner p' })).toBeInTheDocument()
     expect(screen.getByText('เจ', { selector: 'strong' })).toBeInTheDocument()
     expect(screen.getByLabelText(/^คำของ/)).toHaveValue('')
-    expect(screen.queryByRole('button', { name: 'แก้การแยก วิ่ง' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'ตัวเลือก วิ่ง' })).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: /^ย้อนกลับ/ }))
     expect(screen.getByText('บีม', { selector: 'strong' })).toBeInTheDocument()
@@ -239,7 +245,7 @@ describe('judge app', () => {
     fireEvent.click(screen.getByRole('button', { name: 'คำต้องห้าม' }))
 
     expect(screen.getByRole('heading', { name: /^บีม ชนะ/ })).toBeInTheDocument()
-    expect(screen.getByText('“คำหยาบ” คำต้องห้าม')).toBeInTheDocument()
+    expect(screen.getByText('“คำหยาบ” คำต้องห้าม', { selector: '.banner p' })).toBeInTheDocument()
   })
 
   it('rules an earlier word out and rewinds to it after confirming', async () => {
@@ -248,7 +254,7 @@ describe('judge app', () => {
     await submit('บิกินี')
     await submit('กาแฟ')
 
-    fireEvent.click(screen.getByRole('button', { name: 'ตัดสิน บิกินี' }))
+    pick('ตัดสิน', 'บิกินี')
     expect(screen.getByRole('button', { name: 'ยืนยัน' })).toBeDisabled()
     fireEvent.click(screen.getByRole('button', { name: 'คำต้องห้าม' , pressed: false }))
     expect(screen.getByText('ย้อนกลับไปตาของ มม · ลบ 1 คำหลังจากนั้น: กาแฟ')).toBeInTheDocument()
@@ -256,7 +262,7 @@ describe('judge app', () => {
     fireEvent.click(screen.getByRole('button', { name: 'ยืนยัน' }))
 
     expect(screen.getByRole('heading', { name: 'ลล ตกรอบ' })).toBeInTheDocument()
-    expect(screen.getByText('“บิกินี” คำต้องห้าม')).toBeInTheDocument()
+    expect(screen.getByText('“บิกินี” คำต้องห้าม', { selector: '.banner p' })).toBeInTheDocument()
     expect(screen.getByText('มม', { selector: 'strong' })).toBeInTheDocument()
     expect(screen.queryByText('กาแฟ')).not.toBeInTheDocument()
   })
@@ -265,7 +271,7 @@ describe('judge app', () => {
     await startWith('ออย\nบีม\nเจ')
     await submit('กาแฟ')
     expect(screen.queryByRole('button', { name: 'ไม่เชื่อม' })).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'ตัดสิน กาแฟ' }))
+    pick('ตัดสิน', 'กาแฟ')
     const ruling = screen.getByRole('group', { name: 'ตัดสิน “กาแฟ”' })
     expect(within(ruling).queryByRole('button', { name: 'ไม่เชื่อม' })).not.toBeInTheDocument()
   })
@@ -312,8 +318,8 @@ describe('judge app', () => {
 
     it('counts on its own after a word, but waits for the judge after someone goes out', async () => {
       await renderApp()
-      fireEvent.change(screen.getByLabelText(/รายชื่อผู้เล่น/), { target: { value: 'ออย\nบีม\nเจ' } })
-      fireEvent.change(screen.getByLabelText(/เวลาต่อตา/), { target: { value: '5' } })
+      fireEvent.change(screen.getByLabelText('ผู้เล่น'), { target: { value: 'ออย\nบีม\nเจ' } })
+      for (let i = 0; i < 4; i += 1) fireEvent.click(screen.getByRole('button', { name: 'เพิ่มเวลาต่อตา' }))
       fireEvent.click(screen.getByRole('button', { name: 'เริ่มเกม' }))
 
       await submit('หาดทราย')
@@ -321,15 +327,15 @@ describe('judge app', () => {
 
       await submit('ทรายทอง')
       expect(screen.getByRole('heading', { name: 'บีม ตกรอบ' })).toBeInTheDocument()
-      expect(await screen.findByRole('button', { name: 'เริ่มจับเวลา (5 วิ)' })).toBeInTheDocument()
+      expect(await screen.findByRole('button', { name: 'เริ่มจับเวลา · 5 วิ' })).toBeInTheDocument()
     })
   })
 
   describe('saved game', () => {
     it('picks the round back up after a reload', async () => {
       const { unmount } = await renderApp()
-      fireEvent.change(screen.getByLabelText(/รายชื่อผู้เล่น/), { target: { value: 'ออย\nบีม\nเจ' } })
-      fireEvent.change(screen.getByLabelText(/เวลาต่อตา/), { target: { value: '5' } })
+      fireEvent.change(screen.getByLabelText('ผู้เล่น'), { target: { value: 'ออย\nบีม\nเจ' } })
+      for (let i = 0; i < 4; i += 1) fireEvent.click(screen.getByRole('button', { name: 'เพิ่มเวลาต่อตา' }))
       fireEvent.click(screen.getByRole('button', { name: 'เริ่มเกม' }))
       await submit('กาแฟ')
       unmount()
@@ -340,7 +346,7 @@ describe('judge app', () => {
 
       fireEvent.click(screen.getByRole('button', { name: /^ย้อนกลับ/ }))
       fireEvent.click(screen.getByRole('button', { name: /^ย้อนกลับ/ }))
-      expect(screen.getByRole('button', { name: 'เริ่มจับเวลา (5 วิ)' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'เริ่มจับเวลา · 5 วิ' })).toBeInTheDocument()
     })
 
     it('keeps a game in progress across a remount', async () => {
@@ -352,7 +358,7 @@ describe('judge app', () => {
     it('ignores saved data it cannot read', async () => {
       localStorage.setItem('khamtongchueam.judge.v2', '{"games":[{"id":"x","round":{"players":"oops"}}]')
       await renderApp()
-      expect(screen.getByLabelText(/รายชื่อผู้เล่น/)).toHaveValue('')
+      expect(screen.getByLabelText('ผู้เล่น')).toHaveValue('')
     })
   })
 
@@ -361,7 +367,7 @@ describe('judge app', () => {
     await submit('กาแฟ')
     fireEvent.click(screen.getByRole('button', { name: 'หน้าแรก' }))
 
-    expect(screen.getByLabelText(/รายชื่อผู้เล่น/)).toHaveValue('ออย\nบีม')
+    expect(screen.getByLabelText('ผู้เล่น')).toHaveValue('ออย\nบีม')
     expect(screen.getByText(/กำลังเล่น · ตาของ บีม$/)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'เล่นต่อ ออย, บีม' }))
     expect(screen.getByText('กา | แฟ')).toBeInTheDocument()
@@ -376,10 +382,12 @@ describe('judge app', () => {
       fireEvent.click(screen.getByRole('button', { name: 'ส่ง' }))
       await screen.findByRole('heading', { name: /^ออย ชนะ/ })
 
-      fireEvent.click(screen.getByRole('button', { name: 'รอบถัดไป (2/4)' }))
+      fireEvent.click(screen.getByRole('button', { name: /^รอบถัดไป \(2\/4\)/ }))
       fireEvent.click(screen.getByRole('button', { name: 'หน้าแรก' }))
 
-      expect(screen.getAllByRole('listitem')).toHaveLength(1)
+      // the match shows once, as the one to carry on
+      expect(screen.getByRole('heading', { name: 'เล่นต่อ' })).toBeInTheDocument()
+      expect(screen.queryByRole('heading', { name: 'ประวัติเกม' })).not.toBeInTheDocument()
       expect(screen.getByText('รอบ 2/4 · กำลังเล่น · ตาของ ออย')).toBeInTheDocument()
       expect(screen.getByText('คะแนน: ออย 3 · บีม 1')).toBeInTheDocument()
 
@@ -400,7 +408,7 @@ describe('judge app', () => {
       fireEvent.click(screen.getByRole('button', { name: 'หน้าแรก' }))
       vi.spyOn(window, 'confirm').mockReturnValue(true)
       fireEvent.click(screen.getByRole('button', { name: 'ลบเกม ออย, บีม' }))
-      expect(screen.queryByText('เกมที่บันทึกไว้ในเครื่องนี้')).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'เล่นต่อ ออย, บีม' })).not.toBeInTheDocument()
     })
 
     it('carries over a game saved by the previous version', async () => {
@@ -420,7 +428,7 @@ describe('judge app', () => {
       )
       await renderApp()
       expect(screen.getByText('กา | แฟ')).toBeInTheDocument()
-      expect(screen.getByRole('button', { name: 'เริ่มจับเวลา (4 วิ)' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'เริ่มจับเวลา · 4 วิ' })).toBeInTheDocument()
     })
   })
 
@@ -430,8 +438,10 @@ describe('judge app', () => {
     await submit('กาแฟ')
 
     // the first word has nothing before it, so it cannot be challenged
+    fireEvent.click(screen.getByRole('button', { name: 'ตัวเลือก อาหาร' }))
     expect(screen.queryByRole('button', { name: 'ชาเลนจ์ อาหาร' })).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'ชาเลนจ์ กาแฟ' }))
+    fireEvent.click(screen.getByRole('button', { name: 'ตัวเลือก อาหาร' }))
+    pick('ชาเลนจ์', 'กาแฟ')
     fireEvent.click(within(screen.getByRole('group', { name: 'คนชาเลนจ์' })).getByRole('button', { name: 'เจ' }))
     fireEvent.click(screen.getByRole('button', { name: 'ไม่สำเร็จ (เจ ตก)' }))
     expect(screen.getByText('เจ ตกรอบ')).toBeInTheDocument()
@@ -449,7 +459,7 @@ describe('judge app', () => {
     await submit('กาแฟ')
     await submit('บิกินี')
 
-    fireEvent.click(screen.getByRole('button', { name: 'ชาเลนจ์ กาแฟ' }))
+    pick('ชาเลนจ์', 'กาแฟ')
     // ออย said the word before, so ออย is picked already
     expect(within(screen.getByRole('group', { name: 'คนชาเลนจ์' })).getByRole('button', { name: 'ออย' })).toHaveAttribute(
       'aria-pressed',
@@ -645,13 +655,13 @@ describe('judge app', () => {
       expect(cloud.pushed.flat()).toEqual([])
 
       // nor its player names
-      expect(screen.getByLabelText(/รายชื่อผู้เล่น/)).toHaveValue('')
+      expect(screen.getByLabelText('ผู้เล่น')).toHaveValue('')
 
       // the first account gets its game back from its backup, and its names
       cloud.remote = backupOfU1
       act(() => cloud.become({ id: 'u1', email: 'a@example.com' }))
       expect(await screen.findByText(/กำลังเล่น · ตาของ บีม$/, {}, { timeout: 4000 })).toBeInTheDocument()
-      expect(screen.getByLabelText(/รายชื่อผู้เล่น/)).toHaveValue('ออย\nบีม')
+      expect(screen.getByLabelText('ผู้เล่น')).toHaveValue('ออย\nบีม')
     }, 12000)
 
     it('removes the account\'s games from this device on sign out, after backing up', async () => {
@@ -685,7 +695,7 @@ describe('judge app', () => {
         vi.mocked(pullGames).mockReset()
         vi.mocked(pullGames).mockImplementation(async () => cloud.remote)
       })
-      fireEvent.change(screen.getByLabelText(/รายชื่อผู้เล่น/), { target: { value: 'เจ\nบีม' } })
+      fireEvent.change(screen.getByLabelText('ผู้เล่น'), { target: { value: 'เจ\nบีม' } })
       fireEvent.click(screen.getByRole('button', { name: 'เริ่มเกม' }))
       fireEvent.click(screen.getByRole('button', { name: 'หน้าแรก' }))
 
@@ -767,8 +777,8 @@ describe('judge app', () => {
 
   it('competition mode opens each round with the judge\'s word', async () => {
     await renderApp()
-    fireEvent.change(screen.getByLabelText(/รายชื่อผู้เล่น/), { target: { value: 'ออย\nบีม' } })
-    fireEvent.click(screen.getByLabelText(/^แข่ง:/))
+    fireEvent.change(screen.getByLabelText('ผู้เล่น'), { target: { value: 'ออย\nบีม' } })
+    fireEvent.click(screen.getByRole('button', { name: 'แข่ง' }))
     fireEvent.click(screen.getByRole('button', { name: 'เริ่มเกม' }))
 
     expect(screen.getByText('คำเปิด', { selector: 'strong' })).toBeInTheDocument()
@@ -779,10 +789,12 @@ describe('judge app', () => {
 
     expect(await screen.findByText('ออย', { selector: 'strong' })).toBeInTheDocument()
     expect(screen.getByText(/กรรมการ \(คำเปิด\)/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'ตัวเลือก ทะเล' }))
     expect(screen.queryByRole('button', { name: 'ตัดสิน ทะเล' })).not.toBeInTheDocument()
     expect(screen.getByText(/โหมดแข่ง/)).toBeInTheDocument()
 
     await submit('หาดทราย')
+    fireEvent.click(screen.getByRole('button', { name: 'ตัวเลือก หาดทราย' }))
     expect(screen.getByRole('button', { name: 'ชาเลนจ์ หาดทราย' })).toBeInTheDocument()
   })
 
@@ -793,22 +805,23 @@ describe('judge app', () => {
     // round 1: ออย then บีม too slow → เจ wins
     tooSlow()
     tooSlow()
-    expect(screen.getByRole('heading', { name: 'เจ ชนะ รอบ 1/4' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'เจ ชนะ' })).toBeInTheDocument()
+    expect(screen.getByText('รอบ 1/4 จบแล้ว')).toBeInTheDocument()
     const table = () => screen.getByRole('table')
     expect(within(table()).getByRole('row', { name: /เจ 3/ })).toBeInTheDocument()
     expect(within(table()).getByRole('row', { name: /บีม 1/ })).toBeInTheDocument()
 
     // round 2: เจ starts and play goes the other way: เจ, บีม, ออย
-    fireEvent.click(screen.getByRole('button', { name: 'รอบถัดไป (2/4)' }))
+    fireEvent.click(screen.getByRole('button', { name: /^รอบถัดไป \(2\/4\)/ }))
     expect(screen.getByText('เจ', { selector: 'strong' })).toBeInTheDocument()
     expect(screen.getByText(/ถัดไป บีม/)).toBeInTheDocument()
     expect(screen.getByText(/รอบ 2\/4/)).toBeInTheDocument()
     tooSlow() // เจ out
     tooSlow() // บีม out → ออย wins
-    fireEvent.click(screen.getByRole('button', { name: 'รอบถัดไป (3/4)' }))
+    fireEvent.click(screen.getByRole('button', { name: /^รอบถัดไป \(3\/4\)/ }))
     tooSlow()
     tooSlow()
-    fireEvent.click(screen.getByRole('button', { name: 'รอบถัดไป (4/4)' }))
+    fireEvent.click(screen.getByRole('button', { name: /^รอบถัดไป \(4\/4\)/ }))
     tooSlow()
     tooSlow()
 
@@ -821,7 +834,7 @@ describe('judge app', () => {
     await submit('กาแป')
     await submit('หาดทราย')
 
-    fireEvent.click(screen.getByRole('button', { name: 'แก้การแยก กาแป' }))
+    pick('แก้คำ', 'กาแป')
     fireEvent.change(screen.getByLabelText('คำ (แก้ถ้าพิมพ์ผิด)'), { target: { value: 'กาแฟ' } })
     // the segmenter splits the corrected word
     await waitFor(() => expect(screen.getByLabelText(/แก้การแยก “กาแฟ”/)).toHaveValue('กา แฟ'))
@@ -836,11 +849,11 @@ describe('judge app', () => {
     await startWith('ออย\nบีม')
     await submit('กาแฟ')
     fireEvent.click(screen.getByRole('button', { name: 'ไม่ทันเวลา' }))
-    fireEvent.click(screen.getByRole('button', { name: 'รอบถัดไป (2/4)' }))
+    fireEvent.click(screen.getByRole('button', { name: /^รอบถัดไป \(2\/4\)/ }))
 
     fireEvent.click(screen.getByRole('button', { name: 'คะแนน' }))
     fireEvent.click(screen.getByRole('button', { name: 'ดูรอบ 1' }))
-    expect(screen.getByRole('heading', { name: /ชนะ รอบ 1\/4/ })).toBeInTheDocument()
+    expect(screen.getByText('รอบ 1/4 จบแล้ว')).toBeInTheDocument()
     expect(screen.getByText('กาแฟ', { selector: '.word' })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'ไปรอบ 2' }))
     expect(screen.getByText(/รอบ 2\/4/)).toBeInTheDocument()

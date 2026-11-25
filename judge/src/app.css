@@ -1,12 +1,15 @@
 /* Plain, mobile-first styles. The input sits near the top so it stays visible above
    on-screen keyboards without any positioning tricks. */
 :root {
-  --ink: #222;
-  --muted: #666;
-  --line: #ddd;
+  --ink: #1f2328;
+  --muted: #6b7280;
+  --line: #e5e7eb;
   --accent: #1f6feb;
+  --accent-soft: #e8f0fe;
   --danger: #c0392b;
-  --bg: #fff;
+  --danger-soft: #fdecea;
+  --bg: #f5f6f8;
+  --card: #fff;
   font-family: system-ui, -apple-system, 'Noto Sans Thai', sans-serif;
   color: var(--ink);
   background: var(--bg);
@@ -75,7 +78,7 @@ button {
 }
 
 button.secondary {
-  background: #eee;
+  background: #eef0f3;
   color: var(--ink);
 }
 
@@ -415,4 +418,236 @@ button.selected-choice {
 
 .undo-what {
   font-size: 0.85em;
+}
+
+/* ---- Layout: cards on a light grey page ---- */
+.card {
+  background: var(--card);
+  border-radius: 14px;
+  padding: 14px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+}
+
+.card > h2,
+.card-head > h2 {
+  font-size: 0.95rem;
+  color: var(--muted);
+  font-weight: 600;
+  margin: 0;
+}
+
+.card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.label {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+}
+
+.row.tight {
+  gap: 4px;
+  align-items: center;
+}
+
+.chip {
+  font-size: 0.85rem;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: #eef0f3;
+  white-space: nowrap;
+}
+
+.chip.blue {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+button.big {
+  width: 100%;
+  min-height: 56px;
+  font-size: 1.15rem;
+}
+
+button.compact {
+  min-height: 40px;
+  padding: 0 10px;
+  font-size: 0.9rem;
+}
+
+/* whose turn */
+.turn-head .who {
+  font-size: 1.6rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.turn-head .next {
+  color: var(--muted);
+}
+
+.players {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.players li {
+  font-size: 0.9rem;
+  padding: 3px 11px;
+  border-radius: 999px;
+  background: var(--card);
+  border: 1px solid var(--line);
+}
+
+.players li.now {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: #fff;
+  font-weight: 600;
+}
+
+.players li.out {
+  background: transparent;
+  border-style: dashed;
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+/* elimination */
+.banner {
+  background: var(--danger-soft);
+  border-left: 4px solid var(--danger);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.banner h2 {
+  margin: 0 0 2px;
+  font-size: 1.05rem;
+  color: var(--danger);
+}
+
+.banner p,
+.banner ul {
+  margin: 0;
+}
+
+.banner ul {
+  padding-left: 1.1em;
+}
+
+/* word list: actions behind ⋯ */
+.words li {
+  position: relative;
+  padding: 8px 36px 8px 0;
+}
+
+.words li:last-child {
+  border-bottom: 0;
+}
+
+button.more {
+  position: absolute;
+  top: 2px;
+  right: 0;
+  min-height: 36px;
+  width: 36px;
+  padding: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 1.3rem;
+}
+
+.menu {
+  margin-top: 6px;
+}
+
+.menu > button {
+  min-height: 38px;
+  padding: 0 14px;
+  font-size: 0.95rem;
+}
+
+/* home */
+.segmented {
+  display: flex;
+  background: #eef0f3;
+  border-radius: 10px;
+  padding: 3px;
+}
+
+.segmented > button {
+  flex: 1 1 0;
+  min-height: 40px;
+  background: none;
+  color: var(--ink);
+  border-radius: 8px;
+}
+
+.segmented > button[aria-pressed='true'] {
+  background: var(--card);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+  font-weight: 600;
+}
+
+.stepper {
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--card);
+}
+
+.stepper > button {
+  min-height: 40px;
+  width: 42px;
+  padding: 0;
+  background: none;
+  color: var(--accent);
+  font-size: 1.3rem;
+}
+
+.stepper > output {
+  min-width: 56px;
+  text-align: center;
+  font-weight: 600;
+}
+
+.result {
+  align-items: center;
+  text-align: center;
+}
+
+.result .winner {
+  font-size: 2rem;
+  margin: 0;
+}
+
+.resume {
+  border: 1px solid var(--accent-soft);
+}
+
+.games li:last-child {
+  border-bottom: 0;
 }

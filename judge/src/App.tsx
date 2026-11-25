@@ -40,6 +40,7 @@ import {
   addOpening,
   MATCH_ROUNDS,
   nextRoundOrder,
+  roundPoints,
   addWord,
   JUDGE_ID,
   MODE_LABEL,
@@ -473,7 +474,7 @@ export default function App() {
     <span className="undo-redo">
       <button
         type="button"
-        className="secondary"
+        className="secondary compact"
         aria-label={lastEvent ? `ย้อนกลับ: ${describeEntry(lastEvent)}` : 'ย้อนกลับ'}
         onClick={() => {
           if (!lastEvent || !currentId) return
@@ -482,12 +483,12 @@ export default function App() {
         }}
         disabled={!lastEvent}
       >
-        ย้อนกลับ{lastEvent && <span className="undo-what">: {describeEntry(lastEvent)}</span>}
+        <span aria-hidden="true">↶</span> {lastEvent ? describeEntry(lastEvent) : 'ย้อนกลับ'}
       </button>
       {toRedo && (
         <button
           type="button"
-          className="secondary"
+          className="secondary compact"
           aria-label={`ทำซ้ำ: ${describeEntry(toRedo)}`}
           onClick={() => {
             if (!currentId) return
@@ -495,7 +496,7 @@ export default function App() {
             storeRound({ ...round, events: [...round.events, toRedo] })
           }}
         >
-          ทำซ้ำ<span className="undo-what">: {describeEntry(toRedo)}</span>
+          <span aria-hidden="true">↷</span> {describeEntry(toRedo)}
         </button>
       )}
     </span>
@@ -510,49 +511,64 @@ export default function App() {
     const names = round.players.map((p) => p.name)
     const nextRound = view.rounds.find((g) => matchOf(g).round === match.round + 1)
     const matchOver = match.round >= match.rounds
+    const placings = roundPoints(game)
+    const placed = (place: string) => [...placings.values()].find((p) => p.why.includes(place))?.name
+    const runnersUp = [placed('ที่ 2') && `${placed('ที่ 2')} ที่ 2`, placed('ที่ 3') && `${placed('ที่ 3')} ที่ 3`]
+      .filter(Boolean)
+      .join(' · ')
     return (
       <main className="page">
-        <div className="turn">
-          <h1 className="winner">
-            {winner?.name} ชนะ{match.rounds > 1 ? ` รอบ ${match.round}/${match.rounds}` : ''}
-          </h1>
+        <div className="topbar">
+          <span className="chip blue">
+            {match.rounds > 1 ? `รอบ ${match.round}/${match.rounds} จบแล้ว` : 'จบเกม'}
+          </span>
           {undoButton}
         </div>
-        {nextRound ? (
-          <button type="button" onClick={() => setCurrentId(nextRound.id)}>
-            ไปรอบ {match.round + 1}
-          </button>
-        ) : matchOver ? (
-          <button type="button" onClick={() => startGame(names, mode)}>
-            เริ่มแมตช์ใหม่
-          </button>
-        ) : (
-          <div className="row">
-            <button
-              type="button"
-              onClick={() =>
-                startGame(nextRoundOrder(names, winner?.name ?? names[0]), mode, {
-                  ...match,
-                  round: match.round + 1,
-                })
-              }
-            >
-              รอบถัดไป ({match.round + 1}/{match.rounds})
+        <section className="card result">
+          <p className="note">{match.rounds > 1 ? 'ผู้ชนะรอบนี้' : 'ผู้ชนะ'}</p>
+          <h1 className="winner">{winner?.name} ชนะ</h1>
+          {runnersUp && <p className="note">{runnersUp}</p>}
+          {nextRound ? (
+            <button type="button" className="big" onClick={() => setCurrentId(nextRound.id)}>
+              ไปรอบ {match.round + 1}
             </button>
-            <button
-              type="button"
-              className="secondary"
-              onClick={() => {
-                if (window.confirm(`จบแมตช์ที่รอบ ${match.round}? คะแนนนับเฉพาะรอบที่เล่นแล้ว`)) endMatch(view)
-              }}
-            >
-              จบแมตช์ตอนนี้
+          ) : matchOver ? (
+            <button type="button" className="big" onClick={() => startGame(names, mode)}>
+              เริ่มแมตช์ใหม่
             </button>
-          </div>
-        )}
-        <MatchTable view={view} currentId={currentId} onOpenRound={setCurrentId} />
+          ) : (
+            <>
+              <button
+                type="button"
+                className="big"
+                onClick={() =>
+                  startGame(nextRoundOrder(names, winner?.name ?? names[0]), mode, {
+                    ...match,
+                    round: match.round + 1,
+                  })
+                }
+              >
+                รอบถัดไป ({match.round + 1}/{match.rounds}) · {winner?.name} เริ่ม
+              </button>
+              <button
+                type="button"
+                className="link"
+                onClick={() => {
+                  if (window.confirm(`จบแมตช์ที่รอบ ${match.round}? คะแนนนับเฉพาะรอบที่เล่นแล้ว`)) endMatch(view)
+                }}
+              >
+                จบแมตช์ตอนนี้
+              </button>
+            </>
+          )}
+        </section>
+        <section className="card">
+          <MatchTable view={view} currentId={currentId} onOpenRound={setCurrentId} />
+        </section>
         <EliminationNotice game={game} />
-        <WordList round={round} game={game} onChange={setRound} />
+        <section className="card">
+          <WordList round={round} game={game} onChange={setRound} />
+        </section>
         <div className="row">{home}</div>
       </main>
     )
@@ -622,79 +638,18 @@ function Setup({
     }
   }
 
+  const stepRounds = (by: number) =>
+    onTimerChange({ ...timer, rounds: Math.min(20, Math.max(1, timer.rounds + by)) })
+  const stepSeconds = (by: number) =>
+    onTimerChange({ ...timer, seconds: Math.min(30, Math.max(1, timer.seconds + by)) })
+
   return (
     <main className="page">
-      <h1>คำต้องเชื่อม</h1>
-      <form className="stack" onSubmit={handleSubmit}>
-        <label htmlFor="names">รายชื่อผู้เล่น (บรรทัดละคน เรียงตามลำดับเล่น)</label>
-        <textarea
-          id="names"
-          rows={6}
-          value={namesText}
-          onChange={(event) => onNamesChange(event.target.value)}
-          placeholder="ใส่ชื่อผู้เล่นบรรทัดละคน"
-        />
-        <p className={duplicates.length > 0 ? 'note error' : 'note'} role="status">
-          {duplicates.length > 0
-            ? `ชื่อซ้ำ: ${duplicates.join(', ')}`
-            : names.length < 2
-              ? 'ต้องมีผู้เล่นอย่างน้อย 2 คน'
-              : `ผู้เล่น ${names.length} คน`}
-        </p>
-        <fieldset className="stack choice">
-          <legend>โหมด</legend>
-          {(['normal', 'competition'] as const).map((mode) => (
-            <label key={mode} className="check">
-              <input
-                type="radio"
-                name="mode"
-                checked={timer.mode === mode}
-                onChange={() => onTimerChange({ ...timer, mode, rounds: MATCH_ROUNDS[mode] })}
-              />
-              {mode === 'normal'
-                ? 'ปกติ: คนแรกพูดคำอะไรก็ได้ และหลังมีคนตกรอบ คนถัดไปเริ่มคำใหม่ได้'
-                : 'แข่ง: กรรมการเลือกคำเปิด และหลังมีคนตกรอบ ต้องเชื่อมกับคำล่าสุดต่อ'}
-            </label>
-          ))}
-        </fieldset>
-        <label htmlFor="rounds">จำนวนรอบในแมตช์</label>
-        <input
-          id="rounds"
-          type="number"
-          inputMode="numeric"
-          min={1}
-          max={20}
-          step={1}
-          value={timer.rounds}
-          onChange={(event) => {
-            const rounds = Math.round(Number(event.target.value))
-            if (rounds >= 1 && rounds <= 20) onTimerChange({ ...timer, rounds })
-          }}
-        />
-        <label htmlFor="seconds">เวลาต่อตา (วินาที)</label>
-        <input
-          id="seconds"
-          type="number"
-          inputMode="decimal"
-          min={1}
-          max={30}
-          step={0.5}
-          value={timer.seconds}
-          onChange={(event) => {
-            const seconds = Number(event.target.value)
-            if (seconds > 0) onTimerChange({ ...timer, seconds })
-          }}
-        />
-        <button type="submit" disabled={!canStart}>
-          เริ่มเกม
-        </button>
-      </form>
-      <p className="note">
-        แอปเก็บคำ การแยกพยางค์ และผลการตัดสินแบบไม่ระบุตัวตน (ไม่เก็บชื่อผู้เล่น)
-        เพื่อใช้พัฒนาระบบ
-      </p>
+      <div className="topbar">
+        <h1>คำต้องเชื่อม</h1>
+      </div>
       {askMerge > 0 && (
-        <section className="stack edit-box" role="dialog" aria-label="เพิ่มเกมเข้าบัญชี">
+        <section className="card" role="dialog" aria-label="เพิ่มเกมเข้าบัญชี">
           <p>มีเกมที่เล่นไว้ในเครื่องนี้ตอนยังไม่ได้เข้าสู่ระบบ {askMerge} เกม เพิ่มเข้าบัญชีนี้ไหม</p>
           <div className="row">
             <button type="button" onClick={() => onAnswerMerge(true)}>
@@ -706,21 +661,110 @@ function Setup({
           </div>
         </section>
       )}
-      <BackupPanel
-        account={account}
-        backup={backup}
-        onBackupNow={onBackupNow}
-        onSignOut={onSignOut}
-        onDeleteAccount={onDeleteAccount}
-      />
-      <SavedGames games={games} onOpen={onOpen} onDelete={onDelete} />
-      {storageError && (
-        <p className="note error" role="alert">
-          เบราว์เซอร์นี้ไม่ให้บันทึกเกมในเครื่อง (อาจเปิดแบบส่วนตัวอยู่) เกมจะหายเมื่อปิดหน้า
-          ส่งออกเป็นไฟล์ไว้ก่อนปิด
+      <SavedGames games={games} onOpen={onOpen} onDelete={onDelete} part="continue" />
+
+      <form className="card" onSubmit={handleSubmit}>
+        <h2>เกมใหม่</h2>
+        <div className="stack">
+          <div className="card-head">
+            <label htmlFor="names" className="label">
+              ผู้เล่น
+            </label>
+            <span className={duplicates.length > 0 ? 'note error' : 'note'} role="status">
+              {duplicates.length > 0
+                ? `ชื่อซ้ำ: ${duplicates.join(', ')}`
+                : names.length < 2
+                  ? 'ต้องมีอย่างน้อย 2 คน'
+                  : `${names.length} คน`}
+            </span>
+          </div>
+          <textarea
+            id="names"
+            rows={4}
+            value={namesText}
+            onChange={(event) => onNamesChange(event.target.value)}
+            placeholder="ใส่ชื่อผู้เล่นบรรทัดละคน"
+          />
+          <p className="note">บรรทัดละคน เรียงตามลำดับการเล่น</p>
+        </div>
+        <div className="stack">
+          <span className="label">โหมด</span>
+          <div className="segmented" role="group" aria-label="โหมด">
+            {(['normal', 'competition'] as const).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                aria-pressed={timer.mode === mode}
+                onClick={() => onTimerChange({ ...timer, mode, rounds: MATCH_ROUNDS[mode] })}
+              >
+                {MODE_LABEL[mode]}
+              </button>
+            ))}
+          </div>
+          <p className="note">
+            {timer.mode === 'normal'
+              ? 'คนแรกพูดคำอะไรก็ได้ · มีคนตกรอบแล้วเริ่มคำใหม่'
+              : 'กรรมการเลือกคำเปิด · มีคนตกรอบแล้วต้องเชื่อมกับคำล่าสุดต่อ'}
+          </p>
+        </div>
+        <div className="card-head">
+          <span className="label" id="rounds-label">
+            จำนวนรอบ
+          </span>
+          <div className="stepper" role="group" aria-labelledby="rounds-label">
+            <button type="button" aria-label="ลดจำนวนรอบ" onClick={() => stepRounds(-1)} disabled={timer.rounds <= 1}>
+              −
+            </button>
+            <output aria-live="polite">{timer.rounds}</output>
+            <button type="button" aria-label="เพิ่มจำนวนรอบ" onClick={() => stepRounds(1)} disabled={timer.rounds >= 20}>
+              +
+            </button>
+          </div>
+        </div>
+        <div className="card-head">
+          <span className="label" id="seconds-label">
+            เวลาต่อตา
+          </span>
+          <div className="stepper" role="group" aria-labelledby="seconds-label">
+            <button type="button" aria-label="ลดเวลาต่อตา" onClick={() => stepSeconds(-0.5)} disabled={timer.seconds <= 1}>
+              −
+            </button>
+            <output aria-live="polite">{timer.seconds} วิ</output>
+            <button type="button" aria-label="เพิ่มเวลาต่อตา" onClick={() => stepSeconds(0.5)} disabled={timer.seconds >= 30}>
+              +
+            </button>
+          </div>
+        </div>
+        <button type="submit" className="big" disabled={!canStart}>
+          เริ่มเกม
+        </button>
+      </form>
+
+      <SavedGames games={games} onOpen={onOpen} onDelete={onDelete} part="history" />
+
+      <section className="card">
+        <h2>บัญชีและข้อมูล</h2>
+        <BackupPanel
+          account={account}
+          backup={backup}
+          onBackupNow={onBackupNow}
+          onSignOut={onSignOut}
+          onDeleteAccount={onDeleteAccount}
+        />
+        {storageError && (
+          <p className="note error" role="alert">
+            เบราว์เซอร์นี้ไม่ให้บันทึกเกมในเครื่อง (อาจเปิดแบบส่วนตัวอยู่) เกมจะหายเมื่อปิดหน้า
+            ส่งออกเป็นไฟล์ไว้ก่อนปิด
+          </p>
+        )}
+        <BackupFile games={games} onImport={onImport} />
+        <p className="note">
+          เกมเก็บในเบราว์เซอร์ของเครื่องนี้ ถ้าล้างข้อมูลเบราว์เซอร์จะหาย (ส่งออกเป็นไฟล์ หรือเข้าสู่ระบบเพื่อสำรอง)
         </p>
-      )}
-      <BackupFile games={games} onImport={onImport} />
+        <p className="note">
+          แอปเก็บคำ การแยกพยางค์ และผลการตัดสินแบบไม่ระบุตัวตน (ไม่เก็บชื่อผู้เล่น) เพื่อใช้พัฒนาระบบ
+        </p>
+      </section>
     </main>
   )
 }
@@ -855,36 +899,56 @@ function Play({
 
   return (
     <main className="page">
-      <div className="turn">
-        {game.needsOpening ? (
-          <span>
-            <strong>คำเปิด</strong>
-            <span className="next"> · กรรมการเลือก แล้ว {player.name} เริ่ม</span>
-          </span>
-        ) : (
-          <span>
-            ตาของ <strong>{player.name}</strong>
-            <span className="next"> · ถัดไป {next.name}</span>
-          </span>
-        )}
+      <div className="topbar">
+        <div className="row tight">
+          {matchLabel && <span className="chip blue">{matchLabel}</span>}
+          {game.mode === 'competition' && <span className="chip">โหมด{MODE_LABEL.competition}</span>}
+          <button
+            type="button"
+            className="link"
+            aria-expanded={showScores}
+            onClick={() => setShowScores(!showScores)}
+          >
+            คะแนน
+          </button>
+        </div>
         {undoButton}
       </div>
-      <p className="note">
-        {matchLabel && `${matchLabel} · `}
-        {game.mode === 'competition' && `โหมด${MODE_LABEL.competition} · `}
-        ยังเล่นอยู่: {game.players.filter((p) => !p.out).map((p) => p.name).join(', ')}
-        {game.players.some((p) => p.out) &&
-          ` · ตกรอบ: ${game.players.filter((p) => p.out).map((p) => p.name).join(', ')}`}{' '}
-        <button
-          type="button"
-          className="link"
-          aria-expanded={showScores}
-          onClick={() => setShowScores(!showScores)}
-        >
-          คะแนน
-        </button>
-      </p>
-      {showScores && <MatchTable view={matchView} currentId={currentId} onOpenRound={onOpenRound} />}
+      {showScores && (
+        <section className="card">
+          <MatchTable view={matchView} currentId={currentId} onOpenRound={onOpenRound} />
+        </section>
+      )}
+      <div className="turn-head">
+        {game.needsOpening ? (
+          <>
+            <div className="who">
+              <strong>คำเปิด</strong>
+            </div>
+            <div className="next">กรรมการเลือก แล้ว {player.name} เริ่ม</div>
+          </>
+        ) : (
+          <>
+            <div className="who">
+              ตาของ <strong>{player.name}</strong>
+            </div>
+            <div className="next">ถัดไป {next.name}</div>
+          </>
+        )}
+      </div>
+      <ul className="players" aria-label="ผู้เล่นในรอบนี้">
+        {game.players.map((p) => (
+          <li
+            key={p.id}
+            className={p.out ? 'out' : !game.needsOpening && p.id === player.id ? 'now' : undefined}
+            aria-label={p.out ? `${p.name} (ตกรอบ)` : undefined}
+          >
+            {p.name}
+          </li>
+        ))}
+      </ul>
+
+      <section className="card">
 
       {!game.needsOpening && <div className={`timer timer-${timer.phase}`} role="timer" aria-label="จับเวลา">
         {timer.phase === 'idle' && (
@@ -894,7 +958,7 @@ function Play({
             onPointerDown={keepFocus}
             onClick={startTimer}
           >
-            เริ่มจับเวลา ({settings.seconds} วิ)
+            เริ่มจับเวลา · {settings.seconds} วิ
           </button>
         )}
         {timer.phase === 'counting' && (
@@ -936,7 +1000,7 @@ function Play({
         </button>
       </form>
       {manualSplit === null ? (
-        <div className="split-row">
+        word.trim() !== '' && <div className="split-row">
           <p className="syllables" aria-label="พยางค์ของคำที่พิมพ์">
             {preview.length > 0 ? preview.join(' | ') : ' '}
           </p>
@@ -970,6 +1034,7 @@ function Play({
           <p className="syllables">{parseSyllables(manualSplit).join(' | ') || ' '}</p>
         </div>
       )}
+      {!game.needsOpening && <p className="note">ให้ตกรอบเพราะ</p>}
       {!game.needsOpening && (
         <div className="row judge-actions">
           {JUDGE_REASONS.map((reason) => (
@@ -1001,10 +1066,13 @@ function Play({
           {error}
         </p>
       )}
+      </section>
 
       <EliminationNotice game={game} />
 
-      <WordList round={round} game={game} onChange={onChange} />
+      <section className="card">
+        <WordList round={round} game={game} onChange={onChange} />
+      </section>
 
       <div className="row">{homeButton}</div>
     </main>
@@ -1019,24 +1087,28 @@ const DATE_FORMAT = new Intl.DateTimeFormat('th-TH', {
 })
 
 /** Games kept in this browser: carry on with one in progress or look back at a finished one. */
+/**
+ * Saved matches. part 'continue' is a card for the most recent unfinished match;
+ * part 'history' lists every other match.
+ */
 function SavedGames({
   games,
   onOpen,
   onDelete,
+  part,
 }: {
   games: SavedGame[]
   onOpen: (id: string) => void
   onDelete: (id: string) => void
+  part: 'continue' | 'history'
 }) {
-  if (games.length === 0) return null
-  const matches = groupMatches(games)
+  const all = groupMatches(games)
+  const resume = all.find((view) => !view.over)
+  const matches = part === 'continue' ? (resume ? [resume] : []) : all.filter((view) => view !== resume)
+  if (matches.length === 0) return null
   return (
-    <section>
-      <h2 className="small-heading">เกมที่บันทึกไว้ในเครื่องนี้</h2>
-      <p className="note">
-        เก็บไว้ในเบราว์เซอร์ของเครื่องนี้เท่านั้น ถ้าล้างข้อมูลเบราว์เซอร์ เกมทั้งหมดจะหาย
-        ส่งออกเป็นไฟล์ไว้ได้ถ้าอยากเก็บถาวร
-      </p>
+    <section className={part === 'continue' ? 'card resume' : 'card'}>
+      <h2>{part === 'continue' ? 'เล่นต่อ' : 'ประวัติเกม'}</h2>
       <ul className="games">
         {matches.map((view) => {
           const state = view.latestState
@@ -1070,7 +1142,7 @@ function SavedGames({
               <div className="row">
                 <button
                   type="button"
-                  className="secondary"
+                  className={part === 'continue' ? undefined : 'secondary'}
                   aria-label={`${view.over ? 'ดู' : 'เล่นต่อ'} ${names}`}
                   onClick={() => onOpen(view.latest.id)}
                 >
@@ -1133,7 +1205,6 @@ function BackupPanel({
   if (!account) {
     return (
       <section className="stack">
-        <h2 className="small-heading">สำรองเกม</h2>
         <p className="note">
           เข้าสู่ระบบด้วย Google เพื่อสำรองเกมไว้ในบัญชี และเปิดได้จากหลายเครื่อง
           ไม่เข้าสู่ระบบก็เล่นได้ตามปกติ
@@ -1161,7 +1232,6 @@ function BackupPanel({
 
   return (
     <section className="stack">
-      <h2 className="small-heading">สำรองเกม</h2>
       <p className="note">
         เข้าสู่ระบบเป็น {account.email ?? 'บัญชี Google'} · เกมทั้งหมดรวมชื่อผู้เล่นสำรองไว้ในบัญชีนี้
         เห็นได้เฉพาะคุณ
@@ -1301,10 +1371,10 @@ function BackupFile({
     <section className="stack">
       <div className="row">
         <button type="button" className="secondary" onClick={download} disabled={games.length === 0}>
-          ส่งออกเกมทั้งหมด
+          ส่งออกเป็นไฟล์
         </button>
         <button type="button" className="secondary" onClick={() => fileRef.current?.click()}>
-          นำเข้า
+          นำเข้าจากไฟล์
         </button>
         <input
           ref={fileRef}
@@ -1429,7 +1499,7 @@ function EliminationNotice({ game }: { game: GameState }) {
   }
   const name = game.players.find((player) => player.id === elimination.playerId)?.name
   return (
-    <section className="elimination" role="status">
+    <section className="banner" role="status">
       <h2>{name} ตกรอบ</h2>
       {elimination.lostChallengeAt !== undefined ? (
         <p>{describeChallenge(elimination.word, elimination.lostChallengeAt)} ไม่สำเร็จ</p>
@@ -1512,6 +1582,8 @@ function WordList({
   const [reason, setReason] = useState<JudgeReason | null>(null)
   const [challengerId, setChallengerId] = useState<string | null>(null)
   const [succeeded, setSucceeded] = useState<boolean | null>(null)
+  /** The word whose ⋯ menu is open. */
+  const [menuIndex, setMenuIndex] = useState<number | null>(null)
 
   if (game.results.length === 0) {
     return <p className="note">ยังไม่มีคำในรอบนี้</p>
@@ -1537,10 +1609,22 @@ function WordList({
   const canSave = Boolean(pending && pending.round !== round)
   const changes = summarize(round, game, pending)
 
+  /** What the judge can do to an entry from its ⋯ menu. */
+  const actionsFor = (result: GameState['results'][number]) => {
+    const actions: ('split' | 'judge' | 'challenge')[] = []
+    if (result.status !== 'judged' && result.status !== 'challenge-lost') actions.push('split')
+    if (result.status === 'counted' && result.playerId !== JUDGE_ID) actions.push('judge')
+    if (canChallenge(game, result.index)) actions.push('challenge')
+    return actions
+  }
+
   return (
-    <section>
-      <h2 className="small-heading">คำในรอบนี้ (นับ {game.words.length})</h2>
-      <ol className="words" reversed>
+    <>
+      <div className="card-head">
+        <h2>คำในรอบนี้</h2>
+        <span className="note">นับ {game.words.length} คำ</span>
+      </div>
+      <ol className="words" reversed aria-label="คำในรอบนี้">
         {[...game.results].reverse().map((result) => (
           <li
             key={result.index}
@@ -1575,50 +1659,68 @@ function WordList({
               {result.status === 'judged' && result.challengerId && (
                 <span className="tag">ชาเลนจ์โดย {nameOf(result.challengerId)}</span>
               )}
-              {open?.index !== result.index && result.status !== 'judged' && result.status !== 'challenge-lost' && (
-                <button
-                  type="button"
-                  className="link"
-                  aria-label={`แก้การแยก ${result.word}`}
-                  onClick={() => {
-                    setOpen({ index: result.index, kind: 'split', word: result.word })
-                    setDraft(result.syllables.join(' '))
-                    setDraftWord(result.word)
-                    setAutoSplit(null)
-                    setSplitTouched(false)
-                  }}
-                >
-                  แก้
-                </button>
-              )}
-              {open?.index !== result.index && result.status === 'counted' && result.playerId !== JUDGE_ID && (
-                <button
-                  type="button"
-                  className="link"
-                  aria-label={`ตัดสิน ${result.word}`}
-                  onClick={() => {
-                    setOpen({ index: result.index, kind: 'judge' })
-                    setReason(null)
-                  }}
-                >
-                  ตัดสิน
-                </button>
-              )}
-              {open?.index !== result.index && canChallenge(game, result.index) && (
-                <button
-                  type="button"
-                  className="link"
-                  aria-label={`ชาเลนจ์ ${result.word}`}
-                  onClick={() => {
-                    setOpen({ index: result.index, kind: 'challenge' })
-                    setChallengerId(defaultChallenger(game, result.index))
-                    setSucceeded(null)
-                  }}
-                >
-                  ชาเลนจ์
-                </button>
-              )}
             </div>
+            {open?.index !== result.index && actionsFor(result).length > 0 && (
+              <button
+                type="button"
+                className="more"
+                aria-label={`ตัวเลือก ${result.word || nameOf(result.playerId)}`}
+                aria-expanded={menuIndex === result.index}
+                onClick={() => setMenuIndex(menuIndex === result.index ? null : result.index)}
+              >
+                ⋯
+              </button>
+            )}
+            {menuIndex === result.index && open?.index !== result.index && (
+              <div className="row menu">
+                {actionsFor(result).includes('split') && (
+                  <button
+                    type="button"
+                    className="secondary"
+                    aria-label={`แก้คำ ${result.word}`}
+                    onClick={() => {
+                      setMenuIndex(null)
+                      setOpen({ index: result.index, kind: 'split', word: result.word })
+                      setDraft(result.syllables.join(' '))
+                      setDraftWord(result.word)
+                      setAutoSplit(null)
+                      setSplitTouched(false)
+                    }}
+                  >
+                    แก้คำ
+                  </button>
+                )}
+                {actionsFor(result).includes('judge') && (
+                  <button
+                    type="button"
+                    className="secondary"
+                    aria-label={`ตัดสิน ${result.word}`}
+                    onClick={() => {
+                      setMenuIndex(null)
+                      setOpen({ index: result.index, kind: 'judge' })
+                      setReason(null)
+                    }}
+                  >
+                    ตัดสิน
+                  </button>
+                )}
+                {actionsFor(result).includes('challenge') && (
+                  <button
+                    type="button"
+                    className="secondary"
+                    aria-label={`ชาเลนจ์ ${result.word}`}
+                    onClick={() => {
+                      setMenuIndex(null)
+                      setOpen({ index: result.index, kind: 'challenge' })
+                      setChallengerId(defaultChallenger(game, result.index))
+                      setSucceeded(null)
+                    }}
+                  >
+                    ชาเลนจ์
+                  </button>
+                )}
+              </div>
+            )}
             {open?.index === result.index && (
               <div className="stack edit-box">
                 {open.kind === 'split' ? (
@@ -1737,6 +1839,6 @@ function WordList({
           </li>
         ))}
       </ol>
-    </section>
+    </>
   )
 }
