@@ -1048,7 +1048,9 @@ function Play({
               onPointerDown={keepFocus}
               onClick={() => {
                 turnEnded.current = true
-                onChange(judgeOut(round, reason, word))
+                onChange(
+                  judgeOut(round, reason, word, manualSplit !== null ? parseSyllables(manualSplit) : preview),
+                )
                 setWord('')
                 setPreview([])
                 setManualSplit(null)

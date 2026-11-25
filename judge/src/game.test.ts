@@ -303,6 +303,16 @@ describe('applyEdit', () => {
 })
 
 describe('judgeOut', () => {
+  it('keeps the split of a judged or challenged word for display, without using it', () => {
+    const judged = judgeOut(startRound(['ออย', 'บีม']), 'not-noun', 'วิ่งเล่น', ['วิ่ง', 'เล่น'])
+    expect(replay(judged).results[0].syllables).toEqual(['วิ่ง', 'เล่น'])
+
+    const ruled = applyJudge(play(['ออย', 'บีม', 'เจ'], [['กาแฟ', ['กา', 'แฟ']]]), 0, 'not-noun').round
+    expect(replay(ruled).results[0].syllables).toEqual(['กา', 'แฟ'])
+    // a later word may reuse them, since the judged word does not count
+    expect(replay(addWord(ruled, 'แฟกา', ['แฟ', 'กา'])).results[1].status).toBe('counted')
+  })
+
   it('puts the current player out with the reason, and their word does not count', () => {
     let round = play(['ออย', 'บีม', 'เจ'], [['กาแฟ', ['กา', 'แฟ']]])
     round = judgeOut(round, 'not-noun', ' วิ่ง ')
