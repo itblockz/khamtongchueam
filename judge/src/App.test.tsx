@@ -376,6 +376,26 @@ describe('judge app', () => {
       expect(screen.getByRole('button', { name: 'เริ่มจับเวลา · 5 วิ' })).toBeInTheDocument()
     })
 
+    it('can still redo after a reload, unless the round changed', async () => {
+      const { unmount } = await renderApp()
+      fireEvent.change(screen.getByLabelText('ผู้เล่น'), { target: { value: 'ออย\nบีม\nเจ' } })
+      fireEvent.click(screen.getByRole('button', { name: 'เริ่มเกม' }))
+      await submit('กาแฟ')
+      await submit('ชั่วโมง')
+      fireEvent.click(screen.getByRole('button', { name: 'ย้อนกลับ: ชั่วโมง' }))
+      unmount()
+
+      const second = await renderApp()
+      fireEvent.click(screen.getByRole('button', { name: 'ทำซ้ำ: ชั่วโมง' }))
+      expect(screen.getByText('ชั่วโมง', { selector: '.word' })).toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: 'ย้อนกลับ: ชั่วโมง' }))
+      await submit('ยามเย็น') // a new word: the taken-back one no longer fits
+      second.unmount()
+
+      await renderApp()
+      expect(screen.queryByRole('button', { name: /^ทำซ้ำ/ })).not.toBeInTheDocument()
+    })
+
     it('keeps a game in progress across a remount', async () => {
       await startWith('ออย\nบีม')
       await cleanupAndRender()
