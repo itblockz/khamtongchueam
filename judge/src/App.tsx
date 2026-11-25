@@ -5,12 +5,15 @@ import {
   exportGames,
   fingerprint,
   loadSent,
-  load,
+  askToKeepStorage,
+  loadGames,
+  loadSettings,
   mergeGames,
   newId,
   parseExport,
-  save,
   saveSent,
+  saveSettings,
+  storeGames,
   type SavedGame,
 } from './storage'
 import {
@@ -61,25 +64,60 @@ const DEFAULT_TIMER: TimerSettings = { seconds: 3 }
 type TimerState = { phase: 'idle' } | { phase: 'counting'; startedAt: number } | { phase: 'late' }
 
 export default function App() {
-  const [saved] = useState(load)
-  const [namesText, setNamesText] = useState(saved.namesText ?? '')
-  const [timer, setTimer] = useState<TimerSettings>({ seconds: saved.seconds ?? DEFAULT_TIMER.seconds })
-  const [games, setGames] = useState<SavedGame[]>(saved.games ?? [])
-  const [currentId, setCurrentId] = useState<string | null>(saved.currentId ?? null)
+  const [settings] = useState(loadSettings)
+  const [namesText, setNamesText] = useState(settings.namesText ?? '')
+  const [timer, setTimer] = useState<TimerSettings>({ seconds: settings.seconds ?? DEFAULT_TIMER.seconds })
+  const [games, setGames] = useState<SavedGame[]>([])
+  const [currentId, setCurrentId] = useState<string | null>(settings.currentId ?? null)
+  /** Games come from IndexedDB, which answers asynchronously. */
+  const [loaded, setLoaded] = useState(false)
+  /** Set when the browser will not store games (some private modes). */
+  const [storageError, setStorageError] = useState(false)
 
-  /** How many finished games were dropped because storage was full (shown once). */
-  const [dropped, setDropped] = useState(0)
-
-  // Keep every game in this browser so a reload or a sleeping phone does not lose it
   useEffect(() => {
-    const result = save({ namesText, seconds: timer.seconds, games, currentId })
-    if (result.dropped > 0) {
-      // Rare: storage was full and old finished games had to go. Show what was kept.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setGames(result.games)
-      setDropped((n) => n + result.dropped)
+    let cancelled = false
+    askToKeepStorage()
+    loadGames()
+      .then((all) => {
+        if (cancelled) return
+        setGames(all)
+        // a game carried over from an older version may have been opened while loading
+        const wanted = loadSettings().currentId ?? null
+        setCurrentId((id) => {
+          const open = id ?? wanted
+          return open && all.some((g) => g.id === open) ? open : null
+        })
+      })
+      .catch(() => {
+        if (!cancelled) setStorageError(true)
+      })
+      .finally(() => {
+        if (!cancelled) setLoaded(true)
+      })
+    return () => {
+      cancelled = true
     }
-  }, [namesText, timer.seconds, games, currentId])
+  }, [])
+
+  useEffect(() => {
+    saveSettings({ namesText, seconds: timer.seconds, currentId })
+  }, [namesText, timer.seconds, currentId])
+
+  // Write only the games that changed (and drop deleted ones) once loading is done
+  const stored = useRef<Map<string, SavedGame> | null>(null)
+  useEffect(() => {
+    if (!loaded || storageError) return
+    if (stored.current === null) {
+      stored.current = new Map(games.map((g) => [g.id, g]))
+      return
+    }
+    const previous = stored.current
+    const changed = games.filter((g) => previous.get(g.id) !== g)
+    const current = new Set(games.map((g) => g.id))
+    const removed = [...previous.keys()].filter((id) => !current.has(id))
+    stored.current = new Map(games.map((g) => [g.id, g]))
+    storeGames(changed, removed).catch(() => setStorageError(true))
+  }, [games, loaded, storageError])
 
   // Send changed games for collection, anonymously, a moment after they settle.
   // What the server already has is remembered across visits, so a send that failed
@@ -129,6 +167,14 @@ export default function App() {
     </button>
   )
 
+  if (!loaded) {
+    return (
+      <main className="page">
+        <p className="note">กำลังโหลด…</p>
+      </main>
+    )
+  }
+
   if (!round || !game) {
     return (
       <Setup
@@ -145,7 +191,7 @@ export default function App() {
           setGames(result.games)
           return result
         }}
-        dropped={dropped}
+        storageError={storageError}
       />
     )
   }
@@ -201,7 +247,7 @@ function Setup({
   onOpen,
   onDelete,
   onImport,
-  dropped,
+  storageError,
 }: {
   namesText: string
   onNamesChange: (text: string) => void
@@ -212,7 +258,7 @@ function Setup({
   onOpen: (id: string) => void
   onDelete: (id: string) => void
   onImport: (games: SavedGame[]) => { added: number; updated: number }
-  dropped: number
+  storageError: boolean
 }) {
   const { names, duplicates, canStart } = parseNames(namesText)
 
@@ -265,9 +311,10 @@ function Setup({
         เพื่อใช้พัฒนาระบบ
       </p>
       <SavedGames games={games} onOpen={onOpen} onDelete={onDelete} />
-      {dropped > 0 && (
-        <p className="note error" role="status">
-          ลบเกมเก่าที่จบแล้ว {dropped} เกม เพราะพื้นที่เก็บในเบราว์เซอร์เต็ม
+      {storageError && (
+        <p className="note error" role="alert">
+          เบราว์เซอร์นี้ไม่ให้บันทึกเกมในเครื่อง (อาจเปิดแบบส่วนตัวอยู่) เกมจะหายเมื่อปิดหน้า
+          ส่งออกเป็นไฟล์ไว้ก่อนปิด
         </p>
       )}
       <BackupFile games={games} onImport={onImport} />
@@ -551,8 +598,8 @@ function SavedGames({
     <section>
       <h2 className="small-heading">เกมที่บันทึกไว้ในเครื่องนี้</h2>
       <p className="note">
-        เก็บไว้ในเบราว์เซอร์ของเครื่องนี้เท่านั้น ถ้าพื้นที่เต็ม เกมที่จบแล้วที่เก่าที่สุดจะถูกลบอัตโนมัติ
-        และถ้าล้างข้อมูลเบราว์เซอร์ เกมทั้งหมดจะหาย ส่งออกเป็นไฟล์ไว้ได้ถ้าอยากเก็บถาวร
+        เก็บไว้ในเบราว์เซอร์ของเครื่องนี้เท่านั้น ถ้าล้างข้อมูลเบราว์เซอร์ เกมทั้งหมดจะหาย
+        ส่งออกเป็นไฟล์ไว้ได้ถ้าอยากเก็บถาวร
       </p>
       <ul className="games">
         {sorted.map((saved) => {
