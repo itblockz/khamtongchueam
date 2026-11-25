@@ -580,8 +580,8 @@ describe('judge app', () => {
 
       expect(screen.getByText(/เข้าสู่ระบบเป็น judge@example.com/)).toBeInTheDocument()
       // the account's game (เจ, บีม) is listed next to the one played here (ออย, บีม)
-      expect(await screen.findByText(/เจ, บีม/, {}, { timeout: 4000 })).toBeInTheDocument()
-      expect(screen.getByText(/ออย, บีม/)).toBeInTheDocument()
+      expect(await screen.findByText(/เจ, บีม/, { selector: 'div.note' }, { timeout: 4000 })).toBeInTheDocument()
+      expect(screen.getByText(/ออย, บีม/, { selector: 'div.note' })).toBeInTheDocument()
       await waitFor(() => expect(cloud.pushed.flat().length).toBeGreaterThan(0), { timeout: 4000 })
       const pushedIds = cloud.pushed.flat().map((g) => g.id)
       expect(pushedIds).not.toContain('fromcloud1')
@@ -718,12 +718,12 @@ describe('judge app', () => {
       fireEvent.click(screen.getByRole('button', { name: 'ออกและทิ้งเกมที่ยังไม่ได้สำรอง' }))
       expect(confirm.mock.lastCall?.[0]).toMatch(/1 เกมที่ยังไม่ได้สำรองจะหายถาวร/)
       await waitFor(() => expect(screen.getByRole('button', { name: 'เข้าสู่ระบบด้วย Google' })).toBeInTheDocument())
-      expect(screen.queryByText(/ออย, บีม|เจ, บีม/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/ออย, บีม|เจ, บีม/, { selector: 'div.note' })).not.toBeInTheDocument()
 
       // signing in again brings back only the game that was backed up
       act(() => cloud.become({ id: 'u1', email: 'a@example.com' }))
-      expect(await screen.findByText(/ออย, บีม/)).toBeInTheDocument()
-      expect(screen.queryByText(/เจ, บีม/)).not.toBeInTheDocument()
+      expect(await screen.findByText(/ออย, บีม/, { selector: 'div.note' })).toBeInTheDocument()
+      expect(screen.queryByText(/เจ, บีม/, { selector: 'div.note' })).not.toBeInTheDocument()
     }, 15000)
 
     it('brings back a game deleted from the account when it is imported again', async () => {
@@ -833,6 +833,22 @@ describe('judge app', () => {
     expect(screen.getByText('ออย', { selector: 'strong' })).toBeInTheDocument()
     expect(screen.getByText(/ถัดไป บีม/)).toBeInTheDocument()
     expect(screen.getByText(/รอบ 1\/4/)).toBeInTheDocument()
+  })
+
+  it('suggests earlier names and line-ups under the players box', async () => {
+    await startWith('ออย\nบีม')
+    fireEvent.click(screen.getByRole('button', { name: 'หน้าแรก' }))
+    const box = screen.getByLabelText('ผู้เล่น') as HTMLTextAreaElement
+    fireEvent.change(box, { target: { value: '' } })
+    fireEvent.click(screen.getByRole('button', { name: 'เพิ่ม บีม' }))
+    expect(box.value).toBe('บีม')
+    // a name already in the box is not offered again
+    expect(screen.queryByRole('button', { name: 'เพิ่ม บีม' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'เพิ่ม ออย' }))
+    expect(box.value).toBe('บีม\nออย')
+    fireEvent.change(box, { target: { value: '' } })
+    fireEvent.click(screen.getByRole('button', { name: 'ใช้กลุ่ม ออย, บีม' }))
+    expect(box.value).toBe('ออย\nบีม')
   })
 
   it('turns the time-up sound off and remembers it', async () => {

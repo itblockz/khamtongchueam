@@ -699,3 +699,29 @@ button.more {
 .home-row {
   order: 1;
 }
+
+/* earlier names and line-ups under the players box */
+.stack.tight {
+  gap: 4px;
+}
+
+.suggest {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+button.suggest-chip {
+  min-height: 36px;
+  padding: 0 12px;
+  font-size: 0.95rem;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+button.suggest-chip.group {
+  background: #eef0f3;
+  color: var(--ink);
+}
