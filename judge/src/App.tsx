@@ -11,7 +11,7 @@ import {
   type Account,
 } from './cloud'
 import { applyRemote, reconcile } from './sync'
-import { groupMatches, matchOf, viewMatch, type MatchView } from './match'
+import { groupMatches, matchOf, suggestNames, viewMatch, type MatchView } from './match'
 import {
   anonymize,
   exportGames,
@@ -639,6 +639,15 @@ export default function App() {
   )
 }
 
+/** How many earlier names show before "ดูทั้งหมด". */
+const NAME_CHIPS = 12
+
+/** Add a name as a new last line of the players box. */
+function addName(text: string, name: string): string {
+  const kept = text.replace(/\s+$/, '')
+  return kept ? `${kept}\n${name}` : name
+}
+
 function Setup({
   namesText,
   onNamesChange,
@@ -677,6 +686,9 @@ function Setup({
   onDeleteAccount: () => Promise<void>
 }) {
   const { names, duplicates, canStart } = parseNames(namesText)
+  const suggestions = useMemo(() => suggestNames(games), [games])
+  const unusedNames = suggestions.names.filter((name) => !names.includes(name))
+  const [showAllNames, setShowAllNames] = useState(false)
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault()
@@ -735,6 +747,47 @@ function Setup({
             placeholder="ใส่ชื่อผู้เล่นบรรทัดละคน"
           />
           <p className="note">บรรทัดละคน เรียงตามลำดับการเล่น</p>
+          {suggestions.groups.length > 0 && (
+            <div className="stack tight">
+              <span className="note">กลุ่มที่เคยเล่น</span>
+              <div className="suggest" role="group" aria-label="กลุ่มที่เคยเล่น">
+                {suggestions.groups.map((group) => (
+                  <button
+                    key={group.join('\n')}
+                    type="button"
+                    className="suggest-chip group"
+                    aria-label={`ใช้กลุ่ม ${group.join(', ')}`}
+                    onClick={() => onNamesChange(group.join('\n'))}
+                  >
+                    {group.join(', ')}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          {unusedNames.length > 0 && (
+            <div className="stack tight">
+              <span className="note">ชื่อที่เคยเล่น · แตะเพื่อเพิ่ม</span>
+              <div className="suggest" role="group" aria-label="ชื่อที่เคยเล่น">
+                {(showAllNames ? unusedNames : unusedNames.slice(0, NAME_CHIPS)).map((name) => (
+                  <button
+                    key={name}
+                    type="button"
+                    className="suggest-chip"
+                    aria-label={`เพิ่ม ${name}`}
+                    onClick={() => onNamesChange(addName(namesText, name))}
+                  >
+                    + {name}
+                  </button>
+                ))}
+                {unusedNames.length > NAME_CHIPS && (
+                  <button type="button" className="link" onClick={() => setShowAllNames(!showAllNames)}>
+                    {showAllNames ? 'ย่อ' : `ดูทั้งหมด (${unusedNames.length})`}
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
         </div>
         <div className="stack">
           <span className="label">โหมด</span>

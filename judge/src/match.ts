@@ -65,3 +65,29 @@ export function groupMatches(games: SavedGame[]): MatchView[] {
         Math.max(...b.rounds.map((g) => g.updatedAt)) - Math.max(...a.rounds.map((g) => g.updatedAt)),
     )
 }
+
+export interface NameSuggestions {
+  /** Every name played before, most recently played first. */
+  names: string[]
+  /** The line-ups of recent matches (round 1's order), most recent first, no repeats. */
+  groups: string[][]
+}
+
+/** Names and line-ups from earlier games, to fill in the players quickly. */
+export function suggestNames(games: SavedGame[], maxGroups = 3): NameSuggestions {
+  const names: string[] = []
+  const groups: string[][] = []
+  const seenGroups = new Set<string>()
+  for (const match of groupMatches(games)) {
+    const lineup = match.rounds[0].round.players.map((p) => p.name.trim()).filter(Boolean)
+    for (const name of [...match.latest.round.players.map((p) => p.name.trim()), ...lineup]) {
+      if (name && !names.includes(name)) names.push(name)
+    }
+    const key = lineup.join('\n')
+    if (lineup.length >= 2 && !seenGroups.has(key) && groups.length < maxGroups) {
+      seenGroups.add(key)
+      groups.push(lineup)
+    }
+  }
+  return { names, groups }
+}

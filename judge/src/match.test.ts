@@ -44,3 +44,27 @@ describe('matches in the saved list', () => {
     expect(second.winners).toEqual(['ข'])
   })
 })
+
+describe('suggestNames', () => {
+  it('lists earlier names most recent first, and recent line-ups without repeats', async () => {
+    const { startRound } = await import('./game')
+    const { suggestNames } = await import('./match')
+    const saved = (id: string, updatedAt: number, names: string[]) => ({
+      id,
+      createdAt: updatedAt,
+      updatedAt,
+      round: startRound(names),
+    })
+    const result = suggestNames([
+      saved('a', 1, ['ออย', 'บีม']),
+      saved('b', 3, ['เจ', ' ต้น ']),
+      saved('c', 2, ['ออย', 'บีม']),
+      saved('d', 4, ['เดี่ยว']),
+    ])
+    expect(result.names).toEqual(['เดี่ยว', 'เจ', 'ต้น', 'ออย', 'บีม'])
+    expect(result.groups).toEqual([
+      ['เจ', 'ต้น'],
+      ['ออย', 'บีม'],
+    ])
+  })
+})
