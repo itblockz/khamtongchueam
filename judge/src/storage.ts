@@ -258,6 +258,7 @@ export function anonymize(game: SavedGame) {
           type: event.type,
           playerId: event.playerId,
           word: event.word,
+          ...(event.syllables?.length ? { syllables: event.syllables } : {}),
           reason: event.reason,
           ...(event.challengerId ? { challengerId: event.challengerId } : {}),
         }
