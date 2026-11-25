@@ -773,13 +773,15 @@ function BackupPanel({
           : backup.status === 'done'
             ? `สำรองล่าสุด ${TIME_FORMAT.format(backup.at)}`
             : backup.status === 'error'
-              ? 'สำรองไม่สำเร็จ จะลองใหม่เมื่อเกมเปลี่ยนหรือเปิดแอปครั้งถัดไป'
+              ? 'สำรองไม่สำเร็จ (จะลองใหม่เองเมื่อเกมเปลี่ยนหรือเปิดแอปครั้งถัดไป)'
               : 'รอสำรอง'}
       </p>
       <div className="row">
-        <button type="button" className="secondary" onClick={onBackupNow} disabled={backup.status === 'syncing'}>
-          สำรองตอนนี้
-        </button>
+        {backup.status === 'error' && (
+          <button type="button" className="secondary" onClick={onBackupNow}>
+            ลองอีกครั้ง
+          </button>
+        )}
         <button type="button" className="secondary" onClick={() => void signOut()}>
           ออกจากระบบ
         </button>
