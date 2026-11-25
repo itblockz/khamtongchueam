@@ -6,6 +6,8 @@ export interface SavedGame {
   createdAt: number
   updatedAt: number
   round: Round
+  /** The signed-in account it belongs to (user id); absent for games played signed out. */
+  owner?: string
 }
 
 /** Small settings kept in localStorage (read synchronously at start). */
@@ -301,5 +303,52 @@ export function saveTombstones(tombstones: Record<string, number>) {
     localStorage.setItem(TOMBSTONES_KEY, JSON.stringify(tombstones))
   } catch {
     /* blocked: a deleted game may come back from the backup once */
+  }
+}
+
+const OWNERS_KEY = 'khamtongchueam.judge.owners.v1'
+
+/** Whether games saved before accounts existed have been given an owner yet. */
+export function ownersAssigned(): boolean {
+  return readLocal(OWNERS_KEY) !== null
+}
+
+export function markOwnersAssigned() {
+  try {
+    localStorage.setItem(OWNERS_KEY, '{}')
+  } catch {
+    /* asked again next time: harmless */
+  }
+}
+
+const DECLINED_KEY = 'khamtongchueam.judge.declined-merge.v1'
+
+/** Accounts that said no to taking this device's signed-out games. */
+export function declinedMerge(accountId: string): boolean {
+  return Boolean(readLocal(DECLINED_KEY)?.[accountId])
+}
+
+export function setDeclinedMerge(accountId: string) {
+  try {
+    localStorage.setItem(DECLINED_KEY, JSON.stringify({ ...readLocal(DECLINED_KEY), [accountId]: true }))
+  } catch {
+    /* asked again next time */
+  }
+}
+
+const NAMES_KEY = 'khamtongchueam.judge.names.v1'
+
+/** The player-names box is kept per account ('guest' when signed out), so one
+ * account's names never show to another on a shared device. */
+export function loadNames(owner: string): string | null {
+  const value = readLocal(NAMES_KEY)?.[owner]
+  return typeof value === 'string' ? value : null
+}
+
+export function saveNames(owner: string, text: string) {
+  try {
+    localStorage.setItem(NAMES_KEY, JSON.stringify({ ...readLocal(NAMES_KEY), [owner]: text }))
+  } catch {
+    /* blocked: the box just starts empty next time */
   }
 }

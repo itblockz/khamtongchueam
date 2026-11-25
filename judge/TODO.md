@@ -2,7 +2,11 @@
 
 Ideas agreed but not built yet, roughly in the order planned.
 
-1. **Optional sign-in with backup** (in progress). Playing never needs an account.
+1. ~~Optional sign-in with backup~~ done (Google only). Games on a device belong to
+   an account or to nobody (played signed out); each person sees and backs up only
+   their own, and the player-names box is kept per person too. Signing in asks
+   before adding signed-out games; signing out keeps the account's games hidden on
+   the device unless the judge ticks "remove from this device". Notes from the plan:
    - Signed out: games stay on the device (IndexedDB, done) and move between
      devices with export/import files. A link/QR hand-over was built and dropped:
      long games do not fit LINE messages or QR codes, and one way for every game
