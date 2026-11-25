@@ -31,5 +31,12 @@
   {"text": "ตะวัน", "syllables": ["ตะ", "วัน"], "spoken_syllables": 2, "category": "basic"},
   {"text": "ชีวิต", "syllables": ["ชี", "วิต"], "spoken_syllables": 2, "category": "basic"},
   {"text": "อาจารย์", "syllables": ["อา", "จารย์"], "spoken_syllables": 2, "category": "silent_letter"},
-  {"text": "ทิศทาง", "syllables": ["ทิศ", "ทาง"], "spoken_syllables": 2, "category": "basic"}
+  {"text": "ทิศทาง", "syllables": ["ทิศ", "ทาง"], "spoken_syllables": 2, "category": "basic"},
+  {"text": "กทม.", "syllables": ["กอ", "ทอ", "มอ"], "spoken_syllables": 3, "category": "abbreviation"},
+  {"text": "ก.ท.ม.", "syllables": ["กอ", "ทอ", "มอ"], "spoken_syllables": 3, "category": "abbreviation"},
+  {"text": "ร.ร.", "syllables": ["รอ", "รอ"], "spoken_syllables": 2, "category": "abbreviation"},
+  {"text": "พ.ศ.", "syllables": ["พอ", "ศอ"], "spoken_syllables": 2, "category": "abbreviation"},
+  {"text": "จ.", "syllables": ["จอ"], "spoken_syllables": 1, "category": "abbreviation"},
+  {"text": "อบต.", "syllables": ["ออ", "บอ", "ตอ"], "spoken_syllables": 3, "category": "abbreviation"},
+  {"text": "เม.ย.", "syllables": ["เม", "ยอ"], "spoken_syllables": 2, "category": "abbreviation"}
 ]

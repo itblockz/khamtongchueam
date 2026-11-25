@@ -205,6 +205,30 @@ def _tokenize(text: str, engine: SyllableEngine) -> list[str]:
   return apply_syllable_rules([chunk for chunk in cleaned if chunk])
 
 
+# Abbreviations are recognised by their dots: กทม. ก.ท.ม. เม.ย. จ.
+# A dot is needed, since a consonant-only word like คน reads as a word, not letters.
+_ABBREVIATION_PATTERN = re.compile(r'((?:[\u0E01-\u0E4E]+\.)+)')
+
+
+def spell_letters(group: str) -> list[str]:
+  """Consonants read by name, as written: กทม → กอ ทอ มอ, ศ → ศอ, อ → ออ."""
+  return [letter + 'อ' for letter in group]
+
+
+def segment_abbreviation(abbreviation: str, engine: SyllableEngine) -> list[str]:
+  """Each dot-separated part that is only consonants is read letter by letter;
+  a part with a vowel or tone mark is split like a word (เม.ย. → เม ยอ)."""
+  syllables: list[str] = []
+  for group in abbreviation.split('.'):
+    if not group:
+      continue
+    if all(letter in THAI_CONSONANTS for letter in group):
+      syllables.extend(spell_letters(group))
+    else:
+      syllables.extend(_segment_words(group, engine))
+  return syllables
+
+
 def segment_syllables(
   text: str,
   engine: SyllableEngine = DEFAULT_ENGINE,
@@ -215,8 +239,20 @@ def segment_syllables(
     return []
 
   syllables: list[str] = []
+  for piece in _ABBREVIATION_PATTERN.split(normalized_text):
+    if not piece.strip():
+      continue
+    if _ABBREVIATION_PATTERN.fullmatch(piece):
+      syllables.extend(segment_abbreviation(piece, engine))
+    else:
+      syllables.extend(_segment_words(piece, engine))
+  return [syllable for syllable in syllables if is_supported_syllable(syllable)]
 
-  for piece in _EXCEPTION_PATTERN.split(normalized_text):
+
+def _segment_words(text: str, engine: SyllableEngine) -> list[str]:
+  syllables: list[str] = []
+
+  for piece in _EXCEPTION_PATTERN.split(text):
     if not piece.strip():
       continue
 
@@ -225,4 +261,4 @@ def segment_syllables(
     else:
       syllables.extend(_tokenize(piece, engine))
 
-  return [syllable for syllable in syllables if is_supported_syllable(syllable)]
+  return syllables
