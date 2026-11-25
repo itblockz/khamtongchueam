@@ -28,7 +28,7 @@ describe('matches in the saved list', () => {
     expect(views).toHaveLength(1)
     expect(views[0].latest.id).toBe('newround')
     // 4 points each: equal totals keep the roster order
-    expect(views[0].table.map((r) => [r.name, r.rounds])).toEqual([
+    expect(views[0].table.map((r) => [r.name, r.rounds.map((c) => c.placing)])).toEqual([
       ['ก', [1, 3, null, null]],
       ['ข', [3, 1, null, null]],
     ])

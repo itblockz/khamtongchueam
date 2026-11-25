@@ -61,3 +61,26 @@ def test_model_version_contains_engine_metadata() -> None:
 
   assert 'pythainlp=' in version
   assert 'python-crfsuite=' in version
+
+
+@pytest.mark.parametrize(
+  ('text', 'expected'),
+  [
+    ('กทม.', ['กอ', 'ทอ', 'มอ']),
+    ('ก.ท.ม.', ['กอ', 'ทอ', 'มอ']),
+    ('ร.ร.', ['รอ', 'รอ']),
+    ('พ.ศ.', ['พอ', 'ศอ']),
+    ('จ.', ['จอ']),
+    ('อบต.', ['ออ', 'บอ', 'ตอ']),
+  ],
+)
+def test_abbreviations_are_read_letter_by_letter(text: str, expected: list[str]) -> None:
+  assert segment_syllables(text) == expected
+
+
+def test_an_abbreviation_part_with_a_vowel_is_split_like_a_word() -> None:
+  assert segment_syllables('เม.ย.') == ['เม', 'ยอ']
+
+
+def test_a_word_without_a_dot_is_not_an_abbreviation() -> None:
+  assert segment_syllables('คน') == ['คน']

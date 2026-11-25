@@ -715,7 +715,12 @@ export const POINTS = {
 
 export interface RoundPoints {
   name: string
+  /** placing + challenge */
   points: number
+  /** For finishing in the last three (0 until the round has a winner). */
+  placing: number
+  /** For successful challenges in this round. */
+  challenge: number
   /** What the points were for, e.g. 'ชนะ', 'ที่ 2', 'ชาเลนจ์สำเร็จ'. */
   why: string[]
 }
@@ -727,17 +732,18 @@ export interface RoundPoints {
  */
 export function roundPoints(state: GameState): Map<string, RoundPoints> {
   const points = new Map<string, RoundPoints>()
-  const add = (id: string, value: number, why: string) => {
+  const add = (id: string, value: number, why: string, kind: 'placing' | 'challenge') => {
     const name = state.players.find((p) => p.id === id)?.name
     if (!name) return
-    const entry = points.get(name) ?? { name, points: 0, why: [] }
+    const entry = points.get(name) ?? { name, points: 0, placing: 0, challenge: 0, why: [] }
     entry.points += value
+    entry[kind] += value
     entry.why.push(why)
     points.set(name, entry)
   }
 
   for (const result of state.results) {
-    if (result.status === 'judged' && result.challengerId) add(result.challengerId, POINTS.challenge, 'ชาเลนจ์สำเร็จ')
+    if (result.status === 'judged' && result.challengerId) add(result.challengerId, POINTS.challenge, 'ชาเลนจ์สำเร็จ', 'challenge')
   }
 
   if (state.winnerId) {
@@ -748,11 +754,11 @@ export function roundPoints(state: GameState): Map<string, RoundPoints> {
         result.status === 'duplicate' || result.status === 'judged' || result.status === 'challenge-lost'
       if (goneOut && !out.includes(result.playerId)) out.push(result.playerId)
     }
-    add(state.winnerId, POINTS.winner + POINTS.lastThree, 'ชนะ')
+    add(state.winnerId, POINTS.winner + POINTS.lastThree, 'ชนะ', 'placing')
     const second = out.at(-1)
     const third = out.at(-2)
-    if (second) add(second, POINTS.lastThree, 'ที่ 2')
-    if (third) add(third, POINTS.lastThree, 'ที่ 3')
+    if (second) add(second, POINTS.lastThree, 'ที่ 2', 'placing')
+    if (third) add(third, POINTS.lastThree, 'ที่ 3', 'placing')
   }
   return points
 }
@@ -769,24 +775,34 @@ export function nextRoundOrder(names: string[], winner: string): string[] {
   return [...reversed.slice(start), ...reversed.slice(0, start)]
 }
 
+export interface RoundCell {
+  /** Placing points; null while the round has no winner (or is not played yet). */
+  placing: number | null
+  /** Challenge points earned in that round. */
+  challenge: number
+}
+
 export interface Standing {
   name: string
   total: number
-  /** Points per round, in round order (null for a round not played yet). */
-  rounds: (number | null)[]
+  /** Points per round, in round order. */
+  rounds: RoundCell[]
 }
 
 /** Match standings, best first. Equal totals are a tie (no tie-break). */
 export function standings(names: string[], rounds: (GameState | null)[]): Standing[] {
-  const table = names.map((name) => ({ name, total: 0, rounds: rounds.map(() => null as number | null) }))
+  const table: Standing[] = names.map((name) => ({
+    name,
+    total: 0,
+    rounds: rounds.map(() => ({ placing: null, challenge: 0 })),
+  }))
   rounds.forEach((state, i) => {
     if (!state) return
     const points = roundPoints(state)
     for (const row of table) {
-      const p = points.get(row.name)?.points ?? 0
-      // a round still being played shows only points already earned (challenges)
-      row.rounds[i] = state.winnerId || p > 0 ? p : null
-      row.total += p
+      const p = points.get(row.name)
+      row.rounds[i] = { placing: state.winnerId ? (p?.placing ?? 0) : null, challenge: p?.challenge ?? 0 }
+      row.total += p?.points ?? 0
     }
   })
   return table.sort((a, b) => b.total - a.total)
