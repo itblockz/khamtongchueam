@@ -379,3 +379,15 @@ button.selected-choice {
   text-align: left;
   font-weight: 600;
 }
+
+.scores th button.link {
+  min-height: 32px;
+  padding: 0 6px;
+  font-size: inherit;
+  font-weight: 600;
+}
+
+.current-round {
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+}

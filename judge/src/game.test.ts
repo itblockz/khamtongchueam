@@ -558,3 +558,22 @@ describe('matches', () => {
     expect(game.matchWinners(table)).toEqual(['ก', 'ข'])
   })
 })
+
+describe('correcting a word\'s spelling', () => {
+  it('replaces the word and split, and rechecks the round from there', async () => {
+    const game = await import('./game')
+    let round = game.startRound(['ก', 'ข', 'ค'])
+    round = game.addWord(round, 'หาดทราย', ['หาด', 'ทราย'])
+    round = game.addWord(round, 'กาแป', ['กา', 'แป'], true, ['กาแป']) // typo, judge-split
+    round = game.addWord(round, 'แฟนคลับ', ['แฟน', 'คลับ'])
+
+    const { round: fixed, removed } = game.applyEdit(round, 1, ['กา', 'แฟ'], { word: 'กาแฟ', manual: false })
+    expect(fixed.events[1]).toEqual({ type: 'word', playerId: 'p2', word: 'กาแฟ', syllables: ['กา', 'แฟ'] })
+    expect(removed).toEqual([])
+
+    // a spelling that now repeats a syllable puts its speaker out and rewinds
+    const { round: out, removed: gone } = game.applyEdit(round, 1, ['หาด', 'ใหญ่'], { word: 'หาดใหญ่', manual: false })
+    expect(game.replay(out).results[1].status).toBe('duplicate')
+    expect(gone.map((e) => e.word)).toEqual(['แฟนคลับ'])
+  })
+})
