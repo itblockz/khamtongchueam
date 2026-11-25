@@ -27,6 +27,11 @@ Ideas agreed but not built yet, roughly in the order planned.
    **Never feed game data straight into the segmenter or word lists.** Judges make
    mistakes, so a game's split or decision is only a candidate: it goes to review,
    and only what a person confirms is used (like the verified gold set).
+   The review page should show how often the same word got the same split or
+   decision across games and judges: agreement is the best signal of what is right.
+   Marking games from trusted judges (a judge code set as a secret on Vercel) is
+   not planned. Do it only if junk games from the public link become too many to
+   review.
 5. **Switch production to the judge app** (merge to master). Render keeps the old app.
 6. **Matches of several rounds and scores.** A successful challenge earns the
    challenger points; the log already records who challenged (`challengerId` on the
