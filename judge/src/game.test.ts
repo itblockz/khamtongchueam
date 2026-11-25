@@ -623,3 +623,42 @@ describe('challenge points by round', () => {
     expect(ก.total).toBe(7)
   })
 })
+
+describe('changing a ruling', () => {
+  it('switches the reason without touching later words', async () => {
+    const { changeReason, reasonsToSwitch } = await import('./game')
+    let round = judgeOut(startRound(['ก', 'ข', 'ค']), 'not-noun', 'วิ่ง', ['วิ่ง'])
+    round = addWord(round, 'กาแฟ', ['กา', 'แฟ'])
+    expect(reasonsToSwitch(round.events[0])).toEqual(['forbidden'])
+    const { round: after, removed } = changeReason(round, 0, 'forbidden')
+    expect(removed).toEqual([])
+    expect(after.events[0]).toMatchObject({ type: 'judge', reason: 'forbidden' })
+    expect(after.events[1]).toBe(round.events[1])
+    // too slow has no word to switch
+    expect(reasonsToSwitch(judgeOut(startRound(['ก', 'ข']), 'too-slow', '').events[0])).toEqual([])
+  })
+
+  it('takes a ruling back: the word counts again, or the entry is dropped', async () => {
+    const { revertRuling, applyChallenge } = await import('./game')
+    // a judged word counts again with its split; later entries go
+    let round = judgeOut(startRound(['ก', 'ข', 'ค']), 'not-noun', 'วิ่ง', ['วิ่ง'])
+    round = addWord(round, 'กาแฟ', ['กา', 'แฟ'])
+    const reverted = revertRuling(round, 0)
+    let after = reverted.round
+    expect(reverted.removed.map((e) => e.word)).toEqual(['กาแฟ'])
+    expect(after.events).toEqual([{ type: 'word', playerId: 'p1', word: 'วิ่ง', syllables: ['วิ่ง'] }])
+    expect(replay(after).players.every((p) => !p.out)).toBe(true)
+
+    // too slow: dropped, back to that player's turn
+    round = judgeOut(startRound(['ก', 'ข', 'ค']), 'too-slow', '')
+    ;({ round: after } = revertRuling(round, 0))
+    expect(after.events).toEqual([])
+
+    // a lost challenge: dropped, the challenger is back
+    round = play(['ก', 'ข', 'ค'], [['กาแฟ', ['กา', 'แฟ']], ['ชั่วโมง', ['ชั่ว', 'โมง']]])
+    round = applyChallenge(round, 1, 'p3', false).round
+    expect(replay(round).players.find((p) => p.id === 'p3')?.out).toBe(true)
+    ;({ round: after } = revertRuling(round, round.events.length - 1))
+    expect(replay(after).players.some((p) => p.out)).toBe(false)
+  })
+})

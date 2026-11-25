@@ -59,6 +59,10 @@ import {
   applyEdit,
   applyJudge,
   applyChallenge,
+  canRevert,
+  changeReason,
+  reasonsToSwitch,
+  revertRuling,
   canChallenge,
   defaultChallenger,
   describeChallenge,
@@ -1676,7 +1680,7 @@ function WordList({
   game: GameState
   onChange: (round: Round) => void
 }) {
-  const [open, setOpen] = useState<{ index: number; kind: 'split' | 'judge' | 'challenge'; word?: string } | null>(
+  const [open, setOpen] = useState<{ index: number; kind: 'split' | 'judge' | 'challenge' | 'ruling'; word?: string } | null>(
     null,
   )
   const [draft, setDraft] = useState('')
@@ -1709,6 +1713,8 @@ function WordList({
   const [reason, setReason] = useState<JudgeReason | null>(null)
   const [challengerId, setChallengerId] = useState<string | null>(null)
   const [succeeded, setSucceeded] = useState<boolean | null>(null)
+  /** For a ruling: a new reason, or take it back. */
+  const [ruling, setRuling] = useState<JudgeReason | 'revert' | null>(null)
   /** The word whose ⋯ menu is open. */
   const [menuIndex, setMenuIndex] = useState<number | null>(null)
 
@@ -1733,15 +1739,19 @@ function WordList({
   if (open?.kind === 'challenge' && challengerId && succeeded !== null) {
     pending = applyChallenge(round, open.index, challengerId, succeeded)
   }
+  if (open?.kind === 'ruling' && ruling) {
+    pending = ruling === 'revert' ? revertRuling(round, open.index) : changeReason(round, open.index, ruling)
+  }
   const canSave = Boolean(pending && pending.round !== round)
   const changes = summarize(round, game, pending)
 
   /** What the judge can do to an entry from its ⋯ menu. */
   const actionsFor = (result: GameState['results'][number]) => {
-    const actions: ('split' | 'judge' | 'challenge')[] = []
+    const actions: ('split' | 'judge' | 'challenge' | 'ruling')[] = []
     if (result.status !== 'judged' && result.status !== 'challenge-lost') actions.push('split')
     if (result.status === 'counted' && result.playerId !== JUDGE_ID) actions.push('judge')
     if (canChallenge(game, result.index)) actions.push('challenge')
+    if (canRevert(round.events[result.index])) actions.push('ruling')
     return actions
   }
 
@@ -1852,6 +1862,20 @@ function WordList({
                     ชาเลนจ์
                   </button>
                 )}
+                {actionsFor(result).includes('ruling') && (
+                  <button
+                    type="button"
+                    className="secondary"
+                    aria-label={`แก้การตัดสิน ${result.word || nameOf(result.playerId)}`}
+                    onClick={() => {
+                      setMenuIndex(null)
+                      setOpen({ index: result.index, kind: 'ruling' })
+                      setRuling(null)
+                    }}
+                  >
+                    แก้การตัดสิน
+                  </button>
+                )}
               </div>
             )}
             {open?.index === result.index && (
@@ -1887,6 +1911,28 @@ function WordList({
                     />
                     <p className="syllables">{draftSyllables.join(' | ') || ' '}</p>
                   </>
+                ) : open.kind === 'ruling' ? (
+                  <div className="row" role="group" aria-label="แก้การตัดสิน">
+                    {reasonsToSwitch(round.events[result.index]).map((option) => (
+                      <button
+                        key={option}
+                        type="button"
+                        className={ruling === option ? 'selected-choice' : 'secondary'}
+                        aria-pressed={ruling === option}
+                        onClick={() => setRuling(option)}
+                      >
+                        เปลี่ยนเป็น{JUDGE_REASON_LABEL[option]}
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      className={ruling === 'revert' ? 'selected-choice' : 'secondary'}
+                      aria-pressed={ruling === 'revert'}
+                      onClick={() => setRuling('revert')}
+                    >
+                      ยกเลิกการตัดสิน
+                    </button>
+                  </div>
                 ) : open.kind === 'challenge' ? (
                   <>
                     <p className="note">ชาเลนจ์ว่า “{result.word}” ไม่เชื่อม · ใครชาเลนจ์</p>

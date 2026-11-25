@@ -267,6 +267,33 @@ describe('judge app', () => {
     expect(screen.queryByText('กาแฟ')).not.toBeInTheDocument()
   })
 
+  it('changes the reason of a ruling, then takes the ruling back', async () => {
+    await startWith('ชช\nลล\nมม')
+    await submit('อาหาร')
+    await submit('บิกินี')
+    pick('ตัดสิน', 'บิกินี')
+    fireEvent.click(screen.getByRole('button', { name: 'คำต้องห้าม', pressed: false }))
+    fireEvent.click(screen.getByRole('button', { name: 'ยืนยัน' }))
+    await submit('กาแฟ')
+
+    // a new reason: ลล stays out, กาแฟ stays
+    pick('แก้การตัดสิน', 'บิกินี')
+    fireEvent.click(screen.getByRole('button', { name: 'เปลี่ยนเป็นไม่ใช่คำนาม' }))
+    fireEvent.click(screen.getByRole('button', { name: 'ยืนยัน' }))
+    expect(screen.getByText('ไม่ใช่คำนาม', { selector: '.tag' })).toBeInTheDocument()
+    expect(screen.queryByText('คำต้องห้าม', { selector: '.tag' })).not.toBeInTheDocument()
+    expect(screen.getByText('กาแฟ', { selector: '.word' })).toBeInTheDocument()
+
+    // taken back: บิกินี counts again, ลล is back, and the words after it go
+    pick('แก้การตัดสิน', 'บิกินี')
+    fireEvent.click(screen.getByRole('button', { name: 'ยกเลิกการตัดสิน' }))
+    expect(screen.getByText(/ลบ 1 คำหลังจากนั้น: กาแฟ/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'ยืนยัน' }))
+    expect(screen.queryByRole('heading', { name: 'ลล ตกรอบ' })).not.toBeInTheDocument()
+    expect(screen.queryByText('กาแฟ', { selector: '.word' })).not.toBeInTheDocument()
+    expect(screen.getByText('มม', { selector: 'strong' })).toBeInTheDocument()
+  })
+
   it('has no judge button for not connecting: that is left to challenges', async () => {
     await startWith('ออย\nบีม\nเจ')
     await submit('กาแฟ')

@@ -647,6 +647,54 @@ export function applyJudge(
   }
 }
 
+/** Reasons a judged word can be changed between (the player stays out). */
+export function reasonsToSwitch(event: RoundEvent | undefined): JudgeReason[] {
+  if (!event || event.type !== 'judge' || !event.word || event.challengerId) return []
+  if (event.reason === 'too-slow' || event.reason === 'not-connected') return []
+  return (['not-noun', 'forbidden'] as JudgeReason[]).filter((reason) => reason !== event.reason)
+}
+
+/** Change why a word was ruled out. The player stays out, so nothing else changes. */
+export function changeReason(
+  round: Round,
+  index: number,
+  reason: JudgeReason,
+): { round: Round; removed: RoundEvent[] } {
+  const event = round.events[index]
+  if (!event || event.type !== 'judge' || !reasonsToSwitch(event).includes(reason)) {
+    return { round, removed: [] }
+  }
+  const events = [...round.events]
+  events[index] = { ...event, reason }
+  return { round: { ...round, events }, removed: [] }
+}
+
+/** Whether a ruling (a judged word, or a lost challenge) can be taken back. */
+export function canRevert(event: RoundEvent | undefined): boolean {
+  if (!event) return false
+  if (event.type === 'challenge-lost') return true
+  if (event.type !== 'judge') return false
+  // a word goes back to counting with its split; one with no word (too slow) is just dropped
+  return !event.word || Boolean(event.syllables?.length)
+}
+
+/**
+ * Take a ruling back: a judged word counts again (with the split kept for it), a
+ * ruling with no word or a lost challenge is dropped. Whoever went out comes back,
+ * so the turns after it change and every later entry is removed.
+ */
+export function revertRuling(round: Round, index: number): { round: Round; removed: RoundEvent[] } {
+  const event = round.events[index]
+  if (!canRevert(event)) return { round, removed: [] }
+  const removed = round.events.slice(index + 1)
+  const kept = round.events.slice(0, index)
+  if (event.type === 'judge' && event.word) {
+    const word: WordEvent = { type: 'word', playerId: event.playerId, word: event.word, syllables: event.syllables! }
+    return { round: { ...round, events: [...kept, word] }, removed }
+  }
+  return { round: { ...round, events: kept }, removed }
+}
+
 const ELIMINATING: WordStatus[] = ['duplicate', 'judged', 'challenge-lost']
 
 /**
