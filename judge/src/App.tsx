@@ -44,6 +44,7 @@ import {
   JUDGE_ID,
   MODE_LABEL,
   type GameMode,
+  type RoundCell,
   JUDGE_REASON_LABEL,
   JUDGE_REASONS,
   judgeOut,
@@ -1294,6 +1295,16 @@ function BackupFile({
   )
 }
 
+/** One round's points: placing, then '+N' for challenges in that round. */
+function RoundScore({ cell }: { cell: RoundCell }) {
+  return (
+    <>
+      {cell.placing ?? '–'}
+      {cell.challenge > 0 && <span className="challenge-points"> +{cell.challenge}</span>}
+    </>
+  )
+}
+
 /** Points per round and the running total of a match (a tie when totals are equal). */
 function MatchTable({
   view,
@@ -1317,6 +1328,7 @@ function MatchTable({
         <thead>
           <tr>
             <th scope="col">ผู้เล่น</th>
+            {view.length === 1 && <th scope="col">คะแนน</th>}
             {view.length > 1 &&
               Array.from({ length: view.length }, (_, i) => {
                 const played = view.rounds.find((g) => matchOf(g).round === i + 1)
@@ -1344,7 +1356,17 @@ function MatchTable({
           {view.table.map((row) => (
             <tr key={row.name}>
               <th scope="row">{row.name}</th>
-              {view.length > 1 && row.rounds.map((points, i) => <td key={i}>{points ?? '–'}</td>)}
+              {view.length === 1 && (
+                <td>
+                  <RoundScore cell={row.rounds[0]} />
+                </td>
+              )}
+              {view.length > 1 &&
+                row.rounds.map((cell, i) => (
+                  <td key={i}>
+                    <RoundScore cell={cell} />
+                  </td>
+                ))}
               <td>
                 <strong>{row.total}</strong>
               </td>
@@ -1352,7 +1374,10 @@ function MatchTable({
           ))}
         </tbody>
       </table>
-      <p className="note">ชนะ 3 · ที่ 2 และที่ 3 ได้ 1 · ชาเลนจ์สำเร็จ 2</p>
+      <p className="note">
+        ตัวเลข = อันดับ (ชนะ 3 · ที่ 2 และที่ 3 ได้ 1) · <span className="challenge-points">+N</span> =
+        ชาเลนจ์สำเร็จในรอบนั้น (ครั้งละ 2)
+      </p>
     </section>
   )
 }

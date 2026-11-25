@@ -391,3 +391,9 @@ button.selected-choice {
   text-decoration: underline;
   text-decoration-thickness: 2px;
 }
+
+.challenge-points {
+  color: var(--accent);
+  font-weight: 600;
+  white-space: nowrap;
+}

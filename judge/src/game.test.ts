@@ -525,7 +525,7 @@ describe('matches', () => {
     round = game.judgeOut(round, 'too-slow', '') // ค out
     round = game.judgeOut(round, 'too-slow', '') // ง out → ก wins
     const points = game.roundPoints(game.replay(round))
-    expect(points.get('ก')).toMatchObject({ points: 5, why: ['ชาเลนจ์สำเร็จ', 'ชนะ'] })
+    expect(points.get('ก')).toMatchObject({ points: 5, placing: 3, challenge: 2, why: ['ชาเลนจ์สำเร็จ', 'ชนะ'] })
     expect(points.get('ง')).toMatchObject({ points: 1, why: ['ที่ 2'] })
     expect(points.get('ค')).toMatchObject({ points: 1, why: ['ที่ 3'] })
     expect(points.get('ข')).toBeUndefined()
@@ -551,7 +551,8 @@ describe('matches', () => {
       return game.replay(round) // the last name wins
     }
     const table = game.standings(['ก', 'ข'], [won(['ก', 'ข']), won(['ข', 'ก']), null])
-    expect(table.map((r) => [r.name, r.total, r.rounds])).toEqual([
+    const placing = (r: { rounds: { placing: number | null }[] }) => r.rounds.map((c) => c.placing)
+    expect(table.map((r) => [r.name, r.total, placing(r)])).toEqual([
       ['ก', 4, [1, 3, null]],
       ['ข', 4, [3, 1, null]],
     ])
@@ -575,5 +576,25 @@ describe('correcting a word\'s spelling', () => {
     const { round: out, removed: gone } = game.applyEdit(round, 1, ['หาด', 'ใหญ่'], { word: 'หาดใหญ่', manual: false })
     expect(game.replay(out).results[1].status).toBe('duplicate')
     expect(gone.map((e) => e.word)).toEqual(['แฟนคลับ'])
+  })
+})
+
+describe('challenge points by round', () => {
+  it('keeps each round\'s challenge points apart from its placing, even mid-round', async () => {
+    const game = await import('./game')
+    let round = game.startRound(['ก', 'ข', 'ค'])
+    round = game.addWord(round, 'กาแฟ', ['กา', 'แฟ']) // ก
+    round = game.addWord(round, 'แฟนคลับ', ['แฟน', 'คลับ']) // ข
+    round = game.applyChallenge(round, 1, 'p1', true).round // ก +2, ข out
+    const midRound = game.replay(round)
+    const finished = game.replay(game.judgeOut(round, 'too-slow', '')) // ค out: ก wins
+
+    const table = game.standings(['ก', 'ข', 'ค'], [finished, midRound])
+    const ก = table.find((r) => r.name === 'ก')!
+    expect(ก.rounds).toEqual([
+      { placing: 3, challenge: 2 },
+      { placing: null, challenge: 2 },
+    ])
+    expect(ก.total).toBe(7)
   })
 })
