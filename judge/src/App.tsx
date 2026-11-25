@@ -389,11 +389,27 @@ export default function App() {
         onOpen={setCurrentId}
         onDelete={removeGame}
         onImport={(incoming) => {
-          // imported games belong to whoever is using the app now
+          // Imported games belong to whoever is using the app now. Importing is a
+          // deliberate act, so a game not on this device counts as changed now: it
+          // wins over an older deletion in the account instead of being removed again.
+          const here = new Set(mine.map((g) => g.id))
+          const now = Date.now()
           const owned = incoming.map((g) => {
-            const copy: SavedGame = { id: g.id, createdAt: g.createdAt, updatedAt: g.updatedAt, round: g.round }
+            const copy: SavedGame = {
+              id: g.id,
+              createdAt: g.createdAt,
+              updatedAt: here.has(g.id) ? g.updatedAt : Math.max(g.updatedAt, now),
+              round: g.round,
+            }
             return ownerId ? { ...copy, owner: ownerId } : copy
           })
+          const restored = owned.filter((g) => !here.has(g.id)).map((g) => g.id)
+          if (restored.some((id) => id in tombstones.current)) {
+            tombstones.current = Object.fromEntries(
+              Object.entries(tombstones.current).filter(([id]) => !restored.includes(id)),
+            )
+            saveTombstones(tombstones.current)
+          }
           const result = mergeGames(mine, owned)
           const ids = new Set(result.games.map((g) => g.id))
           setGames((all) => [...all.filter((g) => !ids.has(g.id)), ...result.games])

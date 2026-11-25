@@ -702,6 +702,44 @@ describe('judge app', () => {
       expect(screen.queryByText(/เจ, บีม/)).not.toBeInTheDocument()
     }, 15000)
 
+    it('brings back a game deleted from the account when it is imported again', async () => {
+      cloud.account = { id: 'u1', email: null }
+      cloud.remote = [{ id: 'imported1', updatedAt: Date.now() - 1000, deleted: true, game: null }]
+      await renderApp()
+      const file = new File(
+        [
+          JSON.stringify({
+            app: 'khamtongchueam-judge',
+            version: 1,
+            exportedAt: 1,
+            games: [
+              {
+                id: 'imported1',
+                createdAt: 1,
+                updatedAt: 2,
+                round: {
+                  players: [
+                    { id: 'p1', name: 'ออย' },
+                    { id: 'p2', name: 'บีม' },
+                  ],
+                  events: [{ type: 'word', playerId: 'p1', word: 'กาแฟ', syllables: ['กา', 'แฟ'] }],
+                },
+              },
+            ],
+          }),
+        ],
+        'games.json',
+        { type: 'application/json' },
+      )
+      fireEvent.change(screen.getByLabelText('ไฟล์เกมที่จะนำเข้า'), { target: { files: [file] } })
+      expect(await screen.findByText('นำเข้า 1 เกมใหม่')).toBeInTheDocument()
+
+      await waitFor(() => expect(cloud.pushed.flat().some((g) => g.id === 'imported1' && !g.deleted)).toBe(true), {
+        timeout: 4000,
+      })
+      expect(screen.getByText('กำลังเล่น · ตาของ บีม')).toBeInTheDocument()
+    }, 10000)
+
     it('sends a deletion to the account', async () => {
       cloud.account = { id: 'u1', email: null }
       await startWith('ออย\nบีม')
