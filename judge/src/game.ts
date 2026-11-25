@@ -672,3 +672,101 @@ export function defaultChallenger(state: GameState, index: number): string | nul
   if (previous && candidates.some((p) => p.id === previous.playerId)) return previous.playerId
   return candidates.length === 1 ? candidates[0].id : null
 }
+
+// ---- Matches: several rounds, points per round, total decides ----
+
+/** Rounds in a match, by mode. */
+export const MATCH_ROUNDS: Record<GameMode, number> = { normal: 4, competition: 3 }
+
+export const POINTS = {
+  /** The last player standing. */
+  winner: 2,
+  /** Each of the last three standing (the winner included). */
+  lastThree: 1,
+  /** A successful challenge, to the challenger. */
+  challenge: 2,
+}
+
+export interface RoundPoints {
+  name: string
+  points: number
+  /** What the points were for, e.g. 'ชนะ', 'ที่ 2', 'ชาเลนจ์สำเร็จ'. */
+  why: string[]
+}
+
+/**
+ * Points each player earned in one round, by name (player ids change between rounds
+ * because the order changes). Placing points only once the round has a winner;
+ * challenge points as soon as the challenge succeeds.
+ */
+export function roundPoints(state: GameState): Map<string, RoundPoints> {
+  const points = new Map<string, RoundPoints>()
+  const add = (id: string, value: number, why: string) => {
+    const name = state.players.find((p) => p.id === id)?.name
+    if (!name) return
+    const entry = points.get(name) ?? { name, points: 0, why: [] }
+    entry.points += value
+    entry.why.push(why)
+    points.set(name, entry)
+  }
+
+  for (const result of state.results) {
+    if (result.status === 'judged' && result.challengerId) add(result.challengerId, POINTS.challenge, 'ชาเลนจ์สำเร็จ')
+  }
+
+  if (state.winnerId) {
+    // the order players went out in, last out last
+    const out: string[] = []
+    for (const result of state.results) {
+      const goneOut =
+        result.status === 'duplicate' || result.status === 'judged' || result.status === 'challenge-lost'
+      if (goneOut && !out.includes(result.playerId)) out.push(result.playerId)
+    }
+    add(state.winnerId, POINTS.winner + POINTS.lastThree, 'ชนะ')
+    const second = out.at(-1)
+    const third = out.at(-2)
+    if (second) add(second, POINTS.lastThree, 'ที่ 2')
+    if (third) add(third, POINTS.lastThree, 'ที่ 3')
+  }
+  return points
+}
+
+/**
+ * Who plays in what order next round: the previous round's winner starts and play
+ * goes the other way round the table.
+ * e.g. [ออย, บีม, เจ, ต้น] won by บีม → [บีม, ออย, ต้น, เจ]
+ */
+export function nextRoundOrder(names: string[], winner: string): string[] {
+  const reversed = [...names].reverse()
+  const start = reversed.indexOf(winner)
+  if (start < 0) return reversed
+  return [...reversed.slice(start), ...reversed.slice(0, start)]
+}
+
+export interface Standing {
+  name: string
+  total: number
+  /** Points per round, in round order (null for a round not played yet). */
+  rounds: (number | null)[]
+}
+
+/** Match standings, best first. Equal totals are a tie (no tie-break). */
+export function standings(names: string[], rounds: (GameState | null)[]): Standing[] {
+  const table = names.map((name) => ({ name, total: 0, rounds: rounds.map(() => null as number | null) }))
+  rounds.forEach((state, i) => {
+    if (!state) return
+    const points = roundPoints(state)
+    for (const row of table) {
+      const p = points.get(row.name)?.points ?? 0
+      row.rounds[i] = p
+      row.total += p
+    }
+  })
+  return table.sort((a, b) => b.total - a.total)
+}
+
+/** Names of the match winner(s): everyone on the top total (more than one is a tie). */
+export function matchWinners(table: Standing[]): string[] {
+  const top = table[0]?.total
+  return top === undefined ? [] : table.filter((row) => row.total === top).map((row) => row.name)
+}

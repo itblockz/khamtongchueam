@@ -361,3 +361,21 @@ button.selected-choice {
   width: auto;
   margin-top: 4px;
 }
+
+.scores {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.scores th,
+.scores td {
+  padding: 6px 4px;
+  border-bottom: 1px solid var(--line);
+  text-align: center;
+}
+
+.scores th[scope='row'] {
+  text-align: left;
+  font-weight: 600;
+}

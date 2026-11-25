@@ -32,10 +32,15 @@ import {
   saveSettings,
   saveTombstones,
   storeGames,
+  type MatchInfo,
   type SavedGame,
 } from './storage'
 import {
   addOpening,
+  MATCH_ROUNDS,
+  matchWinners,
+  nextRoundOrder,
+  standings,
   addWord,
   JUDGE_ID,
   MODE_LABEL,
@@ -359,13 +364,15 @@ export default function App() {
     setGames((all) => all.map((g) => (g.id === currentId ? { ...g, round: next, updatedAt: Date.now() } : g)))
   }
 
-  function startGame(names: string[], mode: GameMode = timer.mode) {
+  /** Start a round: round 1 of a new match, or the next round of `match`. */
+  function startGame(names: string[], mode: GameMode = timer.mode, match?: MatchInfo) {
     const now = Date.now()
     const created: SavedGame = {
       id: newId(),
       createdAt: now,
       updatedAt: now,
       round: startRound(names, mode),
+      match: match ?? { id: newId(), round: 1, rounds: MATCH_ROUNDS[mode] },
       ...(ownerId ? { owner: ownerId } : {}),
     }
     setGames((all) => [created, ...all])
@@ -409,6 +416,7 @@ export default function App() {
               createdAt: g.createdAt,
               updatedAt: here.has(g.id) ? g.updatedAt : Math.max(g.updatedAt, now),
               round: g.round,
+              ...(g.match ? { match: g.match } : {}),
             }
             return ownerId ? { ...copy, owner: ownerId } : copy
           })
@@ -449,23 +457,43 @@ export default function App() {
 
   if (game.winnerId) {
     const winner = game.players.find((player) => player.id === game.winnerId)
+    const current = mine.find((g) => g.id === currentId)
+    const match = current?.match
+    const mode = round.mode ?? 'normal'
+    const names = round.players.map((p) => p.name)
+    const matchRounds = match ? mine.filter((g) => g.match?.id === match.id) : []
+    const nextRound = match ? matchRounds.find((g) => g.match?.round === match.round + 1) : undefined
+    const matchOver = !match || match.round >= match.rounds
     return (
       <main className="page">
         <div className="turn">
-          <h1 className="winner">{winner?.name} ชนะ</h1>
+          <h1 className="winner">
+            {winner?.name} ชนะ{match ? ` รอบ ${match.round}/${match.rounds}` : ''}
+          </h1>
           {undoButton}
         </div>
-        <button
-          type="button"
-          onClick={() =>
-            startGame(
-              round.players.map((p) => p.name),
-              round.mode ?? 'normal',
-            )
-          }
-        >
-          เล่นอีกรอบ
-        </button>
+        {nextRound ? (
+          <button type="button" onClick={() => setCurrentId(nextRound.id)}>
+            ไปรอบ {match!.round + 1}
+          </button>
+        ) : matchOver ? (
+          <button type="button" onClick={() => startGame(names, mode)}>
+            เริ่มแมตช์ใหม่
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() =>
+              startGame(nextRoundOrder(names, winner?.name ?? names[0]), mode, {
+                ...match!,
+                round: match!.round + 1,
+              })
+            }
+          >
+            รอบถัดไป ({match!.round + 1}/{match!.rounds})
+          </button>
+        )}
+        {match && <MatchTable rounds={matchRounds} total={match.rounds} over={matchOver} />}
         <EliminationNotice game={game} />
         <WordList round={round} game={game} onChange={setRound} />
         <div className="row">{home}</div>
@@ -473,8 +501,10 @@ export default function App() {
     )
   }
 
+  const playing = mine.find((g) => g.id === currentId)?.match
   return (
     <Play
+      matchLabel={playing ? `รอบ ${playing.round}/${playing.rounds}` : null}
       round={round}
       game={game}
       onChange={setRound}
@@ -627,6 +657,7 @@ function Play({
   undoButton,
   timer: settings,
   homeButton,
+  matchLabel,
 }: {
   round: Round
   game: GameState
@@ -634,6 +665,7 @@ function Play({
   undoButton: ReactNode
   timer: TimerSettings
   homeButton: ReactNode
+  matchLabel: string | null
 }) {
   const [timer, setTimer] = useState<TimerState>({ phase: 'idle' })
   const [now, setNow] = useState(() => Date.now())
@@ -756,6 +788,7 @@ function Play({
         {undoButton}
       </div>
       <p className="note">
+        {matchLabel && `${matchLabel} · `}
         {game.mode === 'competition' && `โหมด${MODE_LABEL.competition} · `}
         ยังเล่นอยู่: {game.players.filter((p) => !p.out).map((p) => p.name).join(', ')}
         {game.players.some((p) => p.out) &&
@@ -930,6 +963,7 @@ function SavedGames({
                 </strong>
               </div>
               <div className="note">
+                {saved.match && `รอบ ${saved.match.round}/${saved.match.rounds} · `}
                 {state.mode === 'competition' && `โหมด${MODE_LABEL.competition} · `}
                 {DATE_FORMAT.format(saved.updatedAt)} · {state.words.length} คำ · {names}
               </div>
@@ -1187,6 +1221,53 @@ function BackupFile({
           {message}
         </p>
       )}
+    </section>
+  )
+}
+
+/** Points per round and the running total of a match (a tie when totals are equal). */
+function MatchTable({ rounds, total, over }: { rounds: SavedGame[]; total: number; over: boolean }) {
+  const byNumber = Array.from({ length: total }, (_, i) => rounds.find((g) => g.match?.round === i + 1) ?? null)
+  const states = byNumber.map((g) => (g ? replay(g.round) : null))
+  const names = byNumber[0]?.round.players.map((p) => p.name) ?? rounds[0]?.round.players.map((p) => p.name) ?? []
+  const table = standings(names, states)
+  const winners = over ? matchWinners(table) : []
+  return (
+    <section>
+      <h2 className="small-heading">
+        {over
+          ? winners.length > 1
+            ? `จบแมตช์ · เสมอ: ${winners.join(', ')}`
+            : `จบแมตช์ · ${winners[0]} ชนะแมตช์`
+          : 'คะแนนแมตช์'}
+      </h2>
+      <table className="scores">
+        <thead>
+          <tr>
+            <th scope="col">ผู้เล่น</th>
+            {byNumber.map((_, i) => (
+              <th scope="col" key={i}>
+                {i + 1}
+              </th>
+            ))}
+            <th scope="col">รวม</th>
+          </tr>
+        </thead>
+        <tbody>
+          {table.map((row) => (
+            <tr key={row.name}>
+              <th scope="row">{row.name}</th>
+              {row.rounds.map((points, i) => (
+                <td key={i}>{points ?? '–'}</td>
+              ))}
+              <td>
+                <strong>{row.total}</strong>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="note">ชนะ 3 · ที่ 2 และที่ 3 ได้ 1 · ชาเลนจ์สำเร็จ 2</p>
     </section>
   )
 }

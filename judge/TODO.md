@@ -40,13 +40,11 @@ Ideas agreed but not built yet, roughly in the order planned.
    not planned. Do it only if junk games from the public link become too many to
    review.
 5. **Switch production to the judge app** (merge to master). Render keeps the old app.
-6. **Matches of several rounds and scores.** A successful challenge earns the
-   challenger points; the log already records who challenged (`challengerId` on the
-   judge event). Open questions:
-   - points for winning a round, and for a successful challenge
-   - can syllables used in one round be used again in the next, or not all match
-   - who starts each new round (same player, or rotate)
-   - the match winner: total points, or rounds won
+6. ~~Matches of several rounds and scores~~ done. Normal 4 rounds, competition 3.
+   Per round: winner 3 (2 for winning + 1 for being in the last three), second and
+   third 1 each, a successful challenge 2 to the challenger. Syllables may repeat
+   across rounds. Next round: the previous winner starts and play goes the other
+   way round the table. Highest total wins the match; equal totals are a tie.
 7. **Player stats across games**, worked out on the judge's device from its saved
    games (names never leave the device): games played and won, how players go out,
    successful challenges, words per game. Games from other devices can be merged

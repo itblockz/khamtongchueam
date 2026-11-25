@@ -127,10 +127,10 @@ describe('judge app', () => {
     fireEvent.change(screen.getByLabelText(/^คำของ/), { target: { value: 'ทรายทอง' } })
     fireEvent.click(screen.getByRole('button', { name: 'ส่ง' }))
 
-    expect(await screen.findByRole('heading', { name: 'ออย ชนะ' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: /^ออย ชนะ/ })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'บีม ตกรอบ' })).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'เล่นอีกรอบ' }))
+    fireEvent.click(screen.getByRole('button', { name: 'รอบถัดไป (2/4)' }))
     expect(screen.getByText('ยังไม่มีคำในรอบนี้')).toBeInTheDocument()
   })
 
@@ -183,11 +183,11 @@ describe('judge app', () => {
     await submit('หาดทราย')
     fireEvent.change(screen.getByLabelText(/^คำของ/), { target: { value: 'ทรายทอง' } })
     fireEvent.click(screen.getByRole('button', { name: 'ส่ง' }))
-    await screen.findByRole('heading', { name: 'ออย ชนะ' })
+    await screen.findByRole('heading', { name: /^ออย ชนะ/ })
 
     fireEvent.click(screen.getByRole('button', { name: 'ย้อนกลับ' }))
 
-    expect(screen.queryByRole('heading', { name: 'ออย ชนะ' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: /^ออย ชนะ/ })).not.toBeInTheDocument()
     expect(screen.getByText('บีม', { selector: 'strong' })).toBeInTheDocument()
   })
 
@@ -237,7 +237,7 @@ describe('judge app', () => {
     fireEvent.change(screen.getByLabelText(/^คำของ/), { target: { value: 'คำหยาบ' } })
     fireEvent.click(screen.getByRole('button', { name: 'คำต้องห้าม' }))
 
-    expect(screen.getByRole('heading', { name: 'บีม ชนะ' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /^บีม ชนะ/ })).toBeInTheDocument()
     expect(screen.getByText('“คำหยาบ” คำต้องห้าม')).toBeInTheDocument()
   })
 
@@ -373,15 +373,15 @@ describe('judge app', () => {
       await submit('หาดทราย')
       fireEvent.change(screen.getByLabelText(/^คำของ/), { target: { value: 'ทรายทอง' } })
       fireEvent.click(screen.getByRole('button', { name: 'ส่ง' }))
-      await screen.findByRole('heading', { name: 'ออย ชนะ' })
+      await screen.findByRole('heading', { name: /^ออย ชนะ/ })
 
-      fireEvent.click(screen.getByRole('button', { name: 'เล่นอีกรอบ' }))
+      fireEvent.click(screen.getByRole('button', { name: 'รอบถัดไป (2/4)' }))
       fireEvent.click(screen.getByRole('button', { name: 'หน้าแรก' }))
 
       expect(screen.getByText('ออย ชนะ')).toBeInTheDocument()
       expect(screen.getByText('กำลังเล่น · ตาของ ออย')).toBeInTheDocument()
       fireEvent.click(screen.getByRole('button', { name: 'ดู ออย, บีม' }))
-      expect(screen.getByRole('heading', { name: 'ออย ชนะ' })).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: /^ออย ชนะ/ })).toBeInTheDocument()
     })
 
     it('deletes a game after asking', async () => {
@@ -773,6 +773,36 @@ describe('judge app', () => {
 
     await submit('หาดทราย')
     expect(screen.getByRole('button', { name: 'ชาเลนจ์ หาดทราย' })).toBeInTheDocument()
+  })
+
+  it('plays a match: points per round, next round reversed, a tie on equal totals', async () => {
+    await startWith('ออย\nบีม\nเจ')
+    const tooSlow = () => fireEvent.click(screen.getByRole('button', { name: 'ไม่ทันเวลา' }))
+
+    // round 1: ออย then บีม too slow → เจ wins
+    tooSlow()
+    tooSlow()
+    expect(screen.getByRole('heading', { name: 'เจ ชนะ รอบ 1/4' })).toBeInTheDocument()
+    const table = () => screen.getByRole('table')
+    expect(within(table()).getByRole('row', { name: /เจ 3/ })).toBeInTheDocument()
+    expect(within(table()).getByRole('row', { name: /บีม 1/ })).toBeInTheDocument()
+
+    // round 2: เจ starts and play goes the other way: เจ, บีม, ออย
+    fireEvent.click(screen.getByRole('button', { name: 'รอบถัดไป (2/4)' }))
+    expect(screen.getByText('เจ', { selector: 'strong' })).toBeInTheDocument()
+    expect(screen.getByText(/ถัดไป บีม/)).toBeInTheDocument()
+    expect(screen.getByText(/รอบ 2\/4/)).toBeInTheDocument()
+    tooSlow() // เจ out
+    tooSlow() // บีม out → ออย wins
+    fireEvent.click(screen.getByRole('button', { name: 'รอบถัดไป (3/4)' }))
+    tooSlow()
+    tooSlow()
+    fireEvent.click(screen.getByRole('button', { name: 'รอบถัดไป (4/4)' }))
+    tooSlow()
+    tooSlow()
+
+    expect(screen.getByRole('heading', { name: /^จบแมตช์/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'เริ่มแมตช์ใหม่' })).toBeInTheDocument()
   })
 })
 

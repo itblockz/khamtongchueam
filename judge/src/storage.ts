@@ -8,6 +8,15 @@ export interface SavedGame {
   round: Round
   /** The signed-in account it belongs to (user id); absent for games played signed out. */
   owner?: string
+  /** The match this round is part of. Absent for games from before matches existed. */
+  match?: MatchInfo
+}
+
+export interface MatchInfo {
+  id: string
+  /** 1-based. */
+  round: number
+  rounds: number
 }
 
 /** Small settings kept in localStorage (read synchronously at start). */
