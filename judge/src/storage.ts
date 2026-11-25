@@ -1,4 +1,4 @@
-import type { GameMode, Round } from './game'
+import type { GameMode, Round, RoundEvent } from './game'
 
 /** One game kept in this browser, finished or not. */
 export interface SavedGame {
@@ -366,5 +366,44 @@ export function saveNames(owner: string, text: string) {
     localStorage.setItem(NAMES_KEY, JSON.stringify({ ...readLocal(NAMES_KEY), [owner]: text }))
   } catch {
     /* blocked: the box just starts empty next time */
+  }
+}
+
+const REDO_KEY = 'khamtongchueam.judge.redo.v1'
+
+/**
+ * Entries taken back with 'ย้อนกลับ', per game, newest last, so 'ทำซ้ำ' can put them
+ * back even after the page reloads. `base` fingerprints the round they were taken
+ * from: if the round has changed since (another edit, or a sync from another
+ * device), they no longer fit and are ignored.
+ */
+export type RedoStacks = Record<string, { base: string; events: RoundEvent[] }>
+
+export function roundPrint(events: RoundEvent[]): string {
+  return fingerprint(JSON.stringify(events))
+}
+
+export function loadRedo(): RedoStacks {
+  const data = readLocal(REDO_KEY)
+  const stacks: RedoStacks = {}
+  for (const [id, entry] of Object.entries(data ?? {})) {
+    const value = entry as { base?: unknown; events?: unknown }
+    if (typeof value?.base === 'string' && Array.isArray(value.events) && value.events.length > 0) {
+      stacks[id] = { base: value.base, events: value.events as RoundEvent[] }
+    }
+  }
+  return stacks
+}
+
+/** Keep only non-empty stacks of games that still exist. */
+export function saveRedo(stacks: RedoStacks, gameIds: Set<string>) {
+  const kept = Object.fromEntries(
+    Object.entries(stacks).filter(([id, entry]) => gameIds.has(id) && entry.events.length > 0),
+  )
+  try {
+    if (Object.keys(kept).length === 0) localStorage.removeItem(REDO_KEY)
+    else localStorage.setItem(REDO_KEY, JSON.stringify(kept))
+  } catch {
+    /* blocked: redo just will not survive a reload */
   }
 }

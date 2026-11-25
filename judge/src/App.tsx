@@ -19,6 +19,10 @@ import {
   loadSent,
   askToKeepStorage,
   loadGames,
+  loadRedo,
+  roundPrint,
+  saveRedo,
+  type RedoStacks,
   loadSettings,
   loadNames,
   saveNames,
@@ -411,11 +415,14 @@ export default function App() {
     setGames((all) => all.map((g) => (g.id === currentId ? { ...g, round: next, updatedAt: Date.now() } : g)))
   }
 
-  // Entries taken back with 'ย้อนกลับ', per game, newest last, so 'ทำซ้ำ' can put
-  // them back. Any other change to the round makes them stale, so it clears them.
-  const [redo, setRedo] = useState<Record<string, RoundEvent[]>>({})
+  // Entries taken back with 'ย้อนกลับ', so 'ทำซ้ำ' can put them back. Kept on this
+  // device across reloads; any other change to the round makes them stale.
+  const [redo, setRedo] = useState<RedoStacks>(loadRedo)
+  useEffect(() => {
+    if (loaded) saveRedo(redo, new Set(games.map((g) => g.id)))
+  }, [redo, games, loaded])
   function setRound(next: Round) {
-    if (currentId && redo[currentId]?.length) setRedo((all) => ({ ...all, [currentId]: [] }))
+    if (currentId && redo[currentId]) setRedo((all) => Object.fromEntries(Object.entries(all).filter(([id]) => id !== currentId)))
     storeRound(next)
   }
 
@@ -510,7 +517,9 @@ export default function App() {
   }
 
   const lastEvent = round.events.at(-1)
-  const redoStack = (currentId && redo[currentId]) || []
+  const redoEntry = currentId ? redo[currentId] : undefined
+  // only if the round is still exactly as it was after the last undo
+  const redoStack = redoEntry && redoEntry.base === roundPrint(round.events) ? redoEntry.events : []
   const toRedo = redoStack.at(-1)
   const undoButton = (
     <span className="undo-redo">
@@ -520,8 +529,12 @@ export default function App() {
         aria-label={lastEvent ? `ย้อนกลับ: ${describeEntry(lastEvent)}` : 'ย้อนกลับ'}
         onClick={() => {
           if (!lastEvent || !currentId) return
-          setRedo((all) => ({ ...all, [currentId]: [...(all[currentId] ?? []), lastEvent] }))
-          storeRound(undo(round))
+          const undone = undo(round)
+          setRedo((all) => ({
+            ...all,
+            [currentId]: { base: roundPrint(undone.events), events: [...redoStack, lastEvent] },
+          }))
+          storeRound(undone)
         }}
         disabled={!lastEvent}
       >
@@ -534,8 +547,9 @@ export default function App() {
           aria-label={`ทำซ้ำ: ${describeEntry(toRedo)}`}
           onClick={() => {
             if (!currentId) return
-            setRedo((all) => ({ ...all, [currentId]: redoStack.slice(0, -1) }))
-            storeRound({ ...round, events: [...round.events, toRedo] })
+            const events = [...round.events, toRedo]
+            setRedo((all) => ({ ...all, [currentId]: { base: roundPrint(events), events: redoStack.slice(0, -1) } }))
+            storeRound({ ...round, events })
           }}
         >
           <span aria-hidden="true">↷</span> {describeEntry(toRedo)}
