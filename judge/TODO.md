@@ -23,17 +23,11 @@ Ideas agreed but not built yet, roughly in the order planned.
      a button that deletes the account with all its games (PDPA).
 2. **Try it for real on a phone and an iPad.** Check the keyboard stays up when
    pressing timer and judge buttons.
-3. **Two game modes**, chosen at setup. The app plays normal mode today.
-
-   |                     | Normal (ปกติ)               | Competition (แข่ง)              |
-   |---------------------|-----------------------------|---------------------------------|
-   | First word of round | first player says any word  | the judge picks it (GM word)    |
-   | After someone is out| next player starts free     | next player must connect to the latest counted word |
-   | Rounds per match    | 4                           | 3                               |
-
-   The GM word counts as the first word: the first player must connect to it,
-   "ไม่เชื่อม" and challenges apply from the first player, its syllables count as
-   used. In competition mode `mustConnect` just never resets on an elimination.
+3. ~~Two game modes~~ done. Normal: free first word, and a free start after someone
+   goes out. Competition: the judge gives an opening word each round (it counts as
+   the first word, its syllables are used, players connect to it), and play keeps
+   connecting to the latest counted word after an elimination. Rounds per match
+   (normal 4, competition 3) come with item 6.
 4. ~~Send games to Supabase~~ done: `judge_games`, one anonymous row per game.
    Next: tools to review the data (segmenter corrections, nouns, connections,
    forbidden words). Player stats can be built later from games kept on the device.

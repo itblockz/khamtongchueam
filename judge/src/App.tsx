@@ -35,7 +35,11 @@ import {
   type SavedGame,
 } from './storage'
 import {
+  addOpening,
   addWord,
+  JUDGE_ID,
+  MODE_LABEL,
+  type GameMode,
   JUDGE_REASON_LABEL,
   JUDGE_REASONS,
   judgeOut,
@@ -77,10 +81,12 @@ function keepFocus(event: { preventDefault: () => void }) {
 }
 
 interface TimerSettings {
+  /** The mode new games start in (kept with the other setup choices). */
+  mode: GameMode
   /** Time allowed from the start of a turn to the player's first sound. */
   seconds: number
 }
-const DEFAULT_TIMER: TimerSettings = { seconds: 3 }
+const DEFAULT_TIMER = { seconds: 3 }
 
 /** idle: not counting yet · counting: since startedAt · late: time ran out.
  * The timer only guides the judge; it never puts anyone out by itself. */
@@ -89,7 +95,10 @@ type TimerState = { phase: 'idle' } | { phase: 'counting'; startedAt: number } |
 export default function App() {
   const [settings] = useState(loadSettings)
   const [namesText, setNamesText] = useState(settings.namesText ?? '')
-  const [timer, setTimer] = useState<TimerSettings>({ seconds: settings.seconds ?? DEFAULT_TIMER.seconds })
+  const [timer, setTimer] = useState<TimerSettings>({
+    seconds: settings.seconds ?? DEFAULT_TIMER.seconds,
+    mode: settings.mode ?? 'normal',
+  })
   const [games, setGames] = useState<SavedGame[]>([])
   const [currentId, setCurrentId] = useState<string | null>(settings.currentId ?? null)
   /** Games come from IndexedDB, which answers asynchronously. */
@@ -123,8 +132,8 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    saveSettings({ namesText: '', seconds: timer.seconds, currentId })
-  }, [timer.seconds, currentId])
+    saveSettings({ namesText: '', seconds: timer.seconds, mode: timer.mode, currentId })
+  }, [timer.seconds, timer.mode, currentId])
 
   // Write only the games that changed (and drop deleted ones) once loading is done
   const stored = useRef<Map<string, SavedGame> | null>(null)
@@ -350,13 +359,13 @@ export default function App() {
     setGames((all) => all.map((g) => (g.id === currentId ? { ...g, round: next, updatedAt: Date.now() } : g)))
   }
 
-  function startGame(names: string[]) {
+  function startGame(names: string[], mode: GameMode = timer.mode) {
     const now = Date.now()
     const created: SavedGame = {
       id: newId(),
       createdAt: now,
       updatedAt: now,
-      round: startRound(names),
+      round: startRound(names, mode),
       ...(ownerId ? { owner: ownerId } : {}),
     }
     setGames((all) => [created, ...all])
@@ -446,7 +455,15 @@ export default function App() {
           <h1 className="winner">{winner?.name} ชนะ</h1>
           {undoButton}
         </div>
-        <button type="button" onClick={() => startGame(round.players.map((p) => p.name))}>
+        <button
+          type="button"
+          onClick={() =>
+            startGame(
+              round.players.map((p) => p.name),
+              round.mode ?? 'normal',
+            )
+          }
+        >
           เล่นอีกรอบ
         </button>
         <EliminationNotice game={game} />
@@ -533,6 +550,22 @@ function Setup({
               ? 'ต้องมีผู้เล่นอย่างน้อย 2 คน'
               : `ผู้เล่น ${names.length} คน`}
         </p>
+        <fieldset className="stack choice">
+          <legend>โหมด</legend>
+          {(['normal', 'competition'] as const).map((mode) => (
+            <label key={mode} className="check">
+              <input
+                type="radio"
+                name="mode"
+                checked={timer.mode === mode}
+                onChange={() => onTimerChange({ ...timer, mode })}
+              />
+              {mode === 'normal'
+                ? 'ปกติ: คนแรกพูดคำอะไรก็ได้ และหลังมีคนตกรอบ คนถัดไปเริ่มคำใหม่ได้'
+                : 'แข่ง: กรรมการเลือกคำเปิด และหลังมีคนตกรอบ ต้องเชื่อมกับคำล่าสุดต่อ'}
+            </label>
+          ))}
+        </fieldset>
         <label htmlFor="seconds">เวลาต่อตา (วินาที)</label>
         <input
           id="seconds"
@@ -690,7 +723,11 @@ function Play({
         return
       }
       turnEnded.current = true
-      onChange(addWord(round, text, syllables, manual, manual ? preview : undefined))
+      onChange(
+        game.needsOpening
+          ? addOpening(round, text, syllables, manual, manual ? preview : undefined)
+          : addWord(round, text, syllables, manual, manual ? preview : undefined),
+      )
       setWord('')
       setPreview([])
       setManualSplit(null)
@@ -705,19 +742,27 @@ function Play({
   return (
     <main className="page">
       <div className="turn">
-        <span>
-          ตาของ <strong>{player.name}</strong>
-          <span className="next"> · ถัดไป {next.name}</span>
-        </span>
+        {game.needsOpening ? (
+          <span>
+            <strong>คำเปิด</strong>
+            <span className="next"> · กรรมการเลือก แล้ว {player.name} เริ่ม</span>
+          </span>
+        ) : (
+          <span>
+            ตาของ <strong>{player.name}</strong>
+            <span className="next"> · ถัดไป {next.name}</span>
+          </span>
+        )}
         {undoButton}
       </div>
       <p className="note">
+        {game.mode === 'competition' && `โหมด${MODE_LABEL.competition} · `}
         ยังเล่นอยู่: {game.players.filter((p) => !p.out).map((p) => p.name).join(', ')}
         {game.players.some((p) => p.out) &&
           ` · ตกรอบ: ${game.players.filter((p) => p.out).map((p) => p.name).join(', ')}`}
       </p>
 
-      <div className={`timer timer-${timer.phase}`} role="timer" aria-label="จับเวลา">
+      {!game.needsOpening && <div className={`timer timer-${timer.phase}`} role="timer" aria-label="จับเวลา">
         {timer.phase === 'idle' && (
           <button
             type="button"
@@ -742,11 +787,11 @@ function Play({
             จับเวลาใหม่
           </button>
         )}
-      </div>
+      </div>}
 
       <form className="row" onSubmit={handleSubmit}>
         <label htmlFor="word" className="visually-hidden">
-          คำของ {player.name}
+          {game.needsOpening ? 'คำเปิดของกรรมการ' : `คำของ ${player.name}`}
         </label>
         <input
           id="word"
@@ -760,7 +805,7 @@ function Play({
           autoCorrect="off"
           spellCheck={false}
           enterKeyHint="send"
-          placeholder="พิมพ์คำที่ผู้เล่นพูด"
+          placeholder={game.needsOpening ? 'พิมพ์คำเปิด' : 'พิมพ์คำที่ผู้เล่นพูด'}
         />
         <button type="submit" disabled={!word.trim() || isSubmitting}>
           ส่ง
@@ -801,30 +846,32 @@ function Play({
           <p className="syllables">{parseSyllables(manualSplit).join(' | ') || ' '}</p>
         </div>
       )}
-      <div className="row judge-actions">
-        {JUDGE_REASONS.map((reason) => (
-          <button
-            key={reason}
-            type="button"
-            className={
-              reason === 'too-slow' && timer.phase === 'late' ? 'outline-danger selected' : 'outline-danger'
-            }
-            disabled={needsWord(reason) && !word.trim()}
-            onPointerDown={keepFocus}
-            onClick={() => {
-              turnEnded.current = true
-              onChange(judgeOut(round, reason, word))
-              setWord('')
-              setPreview([])
-              setManualSplit(null)
-              setError(null)
-              inputRef.current?.focus()
-            }}
-          >
-            {JUDGE_REASON_LABEL[reason]}
-          </button>
-        ))}
-      </div>
+      {!game.needsOpening && (
+        <div className="row judge-actions">
+          {JUDGE_REASONS.map((reason) => (
+            <button
+              key={reason}
+              type="button"
+              className={
+                reason === 'too-slow' && timer.phase === 'late' ? 'outline-danger selected' : 'outline-danger'
+              }
+              disabled={needsWord(reason) && !word.trim()}
+              onPointerDown={keepFocus}
+              onClick={() => {
+                turnEnded.current = true
+                onChange(judgeOut(round, reason, word))
+                setWord('')
+                setPreview([])
+                setManualSplit(null)
+                setError(null)
+                inputRef.current?.focus()
+              }}
+            >
+              {JUDGE_REASON_LABEL[reason]}
+            </button>
+          ))}
+        </div>
+      )}
       {error && (
         <p className="note error" role="alert">
           {error}
@@ -874,9 +921,16 @@ function SavedGames({
           return (
             <li key={saved.id}>
               <div>
-                <strong>{winner ? `${winner.name} ชนะ` : `กำลังเล่น · ตาของ ${currentPlayer(state).name}`}</strong>
+                <strong>
+                  {winner
+                    ? `${winner.name} ชนะ`
+                    : state.needsOpening
+                      ? 'รอคำเปิด'
+                      : `กำลังเล่น · ตาของ ${currentPlayer(state).name}`}
+                </strong>
               </div>
               <div className="note">
+                {state.mode === 'competition' && `โหมด${MODE_LABEL.competition} · `}
                 {DATE_FORMAT.format(saved.updatedAt)} · {state.words.length} คำ · {names}
               </div>
               <div className="row">
@@ -1204,7 +1258,8 @@ function WordList({
   if (game.results.length === 0) {
     return <p className="note">ยังไม่มีคำในรอบนี้</p>
   }
-  const nameOf = (id: string) => game.players.find((player) => player.id === id)?.name ?? ''
+  const nameOf = (id: string) =>
+    id === JUDGE_ID ? 'กรรมการ (คำเปิด)' : (game.players.find((player) => player.id === id)?.name ?? '')
   const draftSyllables = parseSyllables(draft)
 
   let pending: Pending | null = null
@@ -1267,7 +1322,7 @@ function WordList({
                   แก้
                 </button>
               )}
-              {open?.index !== result.index && result.status === 'counted' && (
+              {open?.index !== result.index && result.status === 'counted' && result.playerId !== JUDGE_ID && (
                 <button
                   type="button"
                   className="link"

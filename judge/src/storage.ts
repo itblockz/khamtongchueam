@@ -1,4 +1,4 @@
-import type { Round } from './game'
+import type { GameMode, Round } from './game'
 
 /** One game kept in this browser, finished or not. */
 export interface SavedGame {
@@ -14,6 +14,8 @@ export interface SavedGame {
 export interface Settings {
   namesText: string
   seconds: number
+  /** The mode new games start in. */
+  mode?: GameMode
   /** The game on screen, or null on the first page. */
   currentId: string | null
 }
@@ -34,7 +36,7 @@ function isRound(value: unknown): value is Round {
       (e) =>
         typeof e?.playerId === 'string' &&
         typeof e?.word === 'string' &&
-        (e.type === 'word'
+        (e.type === 'word' || e.type === 'opening'
           ? Array.isArray(e.syllables)
           : (e.type === 'judge' || (e.type === 'challenge-lost' && typeof e.targetIndex === 'number')) &&
             typeof e.reason === 'string'),
@@ -71,6 +73,7 @@ export function loadSettings(): Partial<Settings> {
   const settings: Partial<Settings> = {}
   if (typeof data.namesText === 'string') settings.namesText = data.namesText
   if (typeof data.seconds === 'number' && data.seconds > 0) settings.seconds = data.seconds
+  if (data.mode === 'normal' || data.mode === 'competition') settings.mode = data.mode
   if (typeof data.currentId === 'string') settings.currentId = data.currentId
   return settings
 }
@@ -224,11 +227,11 @@ export function mergeGames(
 export function anonymize(game: SavedGame) {
   return {
     version: 1 as const,
-    mode: 'normal' as const,
+    mode: game.round.mode ?? 'normal',
     playerCount: game.round.players.length,
     startedAt: game.createdAt,
     events: game.round.events.map((event) => {
-      if (event.type === 'word') {
+      if (event.type === 'word' || event.type === 'opening') {
         return {
           type: event.type,
           playerId: event.playerId,

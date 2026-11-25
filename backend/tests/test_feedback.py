@@ -133,3 +133,21 @@ def test_judge_game_is_not_stored_without_configuration(monkeypatch: pytest.Monk
   monkeypatch.delenv('SUPABASE_URL', raising=False)
   response = client.post('/api/judge/games', json=GAME)
   assert response.json() == {'recorded': False}
+
+
+def test_judge_game_accepts_competition_mode_with_an_opening_word(posted: list) -> None:
+  game = {
+    'id': 'comp12345',
+    'data': {
+      'version': 1,
+      'mode': 'competition',
+      'playerCount': 2,
+      'startedAt': 1,
+      'events': [
+        {'type': 'opening', 'playerId': 'gm', 'word': 'ทะเล', 'syllables': ['ทะ', 'เล']},
+        {'type': 'word', 'playerId': 'p1', 'word': 'เลมอน', 'syllables': ['เล', 'มอน']},
+      ],
+    },
+  }
+  assert client.post('/api/judge/games', json=game).json() == {'recorded': True}
+  assert posted[0][1]['p_data']['events'][0]['playerId'] == 'gm'
