@@ -8,6 +8,8 @@ import {
   editWord,
   findClashes,
   judgeOut,
+  judgedWithoutSplit,
+  fillJudgedSplits,
   nextPlayer,
   parseNames,
   parseSyllables,
@@ -302,7 +304,28 @@ describe('applyEdit', () => {
   })
 })
 
+describe('filling in splits for older judged words', () => {
+  it('finds judged words with no split and writes the found split back', () => {
+    const old = judgeOut(play(['ออย', 'บีม', 'เจ'], [['กาแฟ', ['กา', 'แฟ']]]), 'not-noun', 'วิ่งเล่น')
+    expect(judgedWithoutSplit(old)).toEqual(['วิ่งเล่น'])
+    const filled = fillJudgedSplits(old, new Map([['วิ่งเล่น', ['วิ่ง', 'เล่น']]]))
+    expect(replay(filled).results[1].syllables).toEqual(['วิ่ง', 'เล่น'])
+    expect(judgedWithoutSplit(filled)).toEqual([])
+    expect(fillJudgedSplits(filled, new Map([['วิ่งเล่น', ['x']]]))).toBe(filled)
+  })
+})
+
 describe('judgeOut', () => {
+  it('keeps the split of a judged or challenged word for display, without using it', () => {
+    const judged = judgeOut(startRound(['ออย', 'บีม']), 'not-noun', 'วิ่งเล่น', ['วิ่ง', 'เล่น'])
+    expect(replay(judged).results[0].syllables).toEqual(['วิ่ง', 'เล่น'])
+
+    const ruled = applyJudge(play(['ออย', 'บีม', 'เจ'], [['กาแฟ', ['กา', 'แฟ']]]), 0, 'not-noun').round
+    expect(replay(ruled).results[0].syllables).toEqual(['กา', 'แฟ'])
+    // a later word may reuse them, since the judged word does not count
+    expect(replay(addWord(ruled, 'แฟกา', ['แฟ', 'กา'])).results[1].status).toBe('counted')
+  })
+
   it('puts the current player out with the reason, and their word does not count', () => {
     let round = play(['ออย', 'บีม', 'เจ'], [['กาแฟ', ['กา', 'แฟ']]])
     round = judgeOut(round, 'not-noun', ' วิ่ง ')

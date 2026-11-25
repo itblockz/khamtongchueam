@@ -56,6 +56,8 @@ export interface JudgeEvent {
   playerId: string
   word: string
   reason: JudgeReason
+  /** The word's split, kept for display only (it does not use the syllables). */
+  syllables?: string[]
   /** Set when the decision came from a player's successful challenge. */
   challengerId?: string
 }
@@ -305,7 +307,7 @@ export function replay(round: Round): GameState {
     const base = {
       index,
       word: event.word,
-      syllables: event.type === 'word' || event.type === 'opening' ? event.syllables : [],
+      syllables: event.type === 'challenge-lost' ? [] : (event.syllables ?? []),
       playerId: event.playerId,
       manual: (event.type === 'word' || event.type === 'opening') && Boolean(event.manual),
       ...(event.type === 'judge' || event.type === 'challenge-lost' ? { reason: event.reason } : {}),
@@ -591,13 +593,35 @@ export function applyEdit(
   }
 }
 
+/** Words put out before their split was kept (older games), to fill in once. */
+export function judgedWithoutSplit(round: Round): string[] {
+  const words = round.events
+    .filter((event) => event.type === 'judge' && event.word.trim() && !event.syllables?.length)
+    .map((event) => event.word)
+  return [...new Set(words)]
+}
+
+/** Write the found splits into those judge events. Returns the same round if none apply. */
+export function fillJudgedSplits(round: Round, splits: Map<string, string[]>): Round {
+  let changed = false
+  const events = round.events.map((event) => {
+    if (event.type !== 'judge' || event.syllables?.length) return event
+    const syllables = splits.get(event.word)
+    if (!syllables?.length) return event
+    changed = true
+    return { ...event, syllables }
+  })
+  return changed ? { ...round, events } : round
+}
+
 /** The judge puts the current player out, e.g. the word is not a noun. */
-export function judgeOut(round: Round, reason: JudgeReason, word: string): Round {
+export function judgeOut(round: Round, reason: JudgeReason, word: string, syllables: string[] = []): Round {
   const state = replay(round)
   if (state.winnerId || (needsWord(reason) && !word.trim())) {
     return round
   }
   const event: JudgeEvent = { type: 'judge', playerId: currentPlayer(state).id, word: word.trim(), reason }
+  if (word.trim() && syllables.length > 0) event.syllables = syllables
   return { ...round, events: [...round.events, event] }
 }
 
@@ -614,7 +638,7 @@ export function applyJudge(
   if (!event || event.type !== 'word') {
     return { round, removed: [] }
   }
-  const judged: JudgeEvent = { type: 'judge', playerId: event.playerId, word: event.word, reason }
+  const judged: JudgeEvent = { type: 'judge', playerId: event.playerId, word: event.word, syllables: event.syllables, reason }
   return {
     round: { ...round, events: [...round.events.slice(0, index), judged] },
     removed: round.events.slice(index + 1),
@@ -665,7 +689,7 @@ export function applyChallenge(
     return { round, removed: [] }
   }
   if (succeeded) {
-    const ruled: JudgeEvent = { type: 'judge', playerId: event.playerId, word: event.word, reason, challengerId }
+    const ruled: JudgeEvent = { type: 'judge', playerId: event.playerId, word: event.word, syllables: event.syllables, reason, challengerId }
     return {
       round: { ...round, events: [...round.events.slice(0, index), ruled] },
       removed: round.events.slice(index + 1),
