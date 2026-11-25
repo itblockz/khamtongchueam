@@ -128,7 +128,8 @@ def record_syllable_report(payload: SyllableReportRequest, background_tasks: Bac
   return FeedbackResponse(recorded=True)
 
 
-PlayerId = Field(pattern=r'^p[0-9]{1,3}$')
+# a seat (p1, p2, ...) or 'gm' for the judge's opening word in competition mode
+PlayerId = Field(pattern=r'^(p[0-9]{1,3}|gm)$')
 ShortText = Field(max_length=feedback.MAX_TEXT_LENGTH)
 
 
@@ -137,7 +138,7 @@ class JudgeGameEvent(BaseModel):
 
   model_config = {'extra': 'forbid'}
 
-  type: Literal['word', 'judge', 'challenge-lost']
+  type: Literal['word', 'judge', 'challenge-lost', 'opening']
   playerId: str = PlayerId
   word: str = ShortText
   syllables: list[Annotated[str, Field(max_length=20)]] | None = Field(default=None, max_length=30)
@@ -152,7 +153,7 @@ class JudgeGameData(BaseModel):
   model_config = {'extra': 'forbid'}
 
   version: Literal[1]
-  mode: Literal['normal']
+  mode: Literal['normal', 'competition']
   playerCount: int = Field(ge=2, le=100)
   startedAt: int
   events: list[JudgeGameEvent] = Field(max_length=2000)

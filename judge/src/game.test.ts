@@ -464,3 +464,53 @@ describe('challenge', () => {
     expect(game.applyChallenge(round, 0, 'p3', false).round).toBe(round)
   })
 })
+
+describe('competition mode', () => {
+  const start = async () => {
+    const game = await import('./game')
+    let round = game.startRound(['ก', 'ข', 'ค'], 'competition')
+    expect(game.replay(round).needsOpening).toBe(true)
+    round = game.addOpening(round, 'ทะเล', ['ทะ', 'เล'])
+    return { game, round }
+  }
+
+  it('opens with the judge\'s word: its syllables are used and no turn passes', async () => {
+    const { game, round } = await start()
+    const state = game.replay(round)
+    expect(state.needsOpening).toBe(false)
+    expect(game.currentPlayer(state).id).toBe('p1')
+    const repeat = game.replay(game.addWord(round, 'ทะเลสาบ', ['ทะ', 'เล', 'สาบ']))
+    expect(repeat.results[1].status).toBe('duplicate')
+    expect(repeat.results[1].clashes[0]).toMatchObject({ syllable: 'ทะ', playerId: 'gm', index: 0 })
+  })
+
+  it('the first player must connect to the opening word, which itself cannot be challenged', async () => {
+    const { game, round } = await start()
+    const state = game.replay(game.addWord(round, 'หาดทราย', ['หาด', 'ทราย']))
+    expect(game.mustConnect(state, 0)).toBe(false)
+    expect(game.canChallenge(state, 0)).toBe(false)
+    expect(game.canChallenge(state, 1)).toBe(true)
+  })
+
+  it('keeps connecting after someone goes out', async () => {
+    const { game } = await start()
+    let { round } = await start()
+    round = game.addWord(round, 'หาดทราย', ['หาด', 'ทราย']) // ก
+    round = game.judgeOut(round, 'too-slow', '') // ข out
+    round = game.addWord(round, 'ทรายทอง', ['ทราย', 'ทอง']) // ค: repeats ทราย, out
+    round = game.addWord(round, 'กาแฟ', ['กา', 'แฟ']) // ก again
+    const state = game.replay(round)
+    expect(game.mustConnect(state, 4)).toBe(true)
+
+    // the same moves in normal mode start free after the elimination
+    const normal = game.replay({ ...round, mode: 'normal' })
+    expect(game.mustConnect(normal, 4)).toBe(false)
+  })
+
+  it('takes the opening word only once, and only in competition mode', async () => {
+    const { game, round } = await start()
+    expect(game.addOpening(round, 'อีกคำ', ['อีก', 'คำ'])).toBe(round)
+    const normal = game.startRound(['ก', 'ข'])
+    expect(game.addOpening(normal, 'ทะเล', ['ทะ', 'เล'])).toBe(normal)
+  })
+})

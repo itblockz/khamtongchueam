@@ -42,6 +42,7 @@ const SYLLABLES: Record<string, string[]> = {
   หาดทราย: ['หาด', 'ทราย'],
   ทรายทอง: ['ทราย', 'ทอง'],
   กาแฟ: ['กา', 'แฟ'],
+  ทะเล: ['ทะ', 'เล'],
 }
 
 beforeEach(async () => {
@@ -751,6 +752,27 @@ describe('judge app', () => {
         { timeout: 4000 },
       )
     }, 10000)
+  })
+
+  it('competition mode opens each round with the judge\'s word', async () => {
+    await renderApp()
+    fireEvent.change(screen.getByLabelText(/รายชื่อผู้เล่น/), { target: { value: 'ออย\nบีม' } })
+    fireEvent.click(screen.getByLabelText(/^แข่ง:/))
+    fireEvent.click(screen.getByRole('button', { name: 'เริ่มเกม' }))
+
+    expect(screen.getByText('คำเปิด', { selector: 'strong' })).toBeInTheDocument()
+    expect(screen.queryByRole('timer')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'ไม่ทันเวลา' })).not.toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('คำเปิดของกรรมการ'), { target: { value: 'ทะเล' } })
+    fireEvent.click(screen.getByRole('button', { name: 'ส่ง' }))
+
+    expect(await screen.findByText('ออย', { selector: 'strong' })).toBeInTheDocument()
+    expect(screen.getByText(/กรรมการ \(คำเปิด\)/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'ตัดสิน ทะเล' })).not.toBeInTheDocument()
+    expect(screen.getByText(/โหมดแข่ง/)).toBeInTheDocument()
+
+    await submit('หาดทราย')
+    expect(screen.getByRole('button', { name: 'ชาเลนจ์ หาดทราย' })).toBeInTheDocument()
   })
 })
 

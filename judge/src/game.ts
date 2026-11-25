@@ -71,7 +71,30 @@ export interface ChallengeLostEvent {
   reason: JudgeReason
 }
 
-export type RoundEvent = WordEvent | JudgeEvent | ChallengeLostEvent
+/** Competition mode: the word the judge opens the round with. Its syllables count as
+ * used and the first player connects to it. Said by no player (`playerId` is 'gm'). */
+export interface OpeningEvent {
+  type: 'opening'
+  playerId: typeof JUDGE_ID
+  word: string
+  syllables: string[]
+  manual?: boolean
+  segmented?: string[]
+}
+
+/** Stands for the judge where an entry needs a speaker (the opening word). */
+export const JUDGE_ID = 'gm'
+
+export type RoundEvent = WordEvent | JudgeEvent | ChallengeLostEvent | OpeningEvent
+
+/**
+ * normal: the round and every restart after someone goes out begin with a free word.
+ * competition: the judge opens the round with a word, and play always connects to the
+ * latest counted word, even after someone goes out.
+ */
+export type GameMode = 'normal' | 'competition'
+
+export const MODE_LABEL: Record<GameMode, string> = { normal: 'ปกติ', competition: 'แข่ง' }
 
 /** Players can only challenge a word for not connecting to the word before it. */
 export const CHALLENGE_REASON: JudgeReason = 'not-connected'
@@ -113,6 +136,8 @@ export function judgedText(word: string, reason: JudgeReason): string {
 export interface Round {
   players: { id: string; name: string }[]
   events: RoundEvent[]
+  /** Absent in rounds saved before modes existed: normal. */
+  mode?: GameMode
 }
 
 export type WordStatus = 'counted' | 'duplicate' | 'judged' | 'challenge-lost' | 'speaker-out' | 'after-end'
@@ -168,6 +193,9 @@ export interface GameState {
   /** The elimination caused by the latest logged word, if it caused one. */
   lastElimination: Elimination | null
   winnerId: string | null
+  mode: GameMode
+  /** Competition mode: the judge still has to give the opening word. */
+  needsOpening: boolean
 }
 
 export function normalizeName(name: string) {
@@ -196,11 +224,32 @@ export function parseSyllables(text: string): string[] {
   return text.split(/[\s|/]+/).map((part) => part.trim()).filter(Boolean)
 }
 
-export function startRound(names: string[]): Round {
+export function startRound(names: string[], mode: GameMode = 'normal'): Round {
   return {
     players: names.map((name, index) => ({ id: `p${index + 1}`, name })),
     events: [],
+    ...(mode === 'competition' ? { mode } : {}),
   }
+}
+
+/** Competition mode: the judge's opening word. Only before anyone has played. */
+export function addOpening(
+  round: Round,
+  word: string,
+  syllables: string[],
+  manual = false,
+  segmented?: string[],
+): Round {
+  const trimmed = word.trim()
+  if (round.mode !== 'competition' || round.events.length > 0 || !trimmed || syllables.length === 0) {
+    return round
+  }
+  const event: OpeningEvent = { type: 'opening', playerId: JUDGE_ID, word: trimmed, syllables }
+  if (manual) {
+    event.manual = true
+    if (segmented && segmented.length > 0) event.segmented = segmented
+  }
+  return { ...round, events: [event] }
 }
 
 /** Syllables of the new word that were already used, each with the word that used it first. */
@@ -256,10 +305,10 @@ export function replay(round: Round): GameState {
     const base = {
       index,
       word: event.word,
-      syllables: event.type === 'word' ? event.syllables : [],
+      syllables: event.type === 'word' || event.type === 'opening' ? event.syllables : [],
       playerId: event.playerId,
-      manual: event.type === 'word' && Boolean(event.manual),
-      ...(event.type !== 'word' ? { reason: event.reason } : {}),
+      manual: (event.type === 'word' || event.type === 'opening') && Boolean(event.manual),
+      ...(event.type === 'judge' || event.type === 'challenge-lost' ? { reason: event.reason } : {}),
       ...(event.type === 'judge' && event.challengerId ? { challengerId: event.challengerId } : {}),
       ...(event.type === 'challenge-lost'
         ? { challengerId: event.playerId, targetIndex: event.targetIndex }
@@ -268,6 +317,16 @@ export function replay(round: Round): GameState {
 
     if (winnerId) {
       results.push({ ...base, status: 'after-end', clashes: [] })
+      return
+    }
+
+    if (event.type === 'opening') {
+      // the judge's word: its syllables are used, nobody's turn moves
+      const entry: WordEntry = { word: event.word, syllables: event.syllables, playerId: JUDGE_ID, index }
+      if (event.manual) entry.manual = true
+      words.push(entry)
+      results.push({ ...base, status: 'counted', clashes: [] })
+      lastElimination = null
       return
     }
 
@@ -361,7 +420,9 @@ export function replay(round: Round): GameState {
     turn = nextActiveIndex(players, turn)
   }
 
-  return { players, turn, words, results, lastElimination, winnerId }
+  const mode = round.mode ?? 'normal'
+  const needsOpening = mode === 'competition' && !round.events.some((e) => e.type === 'opening')
+  return { players, turn, words, results, lastElimination, winnerId, mode, needsOpening }
 }
 
 export function currentPlayer(state: GameState): Player {
@@ -410,7 +471,7 @@ export function undo(round: Round): Round {
 /** Replace the split of an earlier word (the judge corrected it). */
 export function editWord(round: Round, index: number, syllables: string[]): Round {
   const event = round.events[index]
-  if (!event || event.type !== 'word' || syllables.length === 0) {
+  if (!event || (event.type !== 'word' && event.type !== 'opening') || syllables.length === 0) {
     return round
   }
   const events = round.events.slice()
@@ -541,10 +602,12 @@ const ELIMINATING: WordStatus[] = ['duplicate', 'judged', 'challenge-lost']
  * a round starts free, and so does the first word after someone goes out (normal mode).
  */
 export function mustConnect(state: GameState, index: number): boolean {
+  if (state.results[index]?.playerId === JUDGE_ID) return false // the opening word itself
   for (let i = index - 1; i >= 0; i -= 1) {
     const status = state.results[i]?.status
     if (status === 'counted') return true
-    if (status && ELIMINATING.includes(status)) return false
+    // normal mode starts free after someone goes out; competition carries on connecting
+    if (status && ELIMINATING.includes(status) && state.mode === 'normal') return false
   }
   return false
 }
