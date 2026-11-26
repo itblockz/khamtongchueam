@@ -929,29 +929,107 @@ describe('judge app', () => {
     expect(screen.getByText('⚠ อาจเป็นคำแปล', { selector: '.tag' })).toBeInTheDocument()
 
     // sent at once: the hint shows under the turn, with a button to rule it out
-    const banner = screen.getByRole('region', { name: 'ข้อสังเกตของคำล่าสุด' })
+    const banner = screen.getByRole('region', { name: 'คำเตือนที่ยังไม่ได้ดู' })
     expect(within(banner).getByText('⚠ “หมา” อาจเป็นคำแปลของ “ด็อก” (dog)')).toBeInTheDocument()
     fireEvent.click(within(banner).getByRole('button', { name: 'คำต้องห้าม' }))
     expect(screen.getByRole('heading', { name: 'บีม ตกรอบ' })).toBeInTheDocument()
-    expect(screen.queryByRole('region', { name: 'ข้อสังเกตของคำล่าสุด' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'คำเตือนที่ยังไม่ได้ดู' })).not.toBeInTheDocument()
   })
 
-  it('keeps hints when the word is sent before they show', async () => {
+  it('keeps hints when the word is sent before they show, until the judge deals with them', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async (_url: string, init?: RequestInit) => {
         const { text } = JSON.parse(String(init?.body)) as { text: string }
-        const hints = text === 'กิน' ? [{ kind: 'not-noun' }] : []
+        const hints = text === 'กิน' || text === 'สวย' ? [{ kind: 'not-noun', by: 'dictionary' }] : []
         return { ok: true, json: async () => ({ syllables: [text], hints }) }
       }),
     )
-    await startWith('ออย\nบีม')
+    await startWith('ออย\nบีม\nเจ')
     await submit('กิน') // sent straight away, before any preview
-    const banner = screen.getByRole('region', { name: 'ข้อสังเกตของคำล่าสุด' })
-    expect(within(banner).getByText('⚠ “กิน” อาจไม่ใช่คำนาม')).toBeInTheDocument()
-    await submit('บ้าน') // the next word: the banner goes, the tag stays
-    expect(screen.queryByRole('region', { name: 'ข้อสังเกตของคำล่าสุด' })).not.toBeInTheDocument()
-    expect(screen.getByText('⚠ อาจไม่ใช่คำนาม', { selector: '.tag' })).toBeInTheDocument()
+    const banner = () => screen.getByRole('region', { name: 'คำเตือนที่ยังไม่ได้ดู' })
+    expect(within(banner()).getByText('⚠ “กิน” อาจไม่ใช่คำนาม')).toBeInTheDocument()
+    await submit('บ้าน')
+    await submit('สวย')
+    // both stay, newest first, until the judge deals with them
+    const rows = within(banner()).getAllByText(/^⚠/)
+    expect(rows.map((row) => row.textContent)).toEqual(['⚠ “สวย” อาจไม่ใช่คำนาม · พจนานุกรม', '⚠ “กิน” อาจไม่ใช่คำนาม · พจนานุกรม'])
+    // let กิน stand: it leaves the list, its tag stays in the word list
+    fireEvent.click(within(banner()).getAllByRole('button', { name: 'ผ่าน' })[1])
+    expect(within(banner()).queryByText(/“กิน”/)).not.toBeInTheDocument()
+    expect(screen.getAllByText('⚠ อาจไม่ใช่คำนาม', { selector: '.tag' })).toHaveLength(2)
+    fireEvent.click(within(banner()).getByRole('button', { name: 'ผ่าน' }))
+    expect(screen.queryByRole('region', { name: 'คำเตือนที่ยังไม่ได้ดู' })).not.toBeInTheDocument()
+  })
+
+  it('puts the AI hints on a word when they arrive, without holding the judge up', async () => {
+    let answer: (value: unknown) => void = () => {}
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        const { text, check } = JSON.parse(String(init?.body)) as { text: string; check?: boolean }
+        if (check && text === 'ขวา') {
+          await new Promise((resolve) => (answer = resolve))
+          return {
+            ok: true,
+            json: async () => ({
+              syllables: [text],
+              hints: [{ kind: 'not-noun', by: 'model' }],
+              checked: { by: 'model', model: 'gemma' },
+            }),
+          }
+        }
+        return { ok: true, json: async () => ({ syllables: [text], hints: [] }) }
+      }),
+    )
+    await startWith('ออย\nบีม\nเจ')
+    await submit('ซ้าย')
+    await submit('ขวา') // logged at once, before the AI answers
+    expect(screen.getByText('ขวา', { selector: '.word' })).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'คำเตือนที่ยังไม่ได้ดู' })).not.toBeInTheDocument()
+    await submit('หน้า') // the next player goes on
+    answer(null)
+    const banner = await screen.findByRole('region', { name: 'คำเตือนที่ยังไม่ได้ดู' })
+    expect(within(banner).getByText(/^⚠/).textContent).toBe('⚠ “ขวา” อาจไม่ใช่คำนาม · AI')
+    // ruling an earlier word out: its speaker goes out there, later words go
+    fireEvent.click(within(banner).getByRole('button', { name: 'ไม่ใช่คำนาม' }))
+    expect(screen.getByRole('heading', { name: 'บีม ตกรอบ' })).toBeInTheDocument()
+    expect(screen.queryByText('หน้า', { selector: '.word' })).not.toBeInTheDocument()
+  })
+
+  it('drops a late AI answer for a word taken back', async () => {
+    let answer: (value: unknown) => void = () => {}
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        const { text, check } = JSON.parse(String(init?.body)) as { text: string; check?: boolean }
+        if (check) {
+          await new Promise((resolve) => (answer = resolve))
+          return { ok: true, json: async () => ({ syllables: [text], hints: [{ kind: 'not-noun', by: 'model' }], checked: { by: 'model' } }) }
+        }
+        return { ok: true, json: async () => ({ syllables: [text], hints: [] }) }
+      }),
+    )
+    await startWith('ออย\nบีม')
+    await submit('กิน')
+    fireEvent.click(screen.getByRole('button', { name: /^ย้อนกลับ/ }))
+    answer(null)
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(screen.queryByRole('region', { name: 'คำเตือนที่ยังไม่ได้ดู' })).not.toBeInTheDocument()
+  })
+
+  it('says when the AI could not check the word', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        const { text, check } = JSON.parse(String(init?.body)) as { text: string; check?: boolean }
+        const checked = check ? { by: 'dictionary', reason: 'quota', until: new Date(2026, 10, 26, 15, 0).getTime() } : null
+        return { ok: true, json: async () => ({ syllables: [text], hints: [], checked }) }
+      }),
+    )
+    await startWith('ออย\nบีม')
+    await submit('บ้าน')
+    expect(await screen.findByText('เช็กด้วยพจนานุกรมอย่างเดียว · โควตา AI หมด (กลับมา 15:00)')).toBeInTheDocument()
   })
 
   it('turns the time-up sound off and remembers it', async () => {

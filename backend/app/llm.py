@@ -10,6 +10,7 @@ import os
 import threading
 import time
 from collections import OrderedDict
+from datetime import datetime, timedelta, timezone
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
 
 import requests
@@ -43,9 +44,10 @@ TRANSLATION_SCHEMA = {
 }
 
 
-# Measured best for this (see the PR): a small, cheap model. One model only, so
-# answers stay consistent; if it fails, the dictionaries take over.
-DEFAULT_MODEL = 'gemini-3.5-flash-lite'
+# Measured best for this (see the PR): as accurate as Gemini 3.5 Flash Lite on nouns,
+# faster, and with a far larger free daily quota. One model only, so answers stay
+# consistent; if it fails, the dictionaries take over.
+DEFAULT_MODEL = 'gemma-4-26b-a4b-it'
 TIMEOUT_SECONDS = 3
 MAX_CALLS_PER_MINUTE = 60  # per server instance, to cap the bill if the API is abused
 CACHE_SIZE = 5000
@@ -54,6 +56,28 @@ _pool = ThreadPoolExecutor(max_workers=4)
 _lock = threading.Lock()
 _calls: list[float] = []
 _cache: OrderedDict[tuple[str, str, str], dict] = OrderedDict()
+# After a 429, Gemini is not asked again until this time (epoch seconds).
+_resting_until = 0.0
+
+
+def _quota_reset(body: str, now: float) -> float:
+  """When to ask again after a 429: the daily quota resets at midnight Pacific time,
+  the per-minute one within a minute."""
+  if 'PerDay' not in body:
+    return now + 60
+  try:
+    from zoneinfo import ZoneInfo
+    pacific = ZoneInfo('America/Los_Angeles')
+  except Exception:  # noqa: BLE001 - no time zone data: standard time is close enough
+    pacific = timezone(timedelta(hours=-8))
+  local = datetime.fromtimestamp(now, pacific)
+  midnight = (local + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+  return midnight.timestamp()
+
+
+def resting_until() -> float | None:
+  """While resting after a 429: when Gemini will be asked again (epoch seconds)."""
+  return _resting_until if time.time() < _resting_until else None
 
 
 def model() -> str:
@@ -75,14 +99,16 @@ def _allow_call() -> bool:
     return True
 
 
-def _ask(prompt: str, schema: dict, previous: str, word: str) -> dict | None:
+def _ask(prompt: str, schema: dict, previous: str, word: str) -> tuple[dict | None, str | None]:
+  """The answer, or None and why not: 'quota' (resting after a 429, or our own cap) or 'error'."""
+  global _resting_until
   key = (prompt[:20], previous, word)
   with _lock:
     if key in _cache:
       _cache.move_to_end(key)
-      return _cache[key]
-  if not _allow_call():
-    return None
+      return _cache[key], None
+  if resting_until() is not None or not _allow_call():
+    return None, 'quota'
   try:
     response = requests.post(
       f'https://generativelanguage.googleapis.com/v1beta/models/{model()}:generateContent',
@@ -93,47 +119,76 @@ def _ask(prompt: str, schema: dict, previous: str, word: str) -> dict | None:
       },
       timeout=TIMEOUT_SECONDS,
     )
+    if response.status_code == 429:
+      with _lock:
+        _resting_until = max(_resting_until, _quota_reset(response.text, time.time()))
+      logger.warning('gemini quota used up, resting until %s', _resting_until)
+      return None, 'quota'
     if response.status_code >= 300:
       logger.warning('gemini %s: %s', response.status_code, response.text[:200])
-      return None
+      return None, 'error'
     answer = json.loads(response.json()['candidates'][0]['content']['parts'][0]['text'])
+  except requests.Timeout:
+    return None, 'timeout'
   except (requests.RequestException, ValueError, KeyError, IndexError, TypeError) as error:
     logger.warning('gemini failed: %s', error)
-    return None
+    return None, 'error'
   with _lock:
     _cache[key] = answer
     if len(_cache) > CACHE_SIZE:
       _cache.popitem(last=False)
-  return answer
+  return answer, None
+
+
+def reset_for_tests() -> None:
+  global _resting_until
+  with _lock:
+    _resting_until = 0.0
+    _calls.clear()
+    _cache.clear()
 
 
 class Verdict(dict):
-  """noun: bool | None; translation: str | None (the English word); None = no answer."""
+  """noun: bool | None; translation: str | None (the English word); None = no answer.
+  answered: Gemini gave at least one answer. reason: why it did not ('off', 'quota',
+  'timeout', 'error'), else None."""
 
 
 def check(previous: str | None, word: str) -> Verdict:
   """Ask both questions at once, waiting at most TIMEOUT_SECONDS. Missing answers are None."""
-  verdict = Verdict(noun=None, translation=None, answered=False)
+  verdict = Verdict(noun=None, translation=None, answered=False, reason=None)
   if not enabled():
+    verdict['reason'] = 'off'
+    return verdict
+  if resting_until() is not None:
+    verdict['reason'] = 'quota'
     return verdict
   noun_job = _pool.submit(_ask, NOUN_PROMPT, NOUN_SCHEMA, previous or '', word)
   translation_job = _pool.submit(_ask, TRANSLATION_PROMPT, TRANSLATION_SCHEMA, previous, word) if previous else None
   deadline = time.monotonic() + TIMEOUT_SECONDS + 0.5
+  reasons: list[str] = []
   try:
-    noun = noun_job.result(timeout=max(0.1, deadline - time.monotonic()))
+    noun, reason = noun_job.result(timeout=max(0.1, deadline - time.monotonic()))
     if noun is not None:
       verdict['noun'] = bool(noun.get('noun'))
       verdict['answered'] = True
+    elif reason:
+      reasons.append(reason)
   except FutureTimeout:
-    pass
+    reasons.append('timeout')
   if translation_job is not None:
     try:
-      found = translation_job.result(timeout=max(0.1, deadline - time.monotonic()))
+      found, reason = translation_job.result(timeout=max(0.1, deadline - time.monotonic()))
       if found is not None:
         verdict['answered'] = True
         english = (found.get('english') or '').strip().lower()
         if found.get('translation') and english:
           verdict['translation'] = english
+      elif reason:
+        reasons.append(reason)
     except FutureTimeout:
-      pass
+      reasons.append('timeout')
+  if not verdict['answered']:
+    # the most telling reason first: a used-up quota explains a timeout too
+    verdict['reason'] = next((r for r in ('quota', 'timeout', 'error') if r in reasons), 'error')
   return verdict

@@ -1,4 +1,4 @@
-import type { GameMode, Round, RoundEvent } from './game'
+import type { CheckedInfo, GameMode, HintInfo, Round, RoundEvent } from './game'
 
 /** One game kept in this browser, finished or not. */
 export interface SavedGame {
@@ -252,6 +252,8 @@ export function anonymize(game: SavedGame) {
           ...(event.manual ? { manual: true } : {}),
           ...(event.segmented ? { segmented: event.segmented } : {}),
           ...(event.type === 'word' && event.hints?.length ? { hints: event.hints } : {}),
+          ...(event.type === 'word' && event.hintInfo?.length ? { hintInfo: event.hintInfo.map(hintForUpload) } : {}),
+          ...(event.type === 'word' && event.checked ? { checked: checkedForUpload(event.checked) } : {}),
         }
       }
       if (event.type === 'judge') {
@@ -261,6 +263,7 @@ export function anonymize(game: SavedGame) {
           word: event.word,
           ...(event.syllables?.length ? { syllables: event.syllables } : {}),
           ...(event.hints?.length ? { hints: event.hints } : {}),
+          ...(event.hintInfo?.length ? { hintInfo: event.hintInfo.map(hintForUpload) } : {}),
           reason: event.reason,
           ...(event.challengerId ? { challengerId: event.challengerId } : {}),
         }
@@ -382,7 +385,8 @@ const REDO_KEY = 'khamtongchueam.judge.redo.v1'
 export type RedoStacks = Record<string, { base: string; events: RoundEvent[] }>
 
 export function roundPrint(events: RoundEvent[]): string {
-  return fingerprint(JSON.stringify(events))
+  // hints can arrive or be passed after a word is logged: they do not make it a new log
+  return fingerprint(JSON.stringify(events, (key, value) => (key === 'hints' || key === 'hintInfo' || key === 'checked' ? undefined : value)))
 }
 
 export function loadRedo(): RedoStacks {
@@ -407,5 +411,23 @@ export function saveRedo(stacks: RedoStacks, gameIds: Set<string>) {
     else localStorage.setItem(REDO_KEY, JSON.stringify(kept))
   } catch {
     /* blocked: redo just will not survive a reload */
+  }
+}
+
+/** Only the fields the server takes (it refuses unknown ones). */
+function hintForUpload(hint: HintInfo): HintInfo {
+  return {
+    kind: hint.kind,
+    ...(hint.by ? { by: hint.by } : {}),
+    ...(hint.english ? { english: hint.english.slice(0, 60) } : {}),
+    ...(hint.passed ? { passed: true } : {}),
+  }
+}
+
+function checkedForUpload(checked: CheckedInfo): CheckedInfo {
+  return {
+    by: checked.by,
+    ...(checked.reason ? { reason: checked.reason } : {}),
+    ...(checked.model ? { model: checked.model.slice(0, 60) } : {}),
   }
 }

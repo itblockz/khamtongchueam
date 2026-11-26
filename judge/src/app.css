@@ -754,3 +754,44 @@ button.suggest-chip.group {
   color: #9a6700;
   border-color: #d4a72c;
 }
+
+.hint-row {
+  gap: 6px;
+  border-radius: 6px;
+}
+
+.hint-row .hint-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.hint-source {
+  color: #8a6d1f;
+}
+
+/* a hint from the AI arrives after the word: flash it once so it is noticed */
+.hint-row.fresh {
+  animation: hint-arrived 1.2s ease-out;
+}
+
+@keyframes hint-arrived {
+  from {
+    background: #f5d77a;
+  }
+  to {
+    background: transparent;
+  }
+}
+
+.hint-banner button.more-hints {
+  align-self: flex-start;
+  min-height: 32px;
+  color: #6b4e00;
+  font-weight: 600;
+}
+
+.checked-note {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--muted, #666);
+}

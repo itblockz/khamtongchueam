@@ -24,6 +24,17 @@ class Hint(TypedDict, total=False):
   kind: Literal['not-noun', 'translation']
   of: str
   english: str
+  # who pointed it out: a checked answer, Gemini, the dictionaries, or both of the last two
+  by: Literal['confirmed', 'model', 'dictionary', 'both']
+
+
+class Checked(TypedDict, total=False):
+  """How a sent word was checked: by Gemini, or only by the dictionaries (and why)."""
+  by: Literal['model', 'dictionary']
+  reason: Literal['off', 'quota', 'timeout', 'error']
+  model: str
+  # with reason 'quota': when Gemini will be asked again (epoch milliseconds)
+  until: int
 
 
 @lru_cache(maxsize=1)
@@ -127,7 +138,12 @@ def translation_between(previous: str, word: str) -> str | None:
 
 
 def hints_for(word: str, previous: str | None = None, ask_model: bool = False) -> list[Hint]:
-  """Dictionaries always; with ask_model (when the word is sent) Gemini too, if set up.
+  """Dictionaries always; with ask_model (when the word is sent) Gemini too, if set up."""
+  return check_word(word, previous, ask_model)[0]
+
+
+def check_word(word: str, previous: str | None = None, ask_model: bool = False) -> tuple[list[Hint], Checked | None]:
+  """The hints for a word, and (with ask_model) how it was checked.
 
   - not a noun: a checked answer decides; else Gemini (with the word before as
     context), unless a dictionary gives the word a noun sense; else the dictionaries.
@@ -135,21 +151,33 @@ def hints_for(word: str, previous: str | None = None, ask_model: bool = False) -
   """
   word = word.strip()
   previous = previous.strip() if previous else None
-  verdict = llm.check(previous, word) if ask_model else llm.Verdict(noun=None, translation=None, answered=False)
+  verdict = llm.check(previous, word) if ask_model else llm.Verdict(noun=None, translation=None, answered=False, reason=None)
   hints: list[Hint] = []
 
   checked = checks().get(word)
   if checked is not None and checked.noun is not None:
-    not_noun = not checked.noun
+    if not checked.noun:
+      hints.append({'kind': 'not-noun', 'by': 'confirmed'})
   elif verdict['noun'] is not None:
-    not_noun = verdict['noun'] is False and word not in _data()[3]
-  else:
-    not_noun = may_not_be_noun(word)
-  if not_noun:
-    hints.append({'kind': 'not-noun'})
+    if verdict['noun'] is False and word not in _data()[3]:
+      hints.append({'kind': 'not-noun', 'by': 'both' if may_not_be_noun(word) else 'model'})
+  elif may_not_be_noun(word):
+    hints.append({'kind': 'not-noun', 'by': 'dictionary'})
 
   if previous:
-    english = verdict['translation'] or translation_between(previous, word)
+    from_dictionary = translation_between(previous, word)
+    from_model = verdict['translation']
+    english = from_model or from_dictionary
     if english:
-      hints.append({'kind': 'translation', 'of': previous, 'english': english})
-  return hints
+      by = 'both' if from_model and from_dictionary else 'model' if from_model else 'dictionary'
+      hints.append({'kind': 'translation', 'of': previous, 'english': english, 'by': by})
+
+  if not ask_model:
+    return hints, None
+  if verdict['answered']:
+    return hints, {'by': 'model', 'model': llm.model()}
+  result: Checked = {'by': 'dictionary', 'reason': verdict['reason'] or 'error'}
+  until = llm.resting_until()
+  if verdict['reason'] == 'quota' and until:
+    result['until'] = int(until * 1000)
+  return hints, result
