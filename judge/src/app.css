@@ -763,6 +763,17 @@ button.suggest-chip.group {
 .hint-row .hint-text {
   flex: 1;
   min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.hint-banner {
+  padding: 6px 10px;
+  gap: 2px;
+}
+
+.hint-banner button.compact {
+  min-height: 36px;
+  padding: 0 8px;
 }
 
 .hint-source {
@@ -785,7 +796,8 @@ button.suggest-chip.group {
 
 .hint-banner button.more-hints {
   align-self: flex-start;
-  min-height: 32px;
+  min-height: 28px;
+  font-size: 0.85rem;
   color: #6b4e00;
   font-weight: 600;
 }

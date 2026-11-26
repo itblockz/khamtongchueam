@@ -930,7 +930,7 @@ describe('judge app', () => {
 
     // sent at once: the hint shows under the turn, with a button to rule it out
     const banner = screen.getByRole('region', { name: 'คำเตือนที่ยังไม่ได้ดู' })
-    expect(within(banner).getByText('⚠ “หมา” อาจเป็นคำแปลของ “ด็อก” (dog)')).toBeInTheDocument()
+    expect(within(banner).getByText('⚠ “หมา” แปลจาก “ด็อก”? (dog)')).toBeInTheDocument()
     fireEvent.click(within(banner).getByRole('button', { name: 'คำต้องห้าม' }))
     expect(screen.getByRole('heading', { name: 'บีม ตกรอบ' })).toBeInTheDocument()
     expect(screen.queryByRole('region', { name: 'คำเตือนที่ยังไม่ได้ดู' })).not.toBeInTheDocument()
@@ -948,12 +948,15 @@ describe('judge app', () => {
     await startWith('ออย\nบีม\nเจ')
     await submit('กิน') // sent straight away, before any preview
     const banner = () => screen.getByRole('region', { name: 'คำเตือนที่ยังไม่ได้ดู' })
-    expect(within(banner()).getByText('⚠ “กิน” อาจไม่ใช่คำนาม')).toBeInTheDocument()
+    expect(within(banner()).getByText('⚠ “กิน” ไม่ใช่นาม?')).toBeInTheDocument()
     await submit('บ้าน')
     await submit('สวย')
     // both stay, newest first, until the judge deals with them
     const rows = within(banner()).getAllByText(/^⚠/)
-    expect(rows.map((row) => row.textContent)).toEqual(['⚠ “สวย” อาจไม่ใช่คำนาม · พจนานุกรม', '⚠ “กิน” อาจไม่ใช่คำนาม · พจนานุกรม'])
+    expect(rows.map((row) => row.textContent)).toEqual(['⚠ “สวย” ไม่ใช่นาม? · พจนานุกรม'])
+    // one row shows; the rest open on a tap
+    fireEvent.click(within(banner()).getByRole('button', { name: 'อีก 1 คำเตือน ▾' }))
+    expect(within(banner()).getAllByText(/^⚠/).map((row) => row.textContent)).toEqual(['⚠ “สวย” ไม่ใช่นาม? · พจนานุกรม', '⚠ “กิน” ไม่ใช่นาม? · พจนานุกรม'])
     // let กิน stand: it leaves the list, its tag stays in the word list
     fireEvent.click(within(banner()).getAllByRole('button', { name: 'ผ่าน' })[1])
     expect(within(banner()).queryByText(/“กิน”/)).not.toBeInTheDocument()
@@ -990,7 +993,7 @@ describe('judge app', () => {
     await submit('หน้า') // the next player goes on
     answer(null)
     const banner = await screen.findByRole('region', { name: 'คำเตือนที่ยังไม่ได้ดู' })
-    expect(within(banner).getByText(/^⚠/).textContent).toBe('⚠ “ขวา” อาจไม่ใช่คำนาม · AI')
+    expect(within(banner).getByText(/^⚠/).textContent).toBe('⚠ “ขวา” ไม่ใช่นาม? · AI')
     // ruling an earlier word out removes the words after it: shown first, as in the word list
     fireEvent.click(within(banner).getByRole('button', { name: 'ไม่ใช่คำนาม' }))
     const confirm = within(banner).getByRole('group', { name: 'ยืนยัน “ขวา” ไม่ใช่คำนาม' })

@@ -1690,14 +1690,14 @@ function toHintInfo(hint: WordHint): HintInfo {
   }
 }
 
-const HINT_SOURCE_LABEL: Record<HintSource, string> = {
+const HINTS_SHOWN = 1
+
+const HINT_SOURCE_SHORT: Record<HintSource, string> = {
   confirmed: 'ยืนยันแล้ว',
   model: 'AI',
   dictionary: 'พจนานุกรม',
-  both: 'AI + พจนานุกรม',
+  both: 'AI',
 }
-
-const HINTS_SHOWN = 3
 
 /**
  * Hints the judge has not dealt with yet, newest first, each with a button to rule the
@@ -1708,6 +1708,13 @@ function HintList({ round, game, onChange }: { round: Round; game: GameState; on
   const [open, setOpen] = useState(false)
   /** Ruling out an earlier word removes the words after it: shown first, as in the word list. */
   const [confirming, setConfirming] = useState<{ key: string; pending: Pending } | null>(null)
+  /** Hints already on screen once: only a newly arrived one flashes (not on expanding). */
+  const seen = useRef(new Set<string>())
+  useEffect(() => {
+    round.events.forEach((event, index) => {
+      if (event.type === 'word') for (const info of hintInfoOf(event)) seen.current.add(`${index}-${info.kind}-${info.by ?? ''}`)
+    })
+  })
   if (game.winnerId) return null
   const rows: { index: number; word: string; info: HintInfo; of?: string }[] = []
   round.events.forEach((event, index) => {
@@ -1757,13 +1764,11 @@ function HintList({ round, game, onChange }: { round: Round; game: GameState; on
           )
         }
         return (
-          <div key={`${key}-${info.by ?? ''}`} className={`row tight hint-row${info.by === 'model' || info.by === 'both' ? ' fresh' : ''}`}>
+          <div key={`${key}-${info.by ?? ''}`} className={`row tight hint-row${seen.current.has(`${key}-${info.by ?? ''}`) ? '' : ' fresh'}`}>
             <span className="hint-text">
               ⚠ “{word}”{' '}
-              {info.kind === 'not-noun'
-                ? 'อาจไม่ใช่คำนาม'
-                : `อาจเป็นคำแปลของ “${of ?? ''}”${info.english ? ` (${info.english})` : ''}`}
-              {info.by && <small className="hint-source"> · {HINT_SOURCE_LABEL[info.by]}</small>}
+              {info.kind === 'not-noun' ? 'ไม่ใช่นาม?' : `แปลจาก “${of ?? ''}”?${info.english ? ` (${info.english})` : ''}`}
+              {info.by && <small className="hint-source"> · {HINT_SOURCE_SHORT[info.by]}</small>}
             </span>
             <button
               type="button"
@@ -1777,7 +1782,7 @@ function HintList({ round, game, onChange }: { round: Round; game: GameState; on
             >
               {JUDGE_REASON_LABEL[reason]}
             </button>
-            <button type="button" className="compact" onClick={() => onChange(passHint(round, index, info.kind))}>
+            <button type="button" className="secondary compact" onClick={() => onChange(passHint(round, index, info.kind))}>
               ผ่าน
             </button>
           </div>
@@ -1785,7 +1790,7 @@ function HintList({ round, game, onChange }: { round: Round; game: GameState; on
       })}
       {rows.length > HINTS_SHOWN && (
         <button type="button" className="link more-hints" onClick={() => setOpen(!open)}>
-          {open ? 'ย่อ' : `+${rows.length - HINTS_SHOWN} คำเตือน`}
+          {open ? 'ย่อ ▴' : `อีก ${rows.length - HINTS_SHOWN} คำเตือน ▾`}
         </button>
       )}
     </section>
