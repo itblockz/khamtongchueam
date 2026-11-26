@@ -862,6 +862,9 @@ export function defaultChallenger(state: GameState, index: number): string | nul
 // ---- Matches: several rounds, points per round, total decides ----
 
 /** Rounds in a match, by mode. */
+/** The most rounds a match can have (set at the start, or added on the way). */
+export const MAX_MATCH_ROUNDS = 20
+
 export const MATCH_ROUNDS: Record<GameMode, number> = { normal: 4, competition: 3 }
 
 export const POINTS = {

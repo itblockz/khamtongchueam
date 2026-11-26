@@ -452,6 +452,29 @@ describe('judge app', () => {
       expect(screen.getByText(/^เสมอ: /)).toBeInTheDocument()
     })
 
+    it('plays on after the last round, one round at a time', async () => {
+      await startWith('ออย\nบีม')
+      await submit('หาดทราย')
+      fireEvent.change(screen.getByLabelText(/^คำของ/), { target: { value: 'ทรายทอง' } })
+      fireEvent.click(screen.getByRole('button', { name: 'ส่ง' }))
+      await screen.findByRole('heading', { name: /^ออย ชนะ/ })
+      // between rounds the length stays as set: go on, or end here
+      expect(screen.queryByRole('button', { name: /^เล่นต่ออีก 1 รอบ/ })).not.toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: /^รอบถัดไป \(2\/4\)/ }))
+
+      // end it at round 2, then go on after all
+      fireEvent.click(screen.getByRole('button', { name: 'ไม่ทันเวลา' }))
+      vi.spyOn(window, 'confirm').mockReturnValue(true)
+      fireEvent.click(screen.getByRole('button', { name: 'จบแมตช์ตอนนี้' }))
+      expect(screen.getByText('รอบ 2/2 จบแล้ว')).toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: /^เล่นต่ออีก 1 รอบ · บีม เริ่ม/ }))
+      expect(screen.getByText('รอบ 3/3')).toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: 'ไม่ทันเวลา' }))
+      expect(screen.getByText('รอบ 3/3 จบแล้ว')).toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: /^เล่นต่ออีก 1 รอบ/ }))
+      expect(screen.getByText('รอบ 4/4')).toBeInTheDocument()
+    })
+
     it('deletes a game after asking', async () => {
       await startWith('ออย\nบีม')
       fireEvent.click(screen.getByRole('button', { name: 'หน้าแรก' }))
