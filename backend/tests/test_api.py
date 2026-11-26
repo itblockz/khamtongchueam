@@ -45,16 +45,24 @@ def test_syllable_api_points_out_hints_for_the_judge() -> None:
   assert plain['hints'] == []
 
   verb = client.post('/api/syllables', json={'text': 'กิน'}).json()
-  assert verb['hints'] == [{'kind': 'not-noun', 'of': None, 'english': None}]
+  assert verb['hints'] == [{'kind': 'not-noun', 'of': None, 'english': None, 'by': 'dictionary'}]
+  assert verb['checked'] is None
 
   translated = client.post('/api/syllables', json={'text': 'หมา', 'previous': 'ด็อก'}).json()
-  assert translated['hints'] == [{'kind': 'translation', 'of': 'ด็อก', 'english': 'dog'}]
+  assert translated['hints'] == [{'kind': 'translation', 'of': 'ด็อก', 'english': 'dog', 'by': 'dictionary'}]
+
+  # sent: says how it was checked (no key in tests: the dictionaries only)
+  sent = client.post('/api/syllables', json={'text': 'หมา', 'previous': 'ด็อก', 'check': True}).json()
+  assert sent['checked'] == {'by': 'dictionary', 'reason': 'off', 'model': None, 'until': None}
 
 
 def test_judge_game_accepts_hints() -> None:
   from backend.app.main import JudgeGameData
   data = JudgeGameData(
     version=1, mode='normal', playerCount=2, startedAt=1,
-    events=[{'type': 'word', 'playerId': 'p1', 'word': 'หมา', 'syllables': ['หมา'], 'hints': ['translation']}],
+    events=[{'type': 'word', 'playerId': 'p1', 'word': 'หมา', 'syllables': ['หมา'], 'hints': ['translation'],
+             'hintInfo': [{'kind': 'translation', 'by': 'model', 'english': 'dog', 'passed': True}],
+             'checked': {'by': 'model', 'model': 'gemma-4-26b-a4b-it'}}],
   )
   assert data.events[0].hints == ['translation']
+  assert data.events[0].hintInfo[0].passed is True

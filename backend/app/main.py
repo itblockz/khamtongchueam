@@ -27,6 +27,8 @@ class SyllableRequest(BaseModel):
   engine: SyllableEngine = DEFAULT_ENGINE
   # the word said before, to point out a translation of it (judge app)
   previous: str | None = Field(default=None, max_length=feedback.MAX_TEXT_LENGTH)
+  # set when the judge sends the word: worth a slower, better check (Gemini)
+  check: bool = False
 
 
 class WordHint(BaseModel):
@@ -35,6 +37,16 @@ class WordHint(BaseModel):
   kind: Literal['not-noun', 'translation']
   of: str | None = None
   english: str | None = None
+  by: Literal['confirmed', 'model', 'dictionary', 'both'] | None = None
+
+
+class WordChecked(BaseModel):
+  """How a sent word was checked: by Gemini, or only by the dictionaries (and why)."""
+
+  by: Literal['model', 'dictionary']
+  reason: Literal['off', 'quota', 'timeout', 'error'] | None = None
+  model: str | None = None
+  until: int | None = None
 
 
 class SyllableResponse(BaseModel):
@@ -43,6 +55,8 @@ class SyllableResponse(BaseModel):
   mode: Literal['written']
   modelVersion: str
   hints: list[WordHint] = []
+  # only when `check` was asked for
+  checked: WordChecked | None = None
 
 
 app = FastAPI(
@@ -80,8 +94,11 @@ def tokenize_syllables(payload: SyllableRequest) -> SyllableResponse:
   except SegmentationEngineError as error:
     raise HTTPException(status_code=503, detail=str(error)) from error
 
+  checked = None
   try:
-    word_hints = [WordHint(**hint) for hint in hints.hints_for(payload.text, payload.previous)]
+    found, how = hints.check_word(payload.text, payload.previous, ask_model=payload.check)
+    word_hints = [WordHint(**hint) for hint in found]
+    checked = WordChecked(**how) if how else None
   except Exception:  # noqa: BLE001 - hints are extra; segmentation must not fail on them
     word_hints = []
 
@@ -91,6 +108,7 @@ def tokenize_syllables(payload: SyllableRequest) -> SyllableResponse:
     mode=SEGMENTATION_MODE,
     modelVersion=get_model_version(payload.engine),
     hints=word_hints,
+    checked=checked,
   )
 
 
@@ -150,6 +168,26 @@ PlayerId = Field(pattern=r'^(p[0-9]{1,3}|gm)$')
 ShortText = Field(max_length=feedback.MAX_TEXT_LENGTH)
 
 
+class JudgeGameHint(BaseModel):
+  """A hint as shown to the judge, to measure later how often each source is right."""
+
+  model_config = {'extra': 'forbid'}
+
+  kind: Literal['not-noun', 'translation']
+  by: Literal['confirmed', 'model', 'dictionary', 'both'] | None = None
+  english: str | None = Field(default=None, max_length=60)
+  # the judge saw it and let the word stand
+  passed: bool | None = None
+
+
+class JudgeGameChecked(BaseModel):
+  model_config = {'extra': 'forbid'}
+
+  by: Literal['model', 'dictionary']
+  reason: Literal['off', 'quota', 'timeout', 'error'] | None = None
+  model: str | None = Field(default=None, max_length=60)
+
+
 class JudgeGameEvent(BaseModel):
   """One entry of a judge-app game log. Players are seat ids only, never names."""
 
@@ -162,6 +200,8 @@ class JudgeGameEvent(BaseModel):
   segmented: list[Annotated[str, Field(max_length=20)]] | None = Field(default=None, max_length=30)
   manual: bool | None = None
   hints: list[Literal['not-noun', 'translation']] | None = Field(default=None, max_length=4)
+  hintInfo: list[JudgeGameHint] | None = Field(default=None, max_length=4)
+  checked: JudgeGameChecked | None = None
   reason: Literal['not-connected', 'not-noun', 'forbidden', 'too-slow'] | None = None
   challengerId: str | None = Field(default=None, pattern=r'^p[0-9]{1,3}$')
   targetIndex: int | None = Field(default=None, ge=0)

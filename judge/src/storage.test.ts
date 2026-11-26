@@ -1,9 +1,10 @@
 import 'fake-indexeddb/auto'
 import { IDBFactory } from 'fake-indexeddb'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { addWord, editWord, judgeOut, startRound } from './game'
+import { addWord, attachCheck, editWord, judgeOut, passHint, startRound, undo, type WordEvent } from './game'
 import {
   anonymize,
+  roundPrint,
   exportGames,
   loadGames,
   loadSettings,
@@ -70,6 +71,42 @@ describe('anonymize', () => {
     expect(data.events[0]).not.toHaveProperty('hints')
     expect(data.events[1]).toMatchObject({ word: 'หมา', hints: ['translation'] })
     expect(data.events[2]).toMatchObject({ type: 'judge', word: 'กิน', hints: ['not-noun'] })
+  })
+
+  it('sends who pointed each hint out, how the word was checked, and what the judge did', () => {
+    let round = addWord(startRound(['ออย', 'บีม', 'เจ']), 'ด็อก', ['ด็อก'])
+    round = addWord(round, 'หมา', ['หมา'], false, undefined, [{ kind: 'translation', by: 'dictionary', english: 'dog' }])
+    const sent = round.events[1] as WordEvent
+    round = attachCheck(round, sent, [{ kind: 'translation', by: 'both', english: 'dog' }], { by: 'model', model: 'gemma' })
+    round = passHint(round, 1, 'translation')
+    const data = anonymize({ id: 'abc123', createdAt: 5, updatedAt: 6, round })
+    expect(data.events[1]).toMatchObject({
+      hints: ['translation'],
+      hintInfo: [{ kind: 'translation', by: 'both', english: 'dog', passed: true }],
+      checked: { by: 'model', model: 'gemma' },
+    })
+  })
+
+  it('does not count hints arriving later as a change of the log', () => {
+    const round = addWord(startRound(['ออย', 'บีม']), 'กิน', ['กิน'])
+    const later = attachCheck(round, round.events[0] as WordEvent, [{ kind: 'not-noun', by: 'model' }], { by: 'model' })
+    expect(later).not.toBe(round)
+    expect(roundPrint(later.events)).toBe(roundPrint(round.events))
+  })
+
+  it('drops an answer for a word no longer in the log as it was', () => {
+    const round = addWord(startRound(['ออย', 'บีม']), 'กิน', ['กิน'])
+    const sent = round.events[0] as WordEvent
+    const redone = addWord(undo(round), 'นอน', ['นอน'])
+    expect(attachCheck(redone, sent, [{ kind: 'not-noun' }], { by: 'model' }, 0)).toBe(redone)
+    expect(attachCheck(undo(round), sent, [{ kind: 'not-noun' }], { by: 'model' }, 0)).toEqual(undo(round))
+  })
+
+  it('keeps the judge\'s pass when the AI answers after it', () => {
+    const round = addWord(startRound(['ออย', 'บีม']), 'กิน', ['กิน'], false, undefined, ['not-noun'])
+    const passed = passHint(round, 0, 'not-noun')
+    const later = attachCheck(passed, round.events[0] as WordEvent, [{ kind: 'not-noun', by: 'both' }], { by: 'model' }, 0)
+    expect(later.events[0]).toMatchObject({ hintInfo: [{ kind: 'not-noun', by: 'both', passed: true }] })
   })
 
   it('keeps the segmenter split from before a later correction', () => {

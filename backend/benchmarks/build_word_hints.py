@@ -60,6 +60,22 @@ def not_nouns() -> list[str]:
   return sorted(w for w in words if THAI.match(w))
 
 
+def nouns() -> list[str]:
+  """Words a dictionary gives a noun sense (short ones: what players say). Used to
+  overrule a model that calls such a word not a noun."""
+  words: set[str] = set()
+  td = thai_dict()
+  for word, meaning in zip(td['word'], td['meaning']):
+    try:
+      if set(ast.literal_eval(meaning).keys()) & NOUN_SENSES:
+        words.add(word)
+    except (ValueError, SyntaxError):
+      continue
+  db = sqlite3.connect(CORPUS_DIR / 'wordnet_th.db')
+  words |= {w for sid, w in db.execute('select synsetid, li from word_synset') if sid.endswith('-n')}
+  return sorted(w for w in words if THAI.match(w) and len(w) <= 12)
+
+
 def clean_gloss(gloss: str) -> set[str]:
   gloss = re.sub(r'\([^)]*\)', '', gloss.lower())
   out: set[str] = set()
@@ -92,6 +108,7 @@ def glosses(kaikki: str) -> dict[str, list[str]]:
 def main() -> None:
   data = {
     'notNoun': not_nouns(),
+    'noun': nouns(),
     'gloss': glosses(sys.argv[1]),
   }
   OUT.parent.mkdir(parents=True, exist_ok=True)

@@ -1,9 +1,18 @@
+import type { CheckedInfo, HintSource } from './game'
+
 export class SegmentError extends Error {}
 
 /** Something the judge may want to check about a word. Never a ruling. */
-export type WordHint =
+export type WordHint = (
   | { kind: 'not-noun' }
   | { kind: 'translation'; of: string; english: string }
+) & { by?: HintSource }
+
+/** How a sent word was checked: by the AI, or only by the dictionaries (and why). */
+export interface WordChecked extends CheckedInfo {
+  /** With reason 'quota': when the AI is asked again (epoch ms). */
+  until?: number
+}
 
 /** Ask the backend to split a word into written syllables (game rules applied server-side). */
 export async function segment(text: string, signal?: AbortSignal): Promise<string[]> {
@@ -15,11 +24,13 @@ export async function segmentWithHints(
   text: string,
   previous: string | null,
   signal?: AbortSignal,
-): Promise<{ syllables: string[]; hints: WordHint[] }> {
+  /** The word is being sent: worth a slower, better check (Gemini, if set up). */
+  check = false,
+): Promise<{ syllables: string[]; hints: WordHint[]; checked: WordChecked | null }> {
   const response = await fetch('/api/syllables', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(previous ? { text, previous } : { text }),
+    body: JSON.stringify({ text, ...(previous ? { previous } : {}), ...(check ? { check: true } : {}) }),
     signal,
   })
 
@@ -27,21 +38,36 @@ export async function segmentWithHints(
     throw new SegmentError('แยกพยางค์ไม่ได้ ลองใหม่อีกครั้ง')
   }
 
-  const payload = (await response.json()) as { syllables?: unknown; hints?: unknown }
+  const payload = (await response.json()) as { syllables?: unknown; hints?: unknown; checked?: unknown }
   if (!Array.isArray(payload.syllables)) {
     throw new SegmentError('ระบบแยกพยางค์ตอบกลับผิดรูปแบบ')
   }
 
-  return { syllables: payload.syllables.map(String), hints: readHints(payload.hints) }
+  return { syllables: payload.syllables.map(String), hints: readHints(payload.hints), checked: readChecked(payload.checked) }
+}
+
+const SOURCES = ['confirmed', 'model', 'dictionary', 'both']
+const REASONS = ['off', 'quota', 'timeout', 'error']
+
+function readChecked(value: unknown): WordChecked | null {
+  const item = value as Record<string, unknown> | null
+  if (!item || (item.by !== 'model' && item.by !== 'dictionary')) return null
+  return {
+    by: item.by,
+    ...(REASONS.includes(item.reason as string) ? { reason: item.reason as WordChecked['reason'] } : {}),
+    ...(typeof item.model === 'string' ? { model: item.model } : {}),
+    ...(typeof item.until === 'number' ? { until: item.until } : {}),
+  }
 }
 
 function readHints(value: unknown): WordHint[] {
   if (!Array.isArray(value)) return []
   const hints: WordHint[] = []
   for (const item of value as Record<string, unknown>[]) {
-    if (item?.kind === 'not-noun') hints.push({ kind: 'not-noun' })
+    const by = SOURCES.includes(item?.by as string) ? { by: item.by as HintSource } : {}
+    if (item?.kind === 'not-noun') hints.push({ kind: 'not-noun', ...by })
     if (item?.kind === 'translation' && typeof item.of === 'string' && typeof item.english === 'string') {
-      hints.push({ kind: 'translation', of: item.of, english: item.english })
+      hints.push({ kind: 'translation', of: item.of, english: item.english, ...by })
     }
   }
   return hints

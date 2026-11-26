@@ -48,10 +48,32 @@ export interface WordEvent {
   segmented?: string[]
   /** Hints the judge was shown for this word, to see later how often they agree. */
   hints?: HintKind[]
+  /** The same hints in detail: who pointed them out, and whether the judge let the word stand. */
+  hintInfo?: HintInfo[]
+  /** How the word was checked once sent: by the AI, or only by the dictionaries (and why). */
+  checked?: CheckedInfo
 }
 
 /** A hint shown to the judge: may not be a noun, or a translation of the word before. */
 export type HintKind = 'not-noun' | 'translation'
+
+/** Who pointed a hint out: a confirmed answer, the AI, the dictionaries, or both of these. */
+export type HintSource = 'confirmed' | 'model' | 'dictionary' | 'both'
+
+export interface HintInfo {
+  kind: HintKind
+  by?: HintSource
+  /** For a translation: the English word. */
+  english?: string
+  /** The judge saw the hint and let the word stand. */
+  passed?: boolean
+}
+
+export interface CheckedInfo {
+  by: 'model' | 'dictionary'
+  reason?: 'off' | 'quota' | 'timeout' | 'error'
+  model?: string
+}
 
 export type JudgeReason = 'not-connected' | 'not-noun' | 'forbidden' | 'too-slow'
 
@@ -65,6 +87,7 @@ export interface JudgeEvent {
   syllables?: string[]
   /** Hints the judge was shown when ruling on the word as it was said. */
   hints?: HintKind[]
+  hintInfo?: HintInfo[]
   /** Set when the decision came from a player's successful challenge. */
   challengerId?: string
 }
@@ -449,7 +472,7 @@ export function addWord(
   syllables: string[],
   manual = false,
   segmented?: string[],
-  hints: HintKind[] = [],
+  hints: (HintKind | HintInfo)[] = [],
 ): Round {
   const trimmed = word.trim()
   const state = replay(round)
@@ -467,8 +490,53 @@ export function addWord(
     event.manual = true
     if (segmented && segmented.length > 0) event.segmented = segmented
   }
-  if (hints.length > 0) event.hints = hints
+  Object.assign(event, hintFields(hints.map(toInfo)))
   return { ...round, events: [...round.events, event] }
+}
+
+function toInfo(hint: HintKind | HintInfo): HintInfo {
+  return typeof hint === 'string' ? { kind: hint } : hint
+}
+
+function hintFields(info: HintInfo[]): Pick<WordEvent, 'hints' | 'hintInfo'> {
+  if (info.length === 0) return {}
+  const fields: Pick<WordEvent, 'hints' | 'hintInfo'> = { hints: info.map((h) => h.kind) }
+  // the details only when there is more than the kind to keep
+  if (info.some((h) => h.by || h.english || h.passed)) fields.hintInfo = info
+  return fields
+}
+
+/** A word event's hints in detail (older games only kept the kinds). */
+export function hintInfoOf(event: { hints?: HintKind[]; hintInfo?: HintInfo[] }): HintInfo[] {
+  return event.hintInfo ?? (event.hints ?? []).map((kind) => ({ kind }))
+}
+
+/**
+ * The AI's answer for a word arrives after the word was logged: put its hints on that
+ * word, if it is still there (same place, same player, same word; the judge may have
+ * passed a hint meanwhile). A judge's "passed" on a hint of the same kind is kept.
+ */
+export function attachCheck(round: Round, sent: WordEvent, hints: HintInfo[], checked: CheckedInfo, index?: number): Round {
+  const at = index ?? round.events.indexOf(sent)
+  const now = round.events[at]
+  if (!now || now.type !== 'word' || now.word !== sent.word || now.playerId !== sent.playerId) return round
+  const before = hintInfoOf(now)
+  const merged = hints.map((hint) => (before.find((h) => h.kind === hint.kind)?.passed ? { ...hint, passed: true } : hint))
+  const { hints: _kinds, hintInfo: _info, ...rest } = now
+  const updated: WordEvent = { ...rest, ...hintFields(merged), checked }
+  const events = [...round.events]
+  events[at] = updated
+  return { ...round, events }
+}
+
+/** The judge saw a hint and let the word stand: it leaves the list of hints to look at. */
+export function passHint(round: Round, index: number, kind: HintKind): Round {
+  const event = round.events[index]
+  if (!event || event.type !== 'word') return round
+  const info = hintInfoOf(event).map((h) => (h.kind === kind ? { ...h, passed: true } : h))
+  const events = [...round.events]
+  events[index] = { ...event, hints: info.map((h) => h.kind), hintInfo: info }
+  return { ...round, events }
 }
 
 /** Remove the latest entry from the log. */
@@ -629,7 +697,7 @@ export function judgeOut(
   reason: JudgeReason,
   word: string,
   syllables: string[] = [],
-  hints: HintKind[] = [],
+  hints: (HintKind | HintInfo)[] = [],
 ): Round {
   const state = replay(round)
   if (state.winnerId || (needsWord(reason) && !word.trim())) {
@@ -639,7 +707,7 @@ export function judgeOut(
   const said = reason === 'too-slow' ? '' : word.trim()
   const event: JudgeEvent = { type: 'judge', playerId: currentPlayer(state).id, word: said, reason }
   if (said && syllables.length > 0) event.syllables = syllables
-  if (said && hints.length > 0) event.hints = hints
+  if (said) Object.assign(event, hintFields(hints.map(toInfo)))
   return { ...round, events: [...round.events, event] }
 }
 
@@ -656,7 +724,7 @@ export function applyJudge(
   if (!event || event.type !== 'word') {
     return { round, removed: [] }
   }
-  const judged: JudgeEvent = { type: 'judge', playerId: event.playerId, word: event.word, syllables: event.syllables, ...(event.hints ? { hints: event.hints } : {}), reason }
+  const judged: JudgeEvent = { type: 'judge', playerId: event.playerId, word: event.word, syllables: event.syllables, ...(event.hints ? { hints: event.hints } : {}), ...(event.hintInfo ? { hintInfo: event.hintInfo } : {}), reason }
   return {
     round: { ...round, events: [...round.events.slice(0, index), judged] },
     removed: round.events.slice(index + 1),
@@ -707,6 +775,7 @@ export function revertRuling(round: Round, index: number): { round: Round; remov
   if (event.type === 'judge' && event.word) {
     const word: WordEvent = { type: 'word', playerId: event.playerId, word: event.word, syllables: event.syllables! }
     if (event.hints) word.hints = event.hints
+    if (event.hintInfo) word.hintInfo = event.hintInfo
     return { round: { ...round, events: [...kept, word] }, removed }
   }
   return { round: { ...round, events: kept }, removed }
@@ -756,7 +825,7 @@ export function applyChallenge(
     return { round, removed: [] }
   }
   if (succeeded) {
-    const ruled: JudgeEvent = { type: 'judge', playerId: event.playerId, word: event.word, syllables: event.syllables, ...(event.hints ? { hints: event.hints } : {}), reason, challengerId }
+    const ruled: JudgeEvent = { type: 'judge', playerId: event.playerId, word: event.word, syllables: event.syllables, ...(event.hints ? { hints: event.hints } : {}), ...(event.hintInfo ? { hintInfo: event.hintInfo } : {}), reason, challengerId }
     return {
       round: { ...round, events: [...round.events.slice(0, index), ruled] },
       removed: round.events.slice(index + 1),

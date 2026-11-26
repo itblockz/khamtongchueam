@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
-import { SegmentError, segment, segmentWithHints, uploadGame, type WordHint } from './api'
+import { SegmentError, segment, segmentWithHints, uploadGame, type WordChecked, type WordHint } from './api'
 import { setSoundOn, soundOn, timeUp, unlockAudio } from './sound'
 import {
   deleteAccount,
@@ -60,7 +60,12 @@ import {
   judgedText,
   needsWord,
   type HintKind,
+  type HintInfo,
+  type HintSource,
   type JudgeReason,
+  attachCheck,
+  hintInfoOf,
+  passHint,
   applyEdit,
   applyJudge,
   applyChallenge,
@@ -923,6 +928,8 @@ function Play({
   /** Set when this screen sends a word or a decision, so the next turn can start counting. */
   const turnEnded = useRef(false)
   const events = round.events
+  // a new turn: hints arriving or passed later change the log, but not the turn
+  const turnKey = `${events.length}:${events.at(-1)?.type ?? ''}:${events.at(-1)?.playerId ?? ''}`
 
   const lastCounted = game.results.at(-1)?.status === 'counted'
 
@@ -935,7 +942,7 @@ function Play({
     setTimer(auto ? { phase: 'counting', startedAt: Date.now() } : { phase: 'idle' })
     setNow(Date.now())
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only on a new turn
-  }, [events])
+  }, [turnKey])
 
   useEffect(() => {
     if (timer.phase !== 'counting') return
@@ -966,8 +973,11 @@ function Play({
   const [preview, setPreview] = useState<string[]>([])
   /** Hints for the word as typed (`for`), so stale ones never show. */
   const [hints, setHints] = useState<{ for: string; hints: WordHint[] }>({ for: '', hints: [] })
-  /** Hints of the word just sent, with their details, for the banner under the turn. */
-  const [lastHints, setLastHints] = useState<{ index: number; hints: WordHint[] } | null>(null)
+  /** How the latest sent word was checked, to say when the AI could not help. */
+  const [lastChecked, setLastChecked] = useState<WordChecked | null>(null)
+  /** The latest round, for answers that arrive after the judge moved on. */
+  const latestRound = useRef(round)
+  latestRound.current = round
   /** The word said before, to point out a translation of it. */
   const previousWord = game.words.at(-1)?.word ?? null
   /** null: use the segmenter's split; otherwise the judge's correction (space separated). */
@@ -1002,7 +1012,7 @@ function Play({
     }
   }, [word, previousWord])
   const shownHints = hints.for === word.trim() && word.trim() ? hints.hints : []
-  const hintKinds = shownHints.map((hint) => hint.kind)
+  const shownInfo = shownHints.map(toHintInfo)
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault()
@@ -1014,21 +1024,32 @@ function Play({
     setError(null)
     try {
       const manual = manualSplit !== null
-      // hints come with the split, so they are kept even when the judge sends at once
-      const checked = await segmentWithHints(text, previousWord)
-      const syllables = manual ? parseSyllables(manualSplit) : checked.syllables
-      const sentHints = checked.hints
+      // the split and the dictionaries' hints come at once; the AI answers later
+      const quick = await segmentWithHints(text, previousWord)
+      const syllables = manual ? parseSyllables(manualSplit) : quick.syllables
       if (syllables.length === 0) {
         setError('ใส่การแยกพยางค์ก่อนส่ง')
         return
       }
       turnEnded.current = true
-      onChange(
-        game.needsOpening
-          ? addOpening(round, text, syllables, manual, manual ? preview : undefined)
-          : addWord(round, text, syllables, manual, manual ? preview : undefined, sentHints.map((h) => h.kind)),
-      )
-      if (sentHints.length > 0) setLastHints({ index: round.events.length, hints: sentHints })
+      const next = game.needsOpening
+        ? addOpening(round, text, syllables, manual, manual ? preview : undefined)
+        : addWord(round, text, syllables, manual, manual ? preview : undefined, quick.hints.map(toHintInfo))
+      onChange(next)
+      const sent = next.events.at(-1)
+      if (!game.needsOpening && sent !== undefined && sent.type === 'word' && sent !== round.events.at(-1)) {
+        // the judge goes on at once; the AI's hints are put on the word when they come
+        segmentWithHints(text, previousWord, undefined, true)
+          .then((result) => {
+            if (!result.checked) return
+            setLastChecked(result.checked)
+            const updated = attachCheck(latestRound.current, sent, result.hints.map(toHintInfo), result.checked, next.events.length - 1)
+            if (updated !== latestRound.current) onChange(updated)
+          })
+          .catch(() => {
+            /* the dictionaries' hints stay */
+          })
+      }
       setWord('')
       setPreview([])
       setManualSplit(null)
@@ -1106,7 +1127,8 @@ function Play({
         ))}
       </ul>
 
-      <LastWordHints round={round} game={game} details={lastHints} onChange={onChange} />
+      <HintList round={round} game={game} onChange={onChange} />
+      <CheckedNote checked={lastChecked} />
 
       <section className="card">
 
@@ -1221,7 +1243,7 @@ function Play({
               onClick={() => {
                 turnEnded.current = true
                 onChange(
-                  judgeOut(round, reason, word, manualSplit !== null ? parseSyllables(manualSplit) : preview, hintKinds),
+                  judgeOut(round, reason, word, manualSplit !== null ? parseSyllables(manualSplit) : preview, shownInfo),
                 )
                 setWord('')
                 setPreview([])
@@ -1660,52 +1682,149 @@ function MatchTable({
   )
 }
 
+function toHintInfo(hint: WordHint): HintInfo {
+  return {
+    kind: hint.kind,
+    ...(hint.by ? { by: hint.by } : {}),
+    ...(hint.kind === 'translation' ? { english: hint.english } : {}),
+  }
+}
+
+const HINTS_SHOWN = 1
+
+const HINT_SOURCE_SHORT: Record<HintSource, string> = {
+  confirmed: 'ยืนยันแล้ว',
+  model: 'AI',
+  dictionary: 'พจนานุกรม',
+  both: 'AI',
+}
+
 /**
- * Hints for the word just sent, shown under the turn until the next word, with a
- * button to rule it out for that reason. The judge often sends before the hint
- * shows under the input, so this is where it is seen.
+ * Hints the judge has not dealt with yet, newest first, each with a button to rule the
+ * word out for that reason and one to let it stand. The judge often sends before a
+ * hint shows (and the AI answers later), so this is where hints are seen.
  */
-function LastWordHints({
-  round,
-  game,
-  details,
-  onChange,
-}: {
-  round: Round
-  game: GameState
-  details: { index: number; hints: WordHint[] } | null
-  onChange: (round: Round) => void
-}) {
-  const index = round.events.length - 1
-  const event = round.events[index]
-  if (game.winnerId || !event || event.type !== 'word' || !event.hints?.length) return null
-  if (game.results[index]?.status !== 'counted') return null
-  const before = game.words.at(-2)?.word
-  const known = details?.index === index ? details.hints : []
+function HintList({ round, game, onChange }: { round: Round; game: GameState; onChange: (round: Round) => void }) {
+  const [open, setOpen] = useState(false)
+  /** Ruling out an earlier word removes the words after it: shown first, as in the word list. */
+  const [confirming, setConfirming] = useState<{ key: string; pending: Pending } | null>(null)
+  /** Hints already on screen once: only a newly arrived one flashes (not on expanding). */
+  const seen = useRef(new Set<string>())
+  useEffect(() => {
+    round.events.forEach((event, index) => {
+      if (event.type === 'word') for (const info of hintInfoOf(event)) seen.current.add(`${index}-${info.kind}-${info.by ?? ''}`)
+    })
+  })
+  if (game.winnerId) return null
+  const rows: { index: number; word: string; info: HintInfo; of?: string }[] = []
+  round.events.forEach((event, index) => {
+    if (event.type !== 'word' || game.results[index]?.status !== 'counted') return
+    for (const info of hintInfoOf(event)) {
+      if (info.passed) continue
+      rows.push({ index, word: event.word, info, of: wordBefore(round, index) })
+    }
+  })
+  if (rows.length === 0) return null
+  rows.reverse()
+  const shown = open ? rows : rows.slice(0, HINTS_SHOWN)
   return (
-    <section className="hint-banner" aria-label="ข้อสังเกตของคำล่าสุด">
-      {event.hints.map((kind) => {
-        const translation = known.find((h) => h.kind === 'translation')
-        const reason: JudgeReason = kind === 'not-noun' ? 'not-noun' : 'forbidden'
+    <section className="hint-banner" aria-label="คำเตือนที่ยังไม่ได้ดู">
+      {shown.map(({ index, word, info, of }) => {
+        const reason: JudgeReason = info.kind === 'not-noun' ? 'not-noun' : 'forbidden'
+        const key = `${index}-${info.kind}`
+        const asking = confirming?.key === key && confirming.pending.round.events.length === index + 1 ? confirming.pending : null
+        if (asking) {
+          const changes = summarize(round, game, asking)
+          return (
+            <div key={key} className="hint-confirm" role="group" aria-label={`ยืนยัน “${word}” ${JUDGE_REASON_LABEL[reason]}`}>
+              <span>
+                “{word}” {JUDGE_REASON_LABEL[reason]}
+              </span>
+              <ul className="changes">
+                {changes.map((change) => (
+                  <li key={change}>{change}</li>
+                ))}
+              </ul>
+              <div className="row tight">
+                <button
+                  type="button"
+                  className="compact"
+                  onClick={() => {
+                    onChange(asking.round)
+                    setConfirming(null)
+                  }}
+                >
+                  ยืนยัน
+                </button>
+                <button type="button" className="secondary compact" onClick={() => setConfirming(null)}>
+                  ยกเลิก
+                </button>
+              </div>
+            </div>
+          )
+        }
         return (
-          <div key={kind} className="row tight">
-            <span>
-              ⚠ “{event.word}”{' '}
-              {kind === 'not-noun'
-                ? 'อาจไม่ใช่คำนาม'
-                : `อาจเป็นคำแปลของ “${translation?.kind === 'translation' ? translation.of : before}”${translation?.kind === 'translation' ? ` (${translation.english})` : ''}`}
+          <div key={`${key}-${info.by ?? ''}`} className={`row tight hint-row${seen.current.has(`${key}-${info.by ?? ''}`) ? '' : ' fresh'}`}>
+            <span className="hint-text">
+              ⚠ “{word}”{' '}
+              {info.kind === 'not-noun' ? 'ไม่ใช่นาม?' : `แปลจาก “${of ?? ''}”?${info.english ? ` (${info.english})` : ''}`}
+              {info.by && <small className="hint-source"> · {HINT_SOURCE_SHORT[info.by]}</small>}
             </span>
             <button
               type="button"
               className="outline-danger compact"
-              onClick={() => onChange(applyJudge(round, index, reason).round)}
+              onClick={() => {
+                const pending = applyJudge(round, index, reason)
+                // the latest word: nothing else changes, so no need to ask
+                if (pending.removed.length === 0) onChange(pending.round)
+                else setConfirming({ key, pending })
+              }}
             >
               {JUDGE_REASON_LABEL[reason]}
+            </button>
+            <button type="button" className="secondary compact" onClick={() => onChange(passHint(round, index, info.kind))}>
+              ผ่าน
             </button>
           </div>
         )
       })}
+      {rows.length > HINTS_SHOWN && (
+        <button type="button" className="link more-hints" onClick={() => setOpen(!open)}>
+          {open ? 'ย่อ ▴' : `อีก ${rows.length - HINTS_SHOWN} คำเตือน ▾`}
+        </button>
+      )}
     </section>
+  )
+}
+
+/** The word said before the one at `index`, for "a translation of ...". */
+function wordBefore(round: Round, index: number): string | undefined {
+  for (let i = index - 1; i >= 0; i--) {
+    const event = round.events[i]
+    if (event.type === 'word' || event.type === 'opening') return event.word
+  }
+  return undefined
+}
+
+const CHECK_REASON_LABEL: Record<NonNullable<WordChecked['reason']>, string> = {
+  off: 'ยังไม่ได้เปิดใช้ AI',
+  quota: 'โควตา AI หมด',
+  timeout: 'AI ตอบไม่ทัน',
+  error: 'AI ใช้ไม่ได้ชั่วคราว',
+}
+
+/** Says when the latest word was checked by the dictionaries only, and why. */
+function CheckedNote({ checked }: { checked: WordChecked | null }) {
+  if (!checked || checked.by !== 'dictionary') return null
+  const until =
+    checked.reason === 'quota' && checked.until
+      ? ` (กลับมา ${new Date(checked.until).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })})`
+      : ''
+  return (
+    <p className="checked-note" role="status">
+      เช็กด้วยพจนานุกรมอย่างเดียว · {CHECK_REASON_LABEL[checked.reason ?? 'error']}
+      {until}
+    </p>
   )
 }
 
