@@ -448,9 +448,9 @@ export default function App() {
     setCurrentId(created.id)
   }
 
-  /** Make a match longer or shorter by `by` rounds (up to MAX_MATCH_ROUNDS); returns the new length. */
-  function extendMatch(view: MatchView, by = 1): number {
-    const rounds = Math.min(MAX_MATCH_ROUNDS, Math.max(1, view.length + by))
+  /** Make a match one round longer (up to MAX_MATCH_ROUNDS); returns the new length. */
+  function extendMatch(view: MatchView): number {
+    const rounds = Math.min(MAX_MATCH_ROUNDS, view.length + 1)
     const ids = new Set(view.rounds.map((g) => g.id))
     const now = Date.now()
     setGames((all) => all.map((g) => (ids.has(g.id) ? { ...g, match: { ...matchOf(g), rounds }, updatedAt: now } : g)))
@@ -636,20 +636,6 @@ export default function App() {
               >
                 รอบถัดไป ({match.round + 1}/{view.length}) · {winner?.name} เริ่ม
               </button>
-              <div className="row tight match-rounds">
-              <span className="label" id="match-rounds-label">
-                จำนวนรอบ
-              </span>
-              <div className="stepper" role="group" aria-labelledby="match-rounds-label">
-                {/* at least one more round: to stop here, end the match */}
-                <button type="button" aria-label="ลดจำนวนรอบ" onClick={() => extendMatch(view, -1)} disabled={view.length <= match.round + 1}>
-                  −
-                </button>
-                <output aria-live="polite">{view.length}</output>
-                <button type="button" aria-label="เพิ่มจำนวนรอบ" onClick={() => extendMatch(view)} disabled={!canExtend}>
-                  +
-                </button>
-              </div>
               <button
                 type="button"
                 className="link"
@@ -659,7 +645,6 @@ export default function App() {
               >
                 จบแมตช์ตอนนี้
               </button>
-              </div>
             </>
           )}
         </section>

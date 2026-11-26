@@ -452,29 +452,15 @@ describe('judge app', () => {
       expect(screen.getByText(/^เสมอ: /)).toBeInTheDocument()
     })
 
-    it('adds rounds to a match during it and after its last round', async () => {
+    it('plays on after the last round, one round at a time', async () => {
       await startWith('ออย\nบีม')
       await submit('หาดทราย')
       fireEvent.change(screen.getByLabelText(/^คำของ/), { target: { value: 'ทรายทอง' } })
       fireEvent.click(screen.getByRole('button', { name: 'ส่ง' }))
       await screen.findByRole('heading', { name: /^ออย ชนะ/ })
-      const more = () => screen.getByRole('button', { name: 'เพิ่มจำนวนรอบ' })
-      const fewer = () => screen.getByRole('button', { name: 'ลดจำนวนรอบ' })
-      fireEvent.click(more())
-      fireEvent.click(more())
-      expect(screen.getByText('รอบ 1/6 จบแล้ว')).toBeInTheDocument()
-      // too many: take one back; never fewer than one more round
-      fireEvent.click(fewer())
-      expect(screen.getByText('รอบ 1/5 จบแล้ว')).toBeInTheDocument()
-      for (let i = 0; i < 5; i++) if (!fewer().hasAttribute('disabled')) fireEvent.click(fewer())
-      expect(screen.getByText('รอบ 1/2 จบแล้ว')).toBeInTheDocument()
-      expect(fewer()).toBeDisabled()
-      fireEvent.click(more())
-      fireEvent.click(more())
-      fireEvent.click(more())
-      expect(screen.getByText('รอบ 1/5 จบแล้ว')).toBeInTheDocument()
-      fireEvent.click(screen.getByRole('button', { name: /^รอบถัดไป \(2\/5\)/ }))
-      expect(screen.getByText('รอบ 2/5')).toBeInTheDocument()
+      // between rounds the length stays as set: go on, or end here
+      expect(screen.queryByRole('button', { name: /^เล่นต่ออีก 1 รอบ/ })).not.toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: /^รอบถัดไป \(2\/4\)/ }))
 
       // end it at round 2, then go on after all
       fireEvent.click(screen.getByRole('button', { name: 'ไม่ทันเวลา' }))
@@ -483,6 +469,10 @@ describe('judge app', () => {
       expect(screen.getByText('รอบ 2/2 จบแล้ว')).toBeInTheDocument()
       fireEvent.click(screen.getByRole('button', { name: /^เล่นต่ออีก 1 รอบ · บีม เริ่ม/ }))
       expect(screen.getByText('รอบ 3/3')).toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: 'ไม่ทันเวลา' }))
+      expect(screen.getByText('รอบ 3/3 จบแล้ว')).toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: /^เล่นต่ออีก 1 รอบ/ }))
+      expect(screen.getByText('รอบ 4/4')).toBeInTheDocument()
     })
 
     it('deletes a game after asking', async () => {
