@@ -817,3 +817,8 @@ button.suggest-chip.group {
 .hint-confirm .changes {
   margin: 0;
 }
+
+.match-rounds {
+  flex-wrap: wrap;
+  align-items: center;
+}
