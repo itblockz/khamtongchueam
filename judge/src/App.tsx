@@ -1706,6 +1706,8 @@ const HINTS_SHOWN = 3
  */
 function HintList({ round, game, onChange }: { round: Round; game: GameState; onChange: (round: Round) => void }) {
   const [open, setOpen] = useState(false)
+  /** Ruling out an earlier word removes the words after it: shown first, as in the word list. */
+  const [confirming, setConfirming] = useState<{ key: string; pending: Pending } | null>(null)
   if (game.winnerId) return null
   const rows: { index: number; word: string; info: HintInfo; of?: string }[] = []
   round.events.forEach((event, index) => {
@@ -1722,8 +1724,40 @@ function HintList({ round, game, onChange }: { round: Round; game: GameState; on
     <section className="hint-banner" aria-label="คำเตือนที่ยังไม่ได้ดู">
       {shown.map(({ index, word, info, of }) => {
         const reason: JudgeReason = info.kind === 'not-noun' ? 'not-noun' : 'forbidden'
+        const key = `${index}-${info.kind}`
+        const asking = confirming?.key === key && confirming.pending.round.events.length === index + 1 ? confirming.pending : null
+        if (asking) {
+          const changes = summarize(round, game, asking)
+          return (
+            <div key={key} className="hint-confirm" role="group" aria-label={`ยืนยัน “${word}” ${JUDGE_REASON_LABEL[reason]}`}>
+              <span>
+                “{word}” {JUDGE_REASON_LABEL[reason]}
+              </span>
+              <ul className="changes">
+                {changes.map((change) => (
+                  <li key={change}>{change}</li>
+                ))}
+              </ul>
+              <div className="row tight">
+                <button
+                  type="button"
+                  className="compact"
+                  onClick={() => {
+                    onChange(asking.round)
+                    setConfirming(null)
+                  }}
+                >
+                  ยืนยัน
+                </button>
+                <button type="button" className="secondary compact" onClick={() => setConfirming(null)}>
+                  ยกเลิก
+                </button>
+              </div>
+            </div>
+          )
+        }
         return (
-          <div key={`${index}-${info.kind}-${info.by ?? ''}`} className={`row tight hint-row${info.by === 'model' || info.by === 'both' ? ' fresh' : ''}`}>
+          <div key={`${key}-${info.by ?? ''}`} className={`row tight hint-row${info.by === 'model' || info.by === 'both' ? ' fresh' : ''}`}>
             <span className="hint-text">
               ⚠ “{word}”{' '}
               {info.kind === 'not-noun'
@@ -1734,7 +1768,12 @@ function HintList({ round, game, onChange }: { round: Round; game: GameState; on
             <button
               type="button"
               className="outline-danger compact"
-              onClick={() => onChange(applyJudge(round, index, reason).round)}
+              onClick={() => {
+                const pending = applyJudge(round, index, reason)
+                // the latest word: nothing else changes, so no need to ask
+                if (pending.removed.length === 0) onChange(pending.round)
+                else setConfirming({ key, pending })
+              }}
             >
               {JUDGE_REASON_LABEL[reason]}
             </button>

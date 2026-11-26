@@ -795,3 +795,13 @@ button.suggest-chip.group {
   font-size: 0.8rem;
   color: var(--muted, #666);
 }
+
+.hint-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.hint-confirm .changes {
+  margin: 0;
+}

@@ -991,8 +991,14 @@ describe('judge app', () => {
     answer(null)
     const banner = await screen.findByRole('region', { name: 'คำเตือนที่ยังไม่ได้ดู' })
     expect(within(banner).getByText(/^⚠/).textContent).toBe('⚠ “ขวา” อาจไม่ใช่คำนาม · AI')
-    // ruling an earlier word out: its speaker goes out there, later words go
+    // ruling an earlier word out removes the words after it: shown first, as in the word list
     fireEvent.click(within(banner).getByRole('button', { name: 'ไม่ใช่คำนาม' }))
+    const confirm = within(banner).getByRole('group', { name: 'ยืนยัน “ขวา” ไม่ใช่คำนาม' })
+    expect(within(confirm).getByText(/ลบ 1 คำหลังจากนั้น: หน้า/)).toBeInTheDocument()
+    expect(screen.getByText('หน้า', { selector: '.word' })).toBeInTheDocument()
+    fireEvent.click(within(confirm).getByRole('button', { name: 'ยกเลิก' }))
+    fireEvent.click(within(banner).getByRole('button', { name: 'ไม่ใช่คำนาม' }))
+    fireEvent.click(within(banner).getByRole('button', { name: 'ยืนยัน' }))
     expect(screen.getByRole('heading', { name: 'บีม ตกรอบ' })).toBeInTheDocument()
     expect(screen.queryByText('หน้า', { selector: '.word' })).not.toBeInTheDocument()
   })
