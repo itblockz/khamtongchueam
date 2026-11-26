@@ -44,6 +44,7 @@ import {
 import {
   addOpening,
   MATCH_ROUNDS,
+  MAX_MATCH_ROUNDS,
   nextRoundOrder,
   roundPoints,
   addWord,
@@ -447,6 +448,15 @@ export default function App() {
     setCurrentId(created.id)
   }
 
+  /** Make a match longer by `by` rounds (up to MAX_MATCH_ROUNDS); returns the new length. */
+  function extendMatch(view: MatchView, by = 1): number {
+    const rounds = Math.min(MAX_MATCH_ROUNDS, view.length + by)
+    const ids = new Set(view.rounds.map((g) => g.id))
+    const now = Date.now()
+    setGames((all) => all.map((g) => (ids.has(g.id) ? { ...g, match: { ...matchOf(g), rounds }, updatedAt: now } : g)))
+    return rounds
+  }
+
   /** End a match early: it becomes as long as the rounds already played. */
   function endMatch(view: MatchView) {
     const played = matchOf(view.latest).round
@@ -573,6 +583,11 @@ export default function App() {
     const names = round.players.map((p) => p.name)
     const nextRound = view.rounds.find((g) => matchOf(g).round === match.round + 1)
     const matchOver = match.round >= match.rounds
+    const canExtend = view.length < MAX_MATCH_ROUNDS
+    // only the latest match goes on: one already in the history stays as it was
+    const isLatestMatch = mine.every((g) => g.createdAt <= view.latest.createdAt)
+    const startNext = (rounds: number) =>
+      startGame(nextRoundOrder(names, winner?.name ?? names[0]), mode, { ...match, round: match.round + 1, rounds })
     const placings = roundPoints(game)
     const placed = (place: string) => [...placings.values()].find((p) => p.why.includes(place))?.name
     const runnersUp = [placed('ที่ 2') && `${placed('ที่ 2')} ที่ 2`, placed('ที่ 3') && `${placed('ที่ 3')} ที่ 3`]
@@ -597,28 +612,36 @@ export default function App() {
               ไปรอบ {match.round + 1}
             </button>
           ) : matchOver ? (
-            <button
-              type="button"
-              className="big"
-              // a new match starts over in round 1's order, as the judge typed it
-              onClick={() => startGame(view.rounds[0].round.players.map((p) => p.name), mode)}
-            >
-              เริ่มแมตช์ใหม่
-            </button>
+            <>
+              <button
+                type="button"
+                className="big"
+                // a new match starts over in round 1's order, as the judge typed it
+                onClick={() => startGame(view.rounds[0].round.players.map((p) => p.name), mode)}
+              >
+                เริ่มแมตช์ใหม่
+              </button>
+              {isLatestMatch && canExtend && (
+                <button type="button" className="secondary" onClick={() => startNext(extendMatch(view))}>
+                  เล่นต่ออีก 1 รอบ · {winner?.name} เริ่ม
+                </button>
+              )}
+            </>
           ) : (
             <>
               <button
                 type="button"
                 className="big"
-                onClick={() =>
-                  startGame(nextRoundOrder(names, winner?.name ?? names[0]), mode, {
-                    ...match,
-                    round: match.round + 1,
-                  })
-                }
+                onClick={() => startNext(view.length)}
               >
-                รอบถัดไป ({match.round + 1}/{match.rounds}) · {winner?.name} เริ่ม
+                รอบถัดไป ({match.round + 1}/{view.length}) · {winner?.name} เริ่ม
               </button>
+              <div className="row tight">
+              {canExtend && (
+                <button type="button" className="link" onClick={() => extendMatch(view)}>
+                  +1 รอบ
+                </button>
+              )}
               <button
                 type="button"
                 className="link"
@@ -628,6 +651,7 @@ export default function App() {
               >
                 จบแมตช์ตอนนี้
               </button>
+              </div>
             </>
           )}
         </section>
@@ -722,7 +746,7 @@ function Setup({
   }
 
   const stepRounds = (by: number) =>
-    onTimerChange({ ...timer, rounds: Math.min(20, Math.max(1, timer.rounds + by)) })
+    onTimerChange({ ...timer, rounds: Math.min(MAX_MATCH_ROUNDS, Math.max(1, timer.rounds + by)) })
   const stepSeconds = (by: number) =>
     onTimerChange({ ...timer, seconds: Math.min(30, Math.max(1, timer.seconds + by)) })
 

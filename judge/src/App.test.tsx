@@ -452,6 +452,26 @@ describe('judge app', () => {
       expect(screen.getByText(/^เสมอ: /)).toBeInTheDocument()
     })
 
+    it('adds rounds to a match during it and after its last round', async () => {
+      await startWith('ออย\nบีม')
+      await submit('หาดทราย')
+      fireEvent.change(screen.getByLabelText(/^คำของ/), { target: { value: 'ทรายทอง' } })
+      fireEvent.click(screen.getByRole('button', { name: 'ส่ง' }))
+      await screen.findByRole('heading', { name: /^ออย ชนะ/ })
+      fireEvent.click(screen.getByRole('button', { name: '+1 รอบ' }))
+      expect(screen.getByText('รอบ 1/5 จบแล้ว')).toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: /^รอบถัดไป \(2\/5\)/ }))
+      expect(screen.getByText('รอบ 2/5')).toBeInTheDocument()
+
+      // end it at round 2, then go on after all
+      fireEvent.click(screen.getByRole('button', { name: 'ไม่ทันเวลา' }))
+      vi.spyOn(window, 'confirm').mockReturnValue(true)
+      fireEvent.click(screen.getByRole('button', { name: 'จบแมตช์ตอนนี้' }))
+      expect(screen.getByText('รอบ 2/2 จบแล้ว')).toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: /^เล่นต่ออีก 1 รอบ · บีม เริ่ม/ }))
+      expect(screen.getByText('รอบ 3/3')).toBeInTheDocument()
+    })
+
     it('deletes a game after asking', async () => {
       await startWith('ออย\nบีม')
       fireEvent.click(screen.getByRole('button', { name: 'หน้าแรก' }))
